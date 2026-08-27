@@ -37,8 +37,9 @@ npm run check:integration
 적용한다. 모든 시나리오는 자신이 만든 DB만 정리한다.
 
 CI의 MariaDB 11.4 service에서도 `npm run check:integration`을 실행하도록
-`.github/workflows/ci.yml`에 정의했다. 아직 최초 기준 commit과 원격 CI 실행 기록은 없으므로
-CI 구성이 존재한다는 사실과 원격 통과 여부를 구분한다.
+`.github/workflows/ci.yml`에 정의했다. 최초 기준 commit `83c43e5`의
+[Quality Gate](https://github.com/ahe45/ExamCheck/actions/runs/33125056778)에서 integration 작업이
+성공했으며, 이후 migration 변경 때마다 같은 원격 검증을 다시 통과해야 한다.
 
 ## 데이터 안전장치
 

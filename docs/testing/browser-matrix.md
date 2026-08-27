@@ -70,8 +70,9 @@ npm run test:e2e
 구성하지 않았다. 디자인 기준과 갱신 승인 절차를 정하기 전에는 캡처를 golden으로 간주하지 않는다.
 
 `.github/workflows/ci.yml`에는 브라우저용 격리 DB migration·seed와 전체 Playwright suite 작업이
-정의돼 있다. 최초 기준 commit 전이므로 원격 CI 통과 기록은 아직 없으며, 로컬 전체 검증과 원격
-release gate를 구분한다.
+정의돼 있다. 최초 기준 commit `83c43e5`의
+[Quality Gate](https://github.com/ahe45/ExamCheck/actions/runs/33125056778)에서 browser-smoke 작업이
+성공했으며, 승인된 golden·pixel diff는 별도 후속 gate로 남는다.
 
 Zebra Browser Print adapter는 fake SDK 단위 테스트로 스크립트 로드, 기본 프린터 조회, 프린터
 목록 조회, 데이터 전송의 성공·timeout·늦은 callback·중복 callback 처리를 검증한다. 이 검증은

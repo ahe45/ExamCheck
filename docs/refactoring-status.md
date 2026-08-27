@@ -7,12 +7,12 @@
 
 | 작업                                     | 상태                         | 확인 근거                                                                                                                                                                                                                                                                                            |
 | ---------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| RF-001 Git 추적·제외 목록 감사           | 부분 완료                    | `.env`, `setup/`, 임시 산출물, build cache 제외. 최초 기준 commit은 아직 없음                                                                                                                                                                                                                        |
+| RF-001 Git 추적·제외 목록 감사           | 완료                         | `.env`, `setup/`, IDE 설정, 임시 산출물, build cache 제외. staged 456개·53.5MB, 100MiB 초과 및 고신뢰 비밀키·토큰 패턴 없음 확인                                                                                                                                                                     |
 | RF-002 레거시 자산 격리                  | 부분 완료                    | `docs/legacy-inventory.md`, 대표 자산 SHA-256, Authenticode 서명 상태, `setup/` ignore를 기록했다. 원본 출처 증빙·재배포 권한·개인정보 포함 여부가 승인되지 않았으므로 완료로 보지 않음                                                                                                              |
 | RF-003 DB backup/restore rehearsal       | 대기                         | 개인정보 복제 정책과 격리 복원 위치 확정 필요                                                                                                                                                                                                                                                        |
 | RF-004 실행 기준선 수집                  | 로컬 기준선 완료             | Node/npm/build/DB inventory와 핵심 관리자·사용자 화면 FHD/QHD 수동 검수 완료. `npm run metrics:baseline`으로 소스·테스트·CSS·migration·build asset 크기를 재현 가능하게 수집. 승인된 screenshot/API golden fixture는 계속 필요                                                                       |
-| RF-005 기준 commit/tag                   | 대기                         | 대부분 파일이 아직 미추적이며 사용자가 commit을 요청하지 않음                                                                                                                                                                                                                                        |
-| RF-010 MariaDB 통합 테스트 harness       | 로컬·CI 구성 완료            | 운영 `DB_NAME`을 사용하지 않는 nonce DB 생성·전체 migration·삭제 안전장치와 잔존 0건 확인. CI에는 MariaDB 11.4 service가 정의됐으며 최초 원격 실행은 기준 commit 이후 확인 필요                                                                                                                      |
+| RF-005 기준 commit/tag                   | 완료                         | 최초 commit `83c43e5`, 태그 `refactor-baseline-2026-08-28`을 공개 `origin/master`에 게시                                                                                                                                                                                                             |
+| RF-010 MariaDB 통합 테스트 harness       | 로컬·원격 검증 완료          | 운영 `DB_NAME`을 사용하지 않는 nonce DB 생성·전체 migration·삭제 안전장치와 잔존 0건 확인. 기준 commit의 GitHub Actions MariaDB 11.4 integration 성공                                                                                                                                                |
 | RF-011 Nest HTTP E2E 최소 harness        | 완료                         | 임시 포트에서 실제 Controller/AuthGuard/RolesGuard와 path/query/body DTO 경계를 검증. 공통 오류·request ID·CORS뿐 아니라 수험생 업로드, 가번호 부여/설정, 양식 저장, 출력 작업의 역할별 201/200/401/403/400 업무 경계를 확인. DB 트랜잭션은 MariaDB integration 범위로 분리                          |
 | RF-012 안전한 초기 계정 seed             | 완료                         | 기존 계정은 덮어쓰지 않고 누락된 계정만 생성, 결정적 단위 테스트 추가                                                                                                                                                                                                                                |
 | RF-013 개발자 계정 보호                  | 완료                         | 일반 계정 API의 DEVELOPER 수정·삭제 차단 및 역할 회귀 테스트                                                                                                                                                                                                                                         |
@@ -23,7 +23,7 @@
 | RF-021 React 테스트 harness              | 완료                         | 공통 컴포넌트·hook과 주요 modal/controller의 회귀 테스트를 유지하고 업로드 오류·ESC·busy 경계를 추가                                                                                                                                                                                                 |
 | RF-022 브라우저 smoke                    | 로컬 검증 완료               | 역할별 Chrome smoke 3개×HD·HD+·FHD·QHD 4개 viewport=12개와 FHD 변경 workflow 5개, 총 17/17 통과. nonce DB·동적 포트·runner 소유 PID 종료를 적용했고 정상 종료 후 `examcheck_e2e_*` 잔존 0건 확인                                                                                                     |
 | RF-023 visual baseline                   | 부분 완료                    | FHD/QHD 수동·자동 캡처와 overflow 검사는 있으나 사용자 승인 golden 이미지 및 pixel diff gate는 없음                                                                                                                                                                                                  |
-| RF-024 CI와 `npm run check`              | 로컬 완료·원격 대기          | format·lint·typecheck·단위/HTTP 경계·build, MariaDB 11.4 integration, 브라우저 작업을 분리. 로컬 `npm run check`, integration, 브라우저 17/17은 통과. 최초 commit이 없어 원격 CI 성공 기록은 아직 없음                                                                                               |
+| RF-024 CI와 `npm run check`              | 완료                         | 로컬 `npm run check`, integration, 브라우저 17/17과 기준 commit의 GitHub Actions `static-and-unit`, `integration`, `browser-smoke` 세 작업 모두 성공                                                                                                                                                 |
 | RF-025 migration checksum·동시 실행 잠금 | 로컬 검증 완료               | SHA-256·원본 파일 누락·서버 advisory lock에 더해 내부 상태를 `APPLYING/APPLIED/FAILED`로 기록. 실제 MariaDB에서 첫 DDL 뒤 후속 SQL 실패, 부분 컬럼과 `FAILED` 잔존, 재실행 차단을 검증. 실패 SQL·오류 원문·입력값은 metadata에 저장하지 않으며 운영 repair/restore는 별도 승인                       |
 | RF-026 감사 request ID 스키마 정합       | 로컬 검증 완료               | HTTP가 허용하는 최대 128자 request ID가 mutation 감사 저장을 실패시키지 않도록 `audit_log.request_id`를 `VARCHAR(128)`로 확장. fresh·재실행과 N-1(`025`)→latest(`026`)에서 기존 행 보존 및 128자 실제 감사 저장을 검증                                                                               |
 | RF-030·032 데이터 진단                   | 로컬 기준선 완료             | 개인정보 원문 없이 복수 일정·orphan·범위 밖·중복·범위 겹침을 `docs/data-integrity-baseline.md`에 집계. 현재 로컬 DB의 할당 11건 중 정확 일정 매핑 6건, 레거시 미매핑 5건 확인. 운영 원본을 대표한다는 보장은 없음                                                                                    |
@@ -107,8 +107,8 @@
 
 ## 현재 자동 검증
 
-아래 수치는 2026-08-28 최초 commit 전 최종 로컬 작업 디렉터리 snapshot에서 다시 실행한 결과다.
-commit 이후 값이 바뀌면 명령 원문과 `npm run metrics:baseline` JSON을 다시 수집한다.
+아래 수치는 2026-08-28 최초 기준 commit `83c43e5` 직전에 다시 실행한 결과다. commit 이후 제품 코드나
+산출물이 바뀌면 명령 원문과 `npm run metrics:baseline` JSON을 다시 수집한다.
 
 | 항목                | 현재 판정                                                                                                                                                                                                           |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -118,14 +118,13 @@ commit 이후 값이 바뀌면 명령 원문과 `npm run metrics:baseline` JSON�
 | Production build    | 성공. API build 565,271B, Web build 2,145,107B; main JS 282,610B, 운영 JS 57,086B, 편집기 lazy JS 569,761B. 편집기 500kB 경고는 남지만 일반 route와 정적 import 경계는 통과                                         |
 | 현재 로컬 DB        | migration `001`~`026` 적용·재실행 검증. 기존 할당 11건 중 정확한 `candidate_record` 매핑 6건, 자동 결정할 수 없는 레거시 5건 보존                                                                                   |
 | 실제 브라우저       | `npm run test:e2e` 17/17 통과: 12개 viewport 역할 smoke+5개 FHD mutation workflow. QHD 좌측 패널 overflow 회귀를 수정·재검증했고 테스트 서버 정상 종료·nonce DB 잔존 0건 확인. 승인된 golden·pixel diff는 아직 없음 |
-| CI                  | 정적/단위, MariaDB 11.4 integration, 브라우저 격리 seed/전체 Playwright suite 작업 정의 완료. 최초 commit 전이므로 원격 CI 성공 기록은 아직 없음                                                                    |
+| CI                  | 기준 commit `83c43e5`의 [Quality Gate](https://github.com/ahe45/ExamCheck/actions/runs/33125056778) 성공. 정적·단위·coverage, MariaDB 11.4 integration, 브라우저 격리 seed/17개 Playwright 모두 통과                |
 
 ## 다음 Go 조건
 
-1. 사용자가 최초 기준 commit/tag 생성을 승인한 뒤 원격 CI의 정적·MariaDB 11.4·브라우저 작업을 실제로 통과시키고 결과를 보존
-2. 승인된 golden 이미지와 작은 해상도 기준을 정한 뒤 시각 diff gate 추가
-3. DB backup 보관 위치·개인정보 복제 정책·보존/파기 책임자를 승인한 뒤 `docs/runbooks/backup-restore.md`에 따라 restore rehearsal
-4. 일정 identity를 `candidate_record`에 계속 둘지 독립 `schedule/registration` 모델로 승격할지 목표 ERD와 cutover 승인
-5. PC별 워크스테이션 코드 배포, Zebra Browser Print 재배포 권한, GT800 USB 실기기 검증과 운영 배포 승인
+1. 승인된 golden 이미지와 작은 해상도 기준을 정한 뒤 시각 diff gate 추가
+2. DB backup 보관 위치·개인정보 복제 정책·보존/파기 책임자를 승인한 뒤 `docs/runbooks/backup-restore.md`에 따라 restore rehearsal
+3. 일정 identity를 `candidate_record`에 계속 둘지 독립 `schedule/registration` 모델로 승격할지 목표 ERD와 cutover 승인
+4. PC별 워크스테이션 코드 배포, Zebra Browser Print 재배포 권한, GT800 USB 실기기 검증과 운영 배포 승인
 
 수험번호와 가번호의 유일 범위는 개발자 메뉴에서 선택할 수 있으며 기본값은 각각 `SYSTEM`, `ADMISSION`이다. 일정별 가번호는 `candidate_record_id`와 일정 scope key로 구분한다. 다만 이번 작업은 RF-033/P0-4의 좁은 수직 슬라이스다. 공통 identity, 독립 일정/등록 모델, roster read model, 설정·출력 projection과 dual-read/dual-write cutover를 포함하는 Phase 5A~5F 전체는 아직 남아 있다. 정확히 매핑할 수 없는 레거시 할당 5건은 admission 범위 예약 번호로 보존하며 자동 삭제하지 않는다.

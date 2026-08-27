@@ -146,8 +146,9 @@ statements/lines 86.88%, branches 82.02%, functions 87.65%, Web statements/lines
 소스·테스트·CSS·migration 수치는 [리팩토링 기준선](./docs/refactoring-baseline.md)에 기록합니다.
 
 동일한 품질 게이트는 `.github/workflows/ci.yml`에 정의되어 있으며 MariaDB 11.4 통합 테스트와
-브라우저 seed/smoke를 별도 작업으로 실행합니다. 아직 최초 기준 commit 전이므로 원격 CI 성공
-기록은 별도로 확인해야 합니다.
+브라우저 seed/smoke를 별도 작업으로 실행합니다. 최초 기준 commit `83c43e5`에 대한
+[GitHub Actions Quality Gate](https://github.com/ahe45/ExamCheck/actions/runs/33125056778)에서
+정적·단위·coverage, MariaDB integration, 브라우저 smoke가 모두 통과했습니다.
 
 ## 리팩토링과 운영 전환 문서
 
@@ -163,4 +164,5 @@ statements/lines 86.88%, branches 82.02%, functions 87.65%, Web statements/lines
 검증하기 위한 안전 도구입니다. 승인된 운영 복원본을 읽지 않으며 DB/API, backfill, dual-write,
 read/write cutover에 연결되지 않았습니다. 개인정보 backup/restore, 027+ 목표 모델 migration,
 레거시 데이터 삭제, 운영 cutover, Browser Print 재배포와 실제 GT800 검수는 별도 승인과 증거가
-있기 전까지 완료로 보지 않습니다. 최초 commit/tag 역시 사용자가 요청한 뒤에만 생성합니다.
+있기 전까지 완료로 보지 않습니다. 최초 기준 commit `83c43e5`와
+`refactor-baseline-2026-08-28` 태그는 `origin/master`에 게시됐습니다.

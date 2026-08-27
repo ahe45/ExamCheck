@@ -2,7 +2,7 @@
 
 > 기준일: 2026-08-28  
 > 스키마 기준: migration `001`~`026`  
-> 범위: 최초 기준 commit 전 로컬 작업 디렉터리 snapshot
+> 범위: 최초 기준 commit `83c43e5` / 태그 `refactor-baseline-2026-08-28`
 
 ## 시스템 경계
 
@@ -97,5 +97,5 @@ dual-write/cutover는 아직 적용하지 않았다.
 - `npm run test:e2e`: 매 실행마다 별도 nonce DB와 동적 포트를 사용하는 역할·업무 브라우저 검증
 - `npm run metrics:baseline`: 비민감 소스·테스트·CSS·migration·build 크기 수집
 
-운영 DB, 개인정보 backup, 실제 GT800, 원격 CI와 승인된 golden screenshot은 로컬 자동 검증
-경계 밖이다.
+운영 DB, 개인정보 backup, 실제 GT800와 승인된 golden screenshot은 로컬·원격 자동 검증
+경계 밖이다. 원격 Quality Gate는 기준 commit에서 통과했다.

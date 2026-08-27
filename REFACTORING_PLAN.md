@@ -4,7 +4,7 @@
 > 대상 저장소: `examcheck`  
 > 문서 상태: 실행 중인 기준 계획(진행 증거는 `docs/refactoring-status.md`에서 관리)  
 > 원칙: 이 문서는 기능을 새로 설계하는 문서가 아니라, 현재 동작과 데이터를 보존하면서 구조·품질·안전성을 단계적으로 개선하기 위한 기준 문서다.
-> 기준 상태: 아직 기준 commit이 없는 현재 작업 디렉터리 snapshot  
+> 기준 상태: 최초 기준 commit `83c43e5`, 태그 `refactor-baseline-2026-08-28`  
 > 측정 환경: Windows NT 10.0.26200.0, Node.js 24.14.0, npm 11.9.0, Vite production build  
 > 최초 분석 대상 schema: migration `018_drop_account_display_name.sql`까지  
 > 현재 적용·검증 기준: migration `026_expand_audit_request_id.sql`까지. 기존 `001`~`025`는 불변이며, 목표 identity migration은 승인 후 `027` 이상만 사용
@@ -171,7 +171,7 @@ Vite는 메인 JS가 500kB를 초과한다는 경고를 출력한다. 관리자 
 - 커밋 대상과 제외 대상을 검토한다.
 - 민감정보와 대용량 레거시 자산을 격리한다.
 - 현재 동작이 검증된 기준 커밋을 만든다.
-- `baseline-before-refactor`와 같은 태그를 생성한다.
+- 기준 태그 `refactor-baseline-2026-08-28`을 생성한다.
 - 이후 변경은 작고 독립적인 작업 단위로 커밋한다.
 
 이 작업은 사용자 승인 없이 기존 파일을 삭제하거나 이동해서는 안 된다. 특히 `setup/`, DB 백업, 드라이버, 양식 패키지는 보관 정책을 먼저 확정한다.
@@ -1056,7 +1056,7 @@ XL Phase를 하나의 branch나 PR로 구현하지 않는다. 각 하위 기능�
 7. 실제 사용 XLSX, 오류 XLSX, 사진 ZIP, 양식 layout, ZPL fixture 보관
 8. FHD/QHD 전체 주요 화면 baseline 캡처
 9. 현재 API 응답 snapshot과 네트워크 요청 수 기록
-10. 최초 기준 커밋 및 `baseline-before-refactor` 태그 생성
+10. 최초 기준 커밋 및 `refactor-baseline-2026-08-28` 태그 생성
 11. 운영 DB 제품·버전·sql_mode·timezone·charset/collation·용량 inventory
 12. 기존 001~026 파일 hash를 known checksum manifest로 검증하고 승인
 13. 저장된 모든 양식의 data tag key와 layout/editor version inventory

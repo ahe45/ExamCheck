@@ -1,7 +1,7 @@
 # 리팩토링 기준선
 
 > 수집일: 2026-08-27  
-> 기준: 아직 최초 commit이 없는 현재 작업 디렉터리 snapshot  
+> 기준: 최초 기준 commit `83c43e5`, 태그 `refactor-baseline-2026-08-28`  
 > 운영 DB 제품·버전: MariaDB 11.4.10 (현재 로컬 연결 기준)
 
 이 문서는 리팩토링 전 비교값을 보존하는 기준선이다. 아래에서 “초기”로 표시한 빌드·테스트
@@ -149,11 +149,12 @@ bundle에는 포함되지 않는 경계 테스트가 통과했다.
 
 ## 저장소 상태
 
-- 정상적인 최초 기준 commit이 없음
-- 대부분 파일이 미추적 상태
+- 최초 기준 commit: `83c43e56a93bc8f9f398710da1517b5eeb2d66e7`
+- 기준 태그: `refactor-baseline-2026-08-28`
+- 공개 원격: `https://github.com/ahe45/ExamCheck`, `origin/master`
+- 기준 commit의 GitHub Actions Quality Gate 세 작업 모두 성공
 - `setup/`은 분석용 로컬 레거시 자산이며 `.gitignore`로 제외
 - DB backup/restore rehearsal은 아직 필요
-- 기준 commit과 `baseline-before-refactor` tag는 민감 자산 확인 후 생성
 - backup/restore와 migration 절차서는 `docs/runbooks/`에 있지만 승인된 backup 위치에서 실행한
   결과나 운영 cutover 증거는 아님
 
