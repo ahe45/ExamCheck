@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+*.tsbuildinfo
+.env
+.env.local
+*.log
+.idea/
+apps/web/public/vendor/BrowserPrint.js
+
+# Local analysis/reference assets. These may contain legacy binaries,
+# database files, or environment-specific configuration and must not be
+# committed with the application source.
+/setup/
+/tmp/
+/.codex-tmp/

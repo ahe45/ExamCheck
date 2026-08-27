@@ -1,0 +1,548 @@
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { Pool, PoolConnection } from "mysql2/promise";
+import type { AuthenticatedUser } from "../auth/auth.types.js";
+import { assertAdmissionAccess, normalizeAdmissionName } from "../authorization/admission-policy.js";
+import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
+import {
+  isConcurrentWriteError as isConcurrentSettingWriteError,
+  isDuplicateEntryError,
+} from "../common/database/mysql-errors.js";
+import { DATABASE_POOL } from "../database/database.constants.js";
+import { pseudonymUniquenessScopeKey } from "../uniqueness/number-uniqueness.js";
+import {
+  assignmentModeForSetting,
+  assignmentResponse,
+  assertAssignmentMethod,
+  assertCandidateScopeStable,
+  assertExistingAssignmentsWithinProposedRanges,
+  assertExpectedSettingVersion,
+  assertScheduleRangeCapacities,
+  assertWithinRange,
+  candidatePseudonymScope,
+  chooseRandomAvailable,
+  chooseSequentialAvailable,
+  hasRangeConfigurationChanged,
+  operationPseudonymScope,
+  operationStatusResponse,
+  parsePseudonym,
+  preserveNextSequence,
+  scheduleIdentity,
+  scheduleKey,
+  settingResponse,
+  settingVersionConflict,
+} from "./pseudonym-domain.js";
+import { toPseudonymHttpError } from "./pseudonym-http-errors.js";
+import { PseudonymsRepository, type OperationLockRow, type SettingRow } from "./pseudonyms.repository.js";
+import type {
+  AssignPseudonymInput,
+  PseudonymOperationScopeInput,
+  UpdatePseudonymSettingInput,
+} from "./pseudonyms.types.js";
+
+export interface OperationLockGateway {
+  ensure(params: string[]): Promise<void>;
+  lock(params: string[]): Promise<OperationLockRow | undefined>;
+}
+
+@Injectable()
+export class UpdatePseudonymSettingUseCase {
+  constructor(
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    @Inject(PseudonymsRepository) private readonly repository: PseudonymsRepository,
+    @Inject(MutationAuditRepository)
+    private readonly audit: MutationAuditRepository = new MutationAuditRepository(),
+  ) {}
+
+  async execute(input: UpdatePseudonymSettingInput, user: AuthenticatedUser) {
+    const admissionName = assertAdmissionAccess(user, input.admissionName, {
+      forbiddenMessage: "배정되지 않은 전형의 설정은 변경할 수 없습니다.",
+    });
+    input = {
+      ...input,
+      admissionName,
+      ranges: input.ranges.map((range) => ({
+        ...range,
+        admission: normalizeAdmissionName(range.admission),
+      })),
+    };
+    if (input.rangeStart > input.rangeEnd) throw new BadRequestException("가번호 시작값은 종료값보다 클 수 없습니다.");
+    const scheduleKeys = new Set<string>();
+    for (const range of input.ranges) {
+      if (range.admission !== input.admissionName)
+        throw new BadRequestException("선택한 전형과 다른 가번호 범위가 포함되어 있습니다.");
+      if (range.rangeStart > range.rangeEnd)
+        throw new BadRequestException(`${range.date} ${range.time}의 시작값은 종료값보다 클 수 없습니다.`);
+      const key = scheduleIdentity(range);
+      if (scheduleKeys.has(key)) throw new BadRequestException("동일한 시험 조건의 가번호 범위가 중복되었습니다.");
+      scheduleKeys.add(key);
+    }
+
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
+      const existingSetting = await this.repository.findExactSettingForUpdate(
+        connection,
+        input.examName,
+        input.admissionName,
+      );
+      assertExpectedSettingVersion(input.expectedVersion, existingSetting?.version ?? 1, !existingSetting);
+
+      const scheduleCounts = await this.repository.listScheduleCounts(connection, input.examName, input.admissionName);
+      assertScheduleRangeCapacities(
+        input.ranges,
+        scheduleCounts,
+        input.assignmentMethod === "DRAW" || input.assignmentMethod === "SEQUENTIAL",
+      );
+
+      const existingRanges = existingSetting
+        ? await this.repository.listTimeRangesForUpdate(connection, existingSetting.id)
+        : [];
+      if (hasRangeConfigurationChanged(existingSetting, existingRanges, input)) {
+        const existingAssignments = await this.repository.listAssignmentScopesForUpdate(
+          connection,
+          input.examName,
+          input.admissionName,
+        );
+        assertExistingAssignmentsWithinProposedRanges(existingAssignments, input);
+      }
+
+      const settingNextSequence = preserveNextSequence(existingSetting?.nextSequence, input.rangeStart, input.rangeEnd);
+      let settingId: number;
+      if (existingSetting) {
+        const affectedRows = await this.repository.updateSetting(
+          connection,
+          existingSetting.id,
+          input.expectedVersion,
+          settingNextSequence,
+          input,
+          user.id,
+        );
+        if (affectedRows !== 1) throw settingVersionConflict();
+        settingId = existingSetting.id;
+      } else {
+        settingId = await this.repository.insertSetting(connection, settingNextSequence, input, user.id);
+        if (!Number.isSafeInteger(settingId) || settingId < 1) {
+          throw new NotFoundException("가번호 운영 설정을 저장하지 못했습니다.");
+        }
+      }
+
+      const existingRangesByKey = new Map(existingRanges.map((range) => [range.scheduleKey, range]));
+      const proposedScheduleKeys = new Set<string>();
+      for (const range of input.ranges) {
+        const key = scheduleKey(range);
+        proposedScheduleKeys.add(key);
+        const nextSequence = preserveNextSequence(
+          existingRangesByKey.get(key)?.nextSequence,
+          range.rangeStart,
+          range.rangeEnd,
+        );
+        await this.repository.upsertTimeRange(connection, settingId, range, key, nextSequence, user.id);
+      }
+      for (const existingRange of existingRanges) {
+        if (!proposedScheduleKeys.has(existingRange.scheduleKey)) {
+          await this.repository.deleteTimeRange(connection, existingRange.id);
+        }
+      }
+      await this.audit.record(connection, {
+        eventType: "PSEUDONYM_SETTING_UPDATED",
+        actorUserId: user.id,
+        details: {
+          settingId,
+          version: existingSetting ? existingSetting.version + 1 : 1,
+          assignmentMethod: input.assignmentMethod,
+          rangeCount: input.ranges.length,
+          autoDrawEnabled: input.autoDrawEnabled,
+          autoDrawDelaySeconds: input.autoDrawDelaySeconds,
+          printPreassignedLabel: input.printPreassignedLabel,
+          autoAssignAbsenteesOnClose: input.autoAssignAbsenteesOnClose,
+          deleteAbsenteeInfoOnReopen: input.deleteAbsenteeInfoOnReopen,
+          useCandidatePhotos: input.useCandidatePhotos,
+          enableBulkDraw: input.enableBulkDraw,
+        },
+      });
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      if (isConcurrentSettingWriteError(error)) throw toPseudonymHttpError(settingVersionConflict());
+      throw toPseudonymHttpError(error);
+    } finally {
+      connection.release();
+    }
+    return this.getSetting(input.examName, input.admissionName);
+  }
+
+  private async getSetting(examName: string, admissionName: string) {
+    const setting = await this.repository.findSetting(this.pool, examName, admissionName, { forUpdate: false });
+    if (!setting) throw new NotFoundException("이 시험의 가번호 범위가 설정되지 않았습니다.");
+    const ranges = await this.repository.listTimeRanges(this.pool, setting.id, admissionName);
+    return settingResponse(setting, ranges, admissionName);
+  }
+}
+
+@Injectable()
+export class AssignPseudonymUseCase {
+  constructor(
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    @Inject(PseudonymsRepository) private readonly repository: PseudonymsRepository,
+    @Inject(MutationAuditRepository)
+    private readonly audit: MutationAuditRepository = new MutationAuditRepository(),
+  ) {}
+
+  async execute(input: AssignPseudonymInput, user: AuthenticatedUser) {
+    const admissionName = assertAdmissionAccess(user, input.admissionName, {
+      forbiddenMessage: "배정되지 않은 전형의 수험생에게 가번호를 부여할 수 없습니다.",
+    });
+    input = { ...input, admissionName };
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
+      const identifiedCandidate = await this.repository.findCandidateInScope(connection, input, { forUpdate: false });
+      if (!identifiedCandidate) throw new NotFoundException("선택한 전형·교시에 해당하는 수험생을 찾을 수 없습니다.");
+
+      const operation = await lockOperationForUpdate(this.repository, connection, {
+        examName: identifiedCandidate.examName,
+        examDate: input.examDate,
+        examTime: input.examTime,
+        periodName: input.periodName,
+        admissionName: input.admissionName,
+      });
+      if (operation.closed)
+        throw new ConflictException("가번호 등록이 마감된 교시입니다. 더 이상 가번호를 부여할 수 없습니다.");
+
+      const setting = await loadSettingForUpdate(
+        this.repository,
+        connection,
+        identifiedCandidate.examName,
+        input.admissionName,
+      );
+      const timeRanges =
+        setting.assignmentMethod === "DRAW" || setting.assignmentMethod === "SEQUENTIAL"
+          ? await this.repository.listTimeRangesForUpdate(connection, setting.id)
+          : [];
+      const candidate = await this.repository.findCandidateInScope(connection, input, { forUpdate: true });
+      assertCandidateScopeStable(identifiedCandidate, candidate);
+
+      const existingAssignment = await this.repository.findAssignmentForUpdate(connection, candidate.candidateRecordId);
+      if (existingAssignment) {
+        await connection.commit();
+        return assignmentResponse(candidate, existingAssignment, true);
+      }
+
+      assertAssignmentMethod(input.mode, setting.assignmentMethod);
+      let effectiveRange: Pick<SettingRow, "rangeStart" | "rangeEnd" | "nextSequence"> = setting;
+      let timeRangeId: number | null = null;
+      if (
+        (setting.assignmentMethod === "DRAW" || setting.assignmentMethod === "SEQUENTIAL") &&
+        candidate.examDate &&
+        candidate.examTime
+      ) {
+        const candidateScheduleKey = scheduleKey({
+          date: candidate.examDate,
+          time: candidate.examTime,
+          period: candidate.period || "",
+          admission: candidate.admission || "",
+          unit: candidate.unit || "",
+          major: candidate.major || "",
+          building: candidate.building || "",
+          room: candidate.room || "",
+        });
+        const timeRange = timeRanges.find((range) => range.scheduleKey === candidateScheduleKey);
+        if (!timeRange)
+          throw new NotFoundException(`${candidate.examDate} ${candidate.examTime}의 가번호 범위를 설정해 주세요.`);
+        effectiveRange = timeRange;
+        timeRangeId = timeRange.id;
+      }
+
+      const uniquenessScope = candidatePseudonymScope(candidate);
+      const uniquenessScopeKey = pseudonymUniquenessScopeKey(pseudonymNoUniqueness, uniquenessScope);
+      const reserved = await this.repository.loadReservedNumbers(
+        connection,
+        candidate.examName,
+        candidate.admission || "",
+        pseudonymNoUniqueness,
+        uniquenessScope,
+      );
+      let number: number;
+      if (input.mode === "PREASSIGNED") {
+        if (!candidate.preassignedNumber) throw new BadRequestException("이 수험생에게 미리 등록된 가번호가 없습니다.");
+        number = parsePseudonym(candidate.preassignedNumber);
+      } else if (input.mode === "MANUAL") {
+        if (!input.manualNumber) throw new BadRequestException("직접 부여할 가번호를 입력해 주세요.");
+        number = parsePseudonym(input.manualNumber);
+        assertWithinRange(number, effectiveRange);
+        const reservedOwner = await this.repository.findPreassignedOwner(
+          connection,
+          candidate.examName,
+          candidate.admission || "",
+          String(number),
+          pseudonymNoUniqueness,
+          uniquenessScope,
+        );
+        if (reserved.has(number) || (reservedOwner && reservedOwner !== candidate.candidateRecordId)) {
+          throw new ConflictException("이미 사용 중이거나 다른 수험생에게 예약된 가번호입니다.");
+        }
+      } else if (input.mode === "RANDOM") {
+        number = chooseRandomAvailable(effectiveRange.rangeStart, effectiveRange.rangeEnd, reserved);
+      } else {
+        number = chooseSequentialAvailable(
+          effectiveRange.nextSequence,
+          effectiveRange.rangeStart,
+          effectiveRange.rangeEnd,
+          reserved,
+        );
+        const next = number >= effectiveRange.rangeEnd ? effectiveRange.rangeStart : number + 1;
+        if (timeRangeId) await this.repository.updateTimeRangeSequence(connection, timeRangeId, next, user.id);
+        else await this.repository.updateSettingSequence(connection, setting.id, next, user.id);
+      }
+
+      assertWithinRange(number, effectiveRange);
+      const assignmentId = await this.repository.insertAssignment(
+        connection,
+        candidate,
+        candidate.admission || "",
+        uniquenessScopeKey,
+        String(number),
+        input.mode,
+        user.id,
+      );
+      await this.audit.record(connection, {
+        eventType: "PSEUDONYM_ASSIGNED",
+        actorUserId: user.id,
+        details: {
+          assignmentId,
+          candidateRecordId: candidate.candidateRecordId,
+          examineeNo: candidate.examineeNo,
+          pseudonymNo: String(number),
+          mode: input.mode,
+        },
+      });
+      await connection.commit();
+      return assignmentResponse(
+        candidate,
+        {
+          id: assignmentId,
+          pseudonymNumber: String(number),
+          mode: input.mode,
+          assignedAt: new Date().toISOString(),
+        },
+        false,
+      );
+    } catch (error) {
+      await connection.rollback();
+      if (isDuplicateEntryError(error))
+        throw new ConflictException("이미 부여된 가번호입니다. 수험생 정보를 다시 조회해 주세요.");
+      throw toPseudonymHttpError(error);
+    } finally {
+      connection.release();
+    }
+  }
+}
+
+@Injectable()
+export class ChangePseudonymOperationStatusUseCase {
+  constructor(
+    @Inject(DATABASE_POOL) private readonly pool: Pool,
+    @Inject(PseudonymsRepository) private readonly repository: PseudonymsRepository,
+    @Inject(MutationAuditRepository)
+    private readonly audit: MutationAuditRepository = new MutationAuditRepository(),
+  ) {}
+
+  async close(input: PseudonymOperationScopeInput, user: AuthenticatedUser) {
+    const admissionName = assertAdmissionAccess(user, input.admissionName, {
+      forbiddenMessage: "배정되지 않은 전형의 운영 상태를 변경할 수 없습니다.",
+    });
+    input = { ...input, admissionName };
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
+      const operation = await lockOperationForUpdate(this.repository, connection, input);
+      if (operation.closed) {
+        await connection.commit();
+        return this.getOperationStatus(input);
+      }
+
+      const setting = await loadSettingForUpdate(this.repository, connection, input.examName, input.admissionName);
+      let autoAssignedAbsenteeCount = 0;
+      if (setting.autoAssignAbsenteesOnClose) {
+        const timeRanges = await this.repository.listTimeRangesForUpdate(connection, setting.id);
+        const uniquenessScope = operationPseudonymScope(input);
+        const uniquenessScopeKey = pseudonymUniquenessScopeKey(pseudonymNoUniqueness, uniquenessScope);
+        const candidates = await this.repository.listUnassignedCandidatesForUpdate(connection, input);
+        const rangesByKey = new Map(timeRanges.map((range) => [scheduleIdentity(range), range]));
+        const reserved = await this.repository.loadReservedNumbers(
+          connection,
+          input.examName,
+          input.admissionName,
+          pseudonymNoUniqueness,
+          uniquenessScope,
+        );
+        for (const candidate of candidates) {
+          const exactRange =
+            candidate.examDate && candidate.examTime
+              ? rangesByKey.get(
+                  scheduleIdentity({
+                    date: candidate.examDate,
+                    time: candidate.examTime,
+                    period: candidate.period || "",
+                    admission: candidate.admission || "",
+                    unit: candidate.unit || "",
+                    major: candidate.major || "",
+                    building: candidate.building || "",
+                    room: candidate.room || "",
+                  }),
+                )
+              : undefined;
+          const effectiveRange = exactRange || setting;
+          let number: number;
+          if (setting.assignmentMethod === "PREASSIGNED" && candidate.preassignedNumber) {
+            number = parsePseudonym(candidate.preassignedNumber);
+            assertWithinRange(number, effectiveRange);
+            const owner = await this.repository.findPreassignedOwner(
+              connection,
+              input.examName,
+              input.admissionName,
+              String(number),
+              pseudonymNoUniqueness,
+              uniquenessScope,
+            );
+            if (owner !== candidate.candidateRecordId)
+              number = chooseSequentialAvailable(
+                effectiveRange.rangeStart,
+                effectiveRange.rangeStart,
+                effectiveRange.rangeEnd,
+                reserved,
+              );
+          } else {
+            number = chooseSequentialAvailable(
+              effectiveRange.rangeStart,
+              effectiveRange.rangeStart,
+              effectiveRange.rangeEnd,
+              reserved,
+            );
+          }
+          reserved.add(number);
+          await this.repository.insertAbsenteeAssignment(
+            connection,
+            candidate,
+            input.admissionName,
+            uniquenessScopeKey,
+            String(number),
+            assignmentModeForSetting(setting.assignmentMethod),
+            user.id,
+          );
+          autoAssignedAbsenteeCount += 1;
+        }
+      }
+
+      await this.repository.closeOperation(connection, operation.id, user.id);
+      await this.audit.record(connection, {
+        eventType: "PSEUDONYM_OPERATION_CLOSED",
+        actorUserId: user.id,
+        details: {
+          operationId: operation.id,
+          examDate: input.examDate,
+          examTime: input.examTime,
+          periodName: input.periodName,
+          admissionName: input.admissionName,
+          autoAssignedAbsenteeCount,
+        },
+      });
+      await connection.commit();
+      return this.getOperationStatus(input);
+    } catch (error) {
+      await connection.rollback();
+      throw toPseudonymHttpError(error);
+    } finally {
+      connection.release();
+    }
+  }
+
+  async reopen(input: PseudonymOperationScopeInput, user: AuthenticatedUser) {
+    const admissionName = assertAdmissionAccess(user, input.admissionName, {
+      forbiddenMessage: "배정되지 않은 전형의 운영 상태를 변경할 수 없습니다.",
+    });
+    input = { ...input, admissionName };
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
+      const operation = await this.repository.findOperationForUpdate(connection, input);
+      if (!operation || !operation.closed) {
+        await connection.commit();
+        return this.getOperationStatus(input);
+      }
+      const setting = await loadSettingForUpdate(this.repository, connection, input.examName, input.admissionName);
+      let deletedAbsenteeCount = 0;
+      if (setting.deleteAbsenteeInfoOnReopen) {
+        deletedAbsenteeCount = await this.repository.deleteAutoAssignedAbsentees(connection, input);
+      }
+      await this.repository.reopenOperation(connection, operation.id, user.id);
+      await this.audit.record(connection, {
+        eventType: "PSEUDONYM_OPERATION_REOPENED",
+        actorUserId: user.id,
+        details: {
+          operationId: operation.id,
+          examDate: input.examDate,
+          examTime: input.examTime,
+          periodName: input.periodName,
+          admissionName: input.admissionName,
+          deletedAbsenteeCount,
+        },
+      });
+      await connection.commit();
+      return this.getOperationStatus(input);
+    } catch (error) {
+      await connection.rollback();
+      throw toPseudonymHttpError(error);
+    } finally {
+      connection.release();
+    }
+  }
+
+  private async getOperationStatus(input: PseudonymOperationScopeInput) {
+    const status = await this.repository.findOperationStatus(this.pool, input);
+    const autoAssignedAbsenteeCount = await this.repository.countAutoAssignedAbsentees(this.pool, input);
+    return operationStatusResponse(status, autoAssignedAbsenteeCount);
+  }
+}
+
+async function loadSettingForUpdate(
+  repository: PseudonymsRepository,
+  connection: PoolConnection,
+  examName: string,
+  admissionName: string,
+) {
+  const setting = await repository.findSetting(connection, examName, admissionName, { forUpdate: true });
+  if (!setting) throw new NotFoundException("이 전형의 가번호 운영 설정을 찾을 수 없습니다.");
+  return setting;
+}
+
+export async function ensureAndLockOperation(input: PseudonymOperationScopeInput, gateway: OperationLockGateway) {
+  const params = operationParams(input);
+  await gateway.ensure(params);
+  const operation = await gateway.lock(params);
+  if (!operation) throw new NotFoundException("교시 운영 정보를 잠그지 못했습니다.");
+  return operation;
+}
+
+async function lockOperationForUpdate(
+  repository: PseudonymsRepository,
+  connection: PoolConnection,
+  input: PseudonymOperationScopeInput,
+) {
+  return ensureAndLockOperation(input, {
+    ensure: async () => {
+      await repository.ensureOperation(connection, input);
+    },
+    lock: async () => {
+      return repository.lockOperation(connection, input);
+    },
+  });
+}
+
+function operationParams(input: PseudonymOperationScopeInput) {
+  return [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName];
+}

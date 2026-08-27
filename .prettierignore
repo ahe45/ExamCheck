@@ -1,0 +1,13 @@
+**/node_modules/**
+**/dist/**
+**/coverage/**
+**/generated/**
+.codex-tmp/**
+tmp/**
+vendor/**
+**/vendor/**
+setup/**
+drivers/**
+package-lock.json
+*.log
+.env

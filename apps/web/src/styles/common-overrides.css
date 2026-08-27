@@ -1,0 +1,321 @@
+/* 관리자 메뉴 공통 크기 체계: 수험생 데이터 화면 기준 */
+.exam-admin-app .admin-view-heading,
+.exam-admin-app .candidate-data-header {
+  align-items: center;
+  min-height: 58px;
+  padding: 10px 16px;
+}
+.exam-admin-app .admin-view-heading h2,
+.exam-admin-app .candidate-data-header h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+.exam-admin-app .admin-view-heading p,
+.exam-admin-app .candidate-data-header p {
+  margin: 0;
+  color: #7b8798;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.exam-admin-app .exam-primary-button,
+.exam-admin-app .exam-ghost-button,
+.exam-admin-app .exam-outline-button,
+.exam-admin-app .exam-danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 9px 15px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.exam-admin-app .exam-primary-button.compact {
+  min-height: 38px;
+  padding: 8px 14px;
+}
+.exam-admin-app .exam-primary-button svg,
+.exam-admin-app .exam-ghost-button svg,
+.exam-admin-app .exam-outline-button svg,
+.exam-admin-app .exam-danger-button svg {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+.exam-admin-app .count-badge {
+  padding: 9px 12px;
+  font-size: 12px;
+}
+
+.account-admin-main .candidate-data-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  font-size: 14px;
+}
+.account-admin-main .candidate-data-actions button svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+.account-admin-main .account-table-wrap table,
+.account-admin-main .account-table-wrap th,
+.account-admin-main .account-table-wrap td,
+.account-admin-main .account-table-wrap td:nth-child(2) strong {
+  font-size: 14px;
+}
+.account-admin-main .candidate-sort-button,
+.account-admin-main .candidate-filter-button,
+.account-admin-main .candidate-pagination > label,
+.account-admin-main .candidate-pagination select,
+.account-admin-main .candidate-pagination nav button,
+.account-admin-main .candidate-pagination nav small,
+.account-admin-main .candidate-pagination > p,
+.account-admin-main .candidate-filter-menu > input,
+.account-admin-main .candidate-filter-all,
+.account-admin-main .candidate-filter-options label,
+.account-admin-main .candidate-filter-menu footer button {
+  font-size: 14px;
+}
+.account-admin-main .account-table-wrap td:nth-child(2) small,
+.account-admin-main .account-role-badge,
+.account-admin-main .account-admission-tags span {
+  font-size: 12px;
+}
+.account-admin-main .account-row-actions button {
+  min-height: 34px;
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+.exam-admin-app .template-card-title-row span {
+  font-size: var(--template-card-xs);
+}
+.exam-admin-app .exam-template-card footer {
+  font-size: var(--template-card-sm);
+}
+.exam-admin-app .admission-settings-card header small,
+.exam-admin-app .admission-settings-card header > b {
+  font-size: var(--admission-card-sm);
+}
+.exam-admin-app .admission-settings-card h3 {
+  font-size: var(--admission-card-lg);
+}
+.exam-admin-app .admission-settings-card-summary dt {
+  font-size: var(--admission-card-sm);
+}
+.exam-admin-app .admission-settings-card-summary dd {
+  font-size: var(--admission-card-md);
+}
+.exam-admin-app .admission-setting-method > span {
+  font-size: var(--admission-card-sm);
+}
+.exam-admin-app .admission-setting-method strong {
+  font-size: var(--admission-card-md);
+}
+.exam-admin-app .admission-setting-method small {
+  font-size: var(--admission-card-xs);
+}
+.exam-admin-app .admission-setting-policy-grid span {
+  font-size: var(--admission-card-xs);
+}
+.exam-admin-app .admission-setting-policy-grid strong {
+  font-size: var(--admission-card-sm);
+}
+.exam-admin-app .admission-setting-range-summary span {
+  font-size: var(--admission-card-xs);
+}
+.exam-admin-app .admission-setting-range-summary strong {
+  font-size: var(--admission-card-sm);
+}
+.exam-admin-app .admission-settings-card > footer span {
+  font-size: var(--admission-card-xs);
+}
+.exam-admin-app .admission-settings-card > footer strong {
+  font-size: var(--admission-card-sm);
+}
+
+.exam-admin-app .developer-settings-card > header h3 {
+  font-size: 15px;
+}
+.exam-admin-app .developer-settings-card > header p {
+  font-size: 11px;
+}
+.exam-admin-app .developer-field-grid label > span,
+.exam-admin-app .developer-password-fields label > span {
+  font-size: 12px;
+}
+.exam-admin-app .developer-field-grid input,
+.exam-admin-app .developer-password-fields input {
+  font-size: 14px;
+}
+.exam-admin-app .developer-year-input i,
+.exam-admin-app .developer-settings-card > footer > span {
+  font-size: 11px;
+}
+.exam-admin-app .developer-logo-preview small,
+.exam-admin-app .developer-logo-actions > p,
+.exam-admin-app .developer-brand-preview small,
+.exam-admin-app .developer-preview-help,
+.exam-admin-app .developer-password-notice {
+  font-size: 11px;
+}
+.exam-admin-app .developer-logo-actions > strong {
+  font-size: 13px;
+}
+.exam-admin-app .developer-uniqueness-section > header h4 {
+  font-size: 15px;
+}
+.exam-admin-app .developer-uniqueness-section > header p,
+.exam-admin-app .developer-policy-grid fieldset > p,
+.exam-admin-app .developer-policy-options small,
+.exam-admin-app .developer-policy-help {
+  font-size: 11px;
+}
+.exam-admin-app .developer-policy-grid legend,
+.exam-admin-app .developer-policy-options strong {
+  font-size: 14px;
+}
+
+/* 전형 설정 모달 글자 크기: 관리자 화면 공통 위계에 맞춤 */
+.exam-admin-app .admission-settings-modal > header p {
+  font-size: 10px;
+}
+.exam-admin-app .admission-settings-modal > header h2 {
+  font-size: 22px;
+}
+.exam-admin-app .admission-settings-modal > header span {
+  font-size: 12px;
+}
+.exam-admin-app .admission-settings-modal > header .admission-settings-modal-close {
+  font-size: 22px;
+}
+.exam-admin-app .system-setting-card > header > div > span {
+  font-size: 12px;
+}
+.exam-admin-app .system-setting-card > header h3 {
+  font-size: 17px;
+}
+.exam-admin-app .system-setting-card > header p {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.exam-admin-app .system-setting-card > header > strong,
+.exam-admin-app .schedule-range-header-actions > strong {
+  font-size: 11px;
+}
+.exam-admin-app .assignment-method-row-choice > span > strong {
+  font-size: 14px;
+}
+.exam-admin-app .assignment-method-row-choice > span > strong b {
+  font-size: 10px;
+}
+.exam-admin-app .assignment-method-row-choice > span > small {
+  font-size: 12px;
+}
+.exam-admin-app .assignment-row-print-option .setting-switch-row strong,
+.exam-admin-app .assignment-row-auto-option .setting-switch-row strong {
+  font-size: 12px;
+}
+.exam-admin-app .auto-draw-delay-field {
+  font-size: 10px;
+}
+.exam-admin-app .auto-draw-delay-field input {
+  font-size: 12px;
+}
+.exam-admin-app .setting-switch-row strong {
+  font-size: 14px;
+}
+.exam-admin-app .setting-switch-row small {
+  font-size: 12px;
+}
+.exam-admin-app .schedule-range-grid,
+.exam-admin-app .schedule-range-grid th,
+.exam-admin-app .schedule-range-grid td {
+  font-size: 14px;
+}
+.exam-admin-app .schedule-range-grid input,
+.exam-admin-app .schedule-assigned-count strong {
+  font-size: 14px;
+}
+.exam-admin-app .schedule-end-number small {
+  font-size: 9px;
+}
+.exam-admin-app .schedule-range-empty strong {
+  font-size: 15px;
+}
+.exam-admin-app .schedule-range-empty span {
+  font-size: 12px;
+}
+.exam-admin-app .bulk-range-modal > header p {
+  font-size: 10px;
+}
+.exam-admin-app .bulk-range-modal > header h2 {
+  font-size: 20px;
+}
+.exam-admin-app .bulk-start-field {
+  font-size: 13px;
+}
+.exam-admin-app .bulk-start-field input {
+  font-size: 16px;
+}
+.exam-admin-app .bulk-start-field small {
+  font-size: 11px;
+}
+.exam-admin-app .bulk-range-options strong,
+.exam-admin-app .bulk-criteria-heading strong {
+  font-size: 14px;
+}
+.exam-admin-app .bulk-range-options small,
+.exam-admin-app .bulk-criteria-heading small {
+  font-size: 11px;
+}
+.exam-admin-app .bulk-criteria-fields label {
+  font-size: 11px;
+}
+.exam-admin-app .bulk-criteria-fields select {
+  font-size: 13px;
+}
+.exam-admin-app .admission-settings-close-confirm header p {
+  font-size: 10px;
+}
+.exam-admin-app .admission-settings-close-confirm h3 {
+  font-size: 18px;
+}
+.exam-admin-app .admission-settings-close-confirm > section > p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 모든 텍스트 동작 버튼의 아이콘 크기와 정렬을 동일하게 유지한다. */
+.button-action-icon {
+  width: 1.2em;
+  height: 1.2em;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+button:has(> .button-action-icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}

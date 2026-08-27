@@ -1,0 +1,40 @@
+{
+  "name": "@examcheck/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "test": "vitest run --configLoader runner",
+    "test:coverage": "vitest run --coverage --config vitest.config.ts --configLoader runner",
+    "test:integration": "vitest run --config ./test-support/vitest.integration.config.ts --configLoader runner",
+    "typecheck": "tsc --noEmit",
+    "typecheck:integration": "tsc -p test-support/tsconfig.integration.json",
+    "check:integration": "npm run typecheck:integration && npm run test:integration",
+    "db:setup": "tsx src/database/setup.ts",
+    "db:migrate": "tsx src/database/migrate.ts",
+    "db:bootstrap": "tsx src/database/bootstrap.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "adm-zip": "^0.6.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "dotenv": "^17.2.2",
+    "exceljs": "^4.4.0",
+    "mysql2": "^3.14.4",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

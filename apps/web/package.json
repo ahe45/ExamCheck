@@ -1,0 +1,31 @@
+{
+  "name": "@examcheck/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --configLoader runner",
+    "build": "tsc -b && vite build --configLoader runner",
+    "test": "vitest run --environment node --configLoader runner",
+    "test:coverage": "vitest run --coverage --config vitest.config.ts --configLoader runner",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.85.5",
+    "dompurify": "3.4.14",
+    "examlist-template-editor": "file:../../vendor/examlist-template-editor-1.1.0.tgz",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "zod": "4.1.5"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.9",
+    "@vitejs/plugin-react": "5.0.2",
+    "typescript": "5.9.2",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.7"
+  }
+}

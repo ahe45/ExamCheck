@@ -1,0 +1,746 @@
+import { Injectable } from "@nestjs/common";
+import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import type { AdmissionAccessPredicate } from "../authorization/admission-policy.js";
+import type { SqlExecutor } from "../common/database/sql-executor.js";
+import {
+  pseudonymUniquenessScopeKey,
+  type PseudonymNoUniqueness,
+  type PseudonymScheduleScope,
+} from "../uniqueness/number-uniqueness.js";
+import { parsePseudonym, type CandidateScopeSnapshot, type ExistingAssignmentScope } from "./pseudonym-domain.js";
+import {
+  buildOperationRosterFilterSql,
+  operationRosterSelectSql,
+  PSEUDONYM_ROSTER_EXPORT_MAX_ROWS,
+  type CanonicalPseudonymRosterRow,
+  type PseudonymRosterFilterSpecification,
+} from "./pseudonym-roster-query.js";
+import type {
+  AssignPseudonymInput,
+  PseudonymAssignmentMode,
+  PseudonymOperationScopeInput,
+  PseudonymTimeRangeInput,
+  UpdatePseudonymSettingInput,
+} from "./pseudonyms.types.js";
+
+export interface CandidateRow extends RowDataPacket, CandidateScopeSnapshot {
+  name: string;
+  preassignedNumber: string | null;
+}
+
+export interface SettingRow extends RowDataPacket {
+  id: number;
+  version: number;
+  examName: string;
+  admissionName: string;
+  rangeStart: number;
+  rangeEnd: number;
+  nextSequence: number;
+  assignmentMethod: "DRAW" | "SEQUENTIAL" | "MATCHING" | "PREASSIGNED";
+  autoDrawEnabled: boolean | number;
+  autoDrawDelaySeconds: number;
+  printPreassignedLabel: boolean | number;
+  autoAssignAbsenteesOnClose: boolean | number;
+  deleteAbsenteeInfoOnReopen: boolean | number;
+  useCandidatePhotos: boolean | number;
+  enableBulkDraw: boolean | number;
+}
+
+export interface TimeRangeRow extends RowDataPacket {
+  id: number;
+  date: string;
+  time: string;
+  period: string;
+  admission: string;
+  unit: string;
+  major: string;
+  building: string;
+  room: string;
+  scheduleKey: string;
+  rangeStart: number;
+  rangeEnd: number;
+  nextSequence: number;
+}
+
+export interface AdmissionSettingsOverview {
+  name: string;
+  candidates: number;
+  dates: number;
+  schedules: number;
+  buildings: string[];
+}
+
+interface AdmissionSettingsOverviewRow extends RowDataPacket {
+  name: string;
+  candidates: number | string;
+  dates: number | string;
+  schedules: number | string;
+  buildings: string | null;
+}
+
+export interface OverviewTimeRangeRow extends TimeRangeRow {
+  settingId: number;
+}
+
+export interface AssignmentData {
+  id: number;
+  pseudonymNumber: string;
+  mode: PseudonymAssignmentMode;
+  assignedAt: string | Date;
+}
+
+interface AssignmentRow extends RowDataPacket, AssignmentData {}
+
+export interface ScheduleCountRow extends RowDataPacket {
+  date: string;
+  time: string;
+  period: string;
+  admission: string;
+  unit: string;
+  major: string;
+  building: string;
+  room: string;
+  candidateCount: number;
+}
+
+export interface OperationStatusRow extends RowDataPacket {
+  closed: number | boolean;
+  closedAt: Date | null;
+  closedByLoginId: string | null;
+}
+
+interface OperationRosterRow extends RowDataPacket, CanonicalPseudonymRosterRow {}
+
+export interface OperationLockRow {
+  id: number;
+  closed: number | boolean;
+}
+
+interface ExistingAssignmentScopeRow extends RowDataPacket, ExistingAssignmentScope {}
+
+interface NumberRow extends RowDataPacket {
+  pseudonymNumber: string;
+}
+
+interface PseudonymPolicyRow extends RowDataPacket {
+  pseudonymNoUniqueness: PseudonymNoUniqueness;
+}
+
+@Injectable()
+export class PseudonymsRepository {
+  async findSetting(
+    executor: SqlExecutor,
+    examName: string,
+    admissionName: string,
+    options: { forUpdate: boolean },
+  ): Promise<SettingRow | undefined> {
+    const [rows] = await executor.execute<SettingRow[]>(
+      `${settingSelectSql}
+       WHERE exam_name = ? AND admission_name IN (?, '') AND active = TRUE
+       ORDER BY CASE WHEN admission_name = ? THEN 0 ELSE 1 END LIMIT 1${options.forUpdate ? " FOR UPDATE" : ""}`,
+      [examName, admissionName, admissionName],
+    );
+    return rows[0];
+  }
+
+  async listAdmissionSettingsOverview(
+    executor: SqlExecutor,
+    access: AdmissionAccessPredicate,
+  ): Promise<AdmissionSettingsOverview[]> {
+    const [rows] = await executor.execute<AdmissionSettingsOverviewRow[]>(
+      `SELECT TRIM(cr.admission) AS name, COUNT(*) AS candidates,
+              COUNT(DISTINCT DATE_FORMAT(cr.exam_date, '%Y-%m-%d')) AS dates,
+              COUNT(DISTINCT CONCAT_WS('\u001e', DATE_FORMAT(cr.exam_date, '%Y-%m-%d'),
+                cr.start_time, cr.period_name)) AS schedules,
+              GROUP_CONCAT(DISTINCT NULLIF(TRIM(cr.building_name), '')
+                ORDER BY TRIM(cr.building_name) SEPARATOR '\u001f') AS buildings
+       FROM candidate_record cr
+       WHERE ${access.sql} AND TRIM(cr.admission) <> ''
+       GROUP BY TRIM(cr.admission)
+       ORDER BY name`,
+      access.params,
+    );
+    return rows.map((row) => ({
+      name: row.name,
+      candidates: Number(row.candidates),
+      dates: Number(row.dates),
+      schedules: Number(row.schedules),
+      buildings: row.buildings ? row.buildings.split("\u001f") : [],
+    }));
+  }
+
+  async listSettingsForOverview(
+    executor: SqlExecutor,
+    examName: string,
+    admissionNames: readonly string[],
+  ): Promise<SettingRow[]> {
+    if (!admissionNames.length) return [];
+    const settingAdmissions = ["", ...new Set(admissionNames)];
+    const [rows] = await executor.execute<SettingRow[]>(
+      `${settingSelectSql}
+       WHERE exam_name = ? AND active = TRUE
+         AND admission_name IN (${settingAdmissions.map(() => "?").join(", ")})
+       ORDER BY admission_name`,
+      [examName, ...settingAdmissions],
+    );
+    return rows;
+  }
+
+  async listTimeRangesForOverview(
+    executor: SqlExecutor,
+    settingIds: readonly number[],
+    admissionNames: readonly string[],
+  ): Promise<OverviewTimeRangeRow[]> {
+    if (!settingIds.length || !admissionNames.length) return [];
+    const uniqueSettingIds = [...new Set(settingIds)];
+    const uniqueAdmissionNames = [...new Set(admissionNames)];
+    const [rows] = await executor.execute<OverviewTimeRangeRow[]>(
+      `SELECT setting_id AS settingId, id, DATE_FORMAT(exam_date, '%Y-%m-%d') AS date,
+              exam_time AS time, period_name AS period, admission, unit_name AS unit, major,
+              building_name AS building, room_name AS room, schedule_key AS scheduleKey,
+              range_start AS rangeStart, range_end AS rangeEnd, next_sequence AS nextSequence
+       FROM pseudonym_time_range
+       WHERE setting_id IN (${uniqueSettingIds.map(() => "?").join(", ")})
+         AND admission IN (${uniqueAdmissionNames.map(() => "?").join(", ")})
+       ORDER BY setting_id, admission, exam_date, exam_time`,
+      [...uniqueSettingIds, ...uniqueAdmissionNames],
+    );
+    return rows;
+  }
+
+  async findExactSettingForUpdate(
+    executor: SqlExecutor,
+    examName: string,
+    admissionName: string,
+  ): Promise<SettingRow | undefined> {
+    const [rows] = await executor.execute<SettingRow[]>(
+      `${settingSelectSql}
+       WHERE exam_name = ? AND admission_name = ?
+       LIMIT 1 FOR UPDATE`,
+      [examName, admissionName],
+    );
+    return rows[0];
+  }
+
+  async listTimeRanges(executor: SqlExecutor, settingId: number, admissionName: string): Promise<TimeRangeRow[]> {
+    const [rows] = await executor.execute<TimeRangeRow[]>(
+      `SELECT id, DATE_FORMAT(exam_date, '%Y-%m-%d') AS date, exam_time AS time,
+              period_name AS period, admission, unit_name AS unit, major,
+              building_name AS building, room_name AS room, schedule_key AS scheduleKey,
+              range_start AS rangeStart, range_end AS rangeEnd, next_sequence AS nextSequence
+       FROM pseudonym_time_range WHERE setting_id = ? AND admission = ? ORDER BY exam_date, exam_time`,
+      [settingId, admissionName],
+    );
+    return rows;
+  }
+
+  async listTimeRangesForUpdate(executor: SqlExecutor, settingId: number): Promise<TimeRangeRow[]> {
+    const [rows] = await executor.execute<TimeRangeRow[]>(
+      `SELECT id, schedule_key AS scheduleKey,
+              DATE_FORMAT(exam_date, '%Y-%m-%d') AS date, exam_time AS time,
+              period_name AS period, admission, unit_name AS unit, major,
+              building_name AS building, room_name AS room,
+              range_start AS rangeStart, range_end AS rangeEnd, next_sequence AS nextSequence
+       FROM pseudonym_time_range
+       WHERE setting_id = ?
+       ORDER BY schedule_key
+       FOR UPDATE`,
+      [settingId],
+    );
+    return rows;
+  }
+
+  async listScheduleCounts(executor: SqlExecutor, examName: string, admissionName: string) {
+    const [rows] = await executor.query<ScheduleCountRow[]>(
+      `SELECT DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS date, cr.start_time AS time,
+              cr.period_name AS period, cr.admission, cr.unit_name AS unit, cr.major,
+              cr.building_name AS building, cr.room_name AS room, COUNT(*) AS candidateCount
+       FROM candidate_record cr
+       INNER JOIN examinee e ON e.examinee_no = cr.examinee_no
+       WHERE e.exam_name = ? AND e.status = 'ACTIVE' AND cr.admission = ?
+       GROUP BY cr.exam_date, cr.start_time, cr.period_name, cr.admission,
+                cr.unit_name, cr.major, cr.building_name, cr.room_name
+       ORDER BY cr.exam_date, cr.start_time, cr.period_name, cr.admission,
+                cr.unit_name, cr.major, cr.building_name, cr.room_name`,
+      [examName, admissionName],
+    );
+    return rows;
+  }
+
+  async listAssignmentScopesForUpdate(
+    executor: SqlExecutor,
+    examName: string,
+    admissionName: string,
+  ): Promise<ExistingAssignmentScopeRow[]> {
+    const [rows] = await executor.execute<ExistingAssignmentScopeRow[]>(
+      `SELECT pa.id AS assignmentId, COALESCE(cr.examinee_no, e.examinee_no) AS examineeNo,
+              pa.pseudonym_no AS pseudonymNumber,
+              DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS date, cr.start_time AS time,
+              cr.period_name AS period, cr.admission, cr.unit_name AS unit, cr.major,
+              cr.building_name AS building, cr.room_name AS room
+       FROM pseudonym_assignment pa
+       INNER JOIN examinee e ON e.id = pa.examinee_id
+       LEFT JOIN candidate_record cr ON cr.id = pa.candidate_record_id AND cr.admission = ?
+       WHERE pa.exam_name = ? AND pa.admission_name = ?
+       ORDER BY pa.id, cr.exam_date, cr.start_time, cr.period_name, cr.id
+       FOR UPDATE`,
+      [admissionName, examName, admissionName],
+    );
+    return rows;
+  }
+
+  async updateSetting(
+    executor: SqlExecutor,
+    settingId: number,
+    expectedVersion: number,
+    nextSequence: number,
+    input: UpdatePseudonymSettingInput,
+    actorUserId: number,
+  ): Promise<number> {
+    const [result] = await executor.execute<ResultSetHeader>(
+      `UPDATE pseudonym_setting
+       SET range_start = ?, range_end = ?, next_sequence = ?, assignment_method = ?,
+           auto_draw_enabled = ?, auto_draw_delay_seconds = ?, print_preassigned_label = ?,
+           auto_assign_absentees_on_close = ?, delete_absentee_info_on_reopen = ?,
+           use_candidate_photos = ?, enable_bulk_draw = ?, active = TRUE, updated_by = ?, version = version + 1
+       WHERE id = ? AND version = ?`,
+      [
+        input.rangeStart,
+        input.rangeEnd,
+        nextSequence,
+        input.assignmentMethod,
+        input.autoDrawEnabled,
+        input.autoDrawDelaySeconds,
+        input.printPreassignedLabel,
+        input.autoAssignAbsenteesOnClose,
+        input.deleteAbsenteeInfoOnReopen,
+        input.useCandidatePhotos,
+        input.enableBulkDraw,
+        actorUserId,
+        settingId,
+        expectedVersion,
+      ],
+    );
+    return Number(result.affectedRows);
+  }
+
+  async insertSetting(
+    executor: SqlExecutor,
+    nextSequence: number,
+    input: UpdatePseudonymSettingInput,
+    actorUserId: number,
+  ): Promise<number> {
+    const [result] = await executor.execute<ResultSetHeader>(
+      `INSERT INTO pseudonym_setting
+        (exam_name, admission_name, range_start, range_end, next_sequence, assignment_method,
+         auto_draw_enabled, auto_draw_delay_seconds, print_preassigned_label,
+         auto_assign_absentees_on_close, delete_absentee_info_on_reopen,
+         use_candidate_photos, enable_bulk_draw, active, updated_by, version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, 1)`,
+      [
+        input.examName,
+        input.admissionName,
+        input.rangeStart,
+        input.rangeEnd,
+        nextSequence,
+        input.assignmentMethod,
+        input.autoDrawEnabled,
+        input.autoDrawDelaySeconds,
+        input.printPreassignedLabel,
+        input.autoAssignAbsenteesOnClose,
+        input.deleteAbsenteeInfoOnReopen,
+        input.useCandidatePhotos,
+        input.enableBulkDraw,
+        actorUserId,
+      ],
+    );
+    return Number(result.insertId);
+  }
+
+  async upsertTimeRange(
+    executor: SqlExecutor,
+    settingId: number,
+    range: PseudonymTimeRangeInput,
+    rangeScheduleKey: string,
+    nextSequence: number,
+    actorUserId: number,
+  ): Promise<void> {
+    await executor.execute(
+      `INSERT INTO pseudonym_time_range
+        (setting_id, exam_date, exam_time, period_name, admission, unit_name, major,
+         building_name, room_name, schedule_key, range_start, range_end, next_sequence, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         exam_date = VALUES(exam_date), exam_time = VALUES(exam_time), period_name = VALUES(period_name),
+         admission = VALUES(admission), unit_name = VALUES(unit_name), major = VALUES(major),
+         building_name = VALUES(building_name), room_name = VALUES(room_name),
+         range_start = VALUES(range_start), range_end = VALUES(range_end),
+         next_sequence = VALUES(next_sequence), updated_by = VALUES(updated_by)`,
+      [
+        settingId,
+        range.date,
+        range.time,
+        range.period,
+        range.admission,
+        range.unit,
+        range.major,
+        range.building,
+        range.room,
+        rangeScheduleKey,
+        range.rangeStart,
+        range.rangeEnd,
+        nextSequence,
+        actorUserId,
+      ],
+    );
+  }
+
+  async deleteTimeRange(executor: SqlExecutor, id: number): Promise<void> {
+    await executor.execute("DELETE FROM pseudonym_time_range WHERE id = ?", [id]);
+  }
+
+  async findOperationStatus(
+    executor: SqlExecutor,
+    input: PseudonymOperationScopeInput,
+  ): Promise<OperationStatusRow | undefined> {
+    const [rows] = await executor.execute<OperationStatusRow[]>(
+      `SELECT po.closed, po.closed_at AS closedAt, u.login_id AS closedByLoginId
+       FROM pseudonym_operation po
+       LEFT JOIN app_user u ON u.id = po.closed_by
+       WHERE po.exam_name = ? AND po.exam_date = ? AND po.exam_time = ?
+         AND po.period_name = ? AND po.admission_name = ? LIMIT 1`,
+      operationParams(input),
+    );
+    return rows[0];
+  }
+
+  async listOperationRoster(
+    executor: SqlExecutor,
+    input: PseudonymOperationScopeInput,
+    filters: PseudonymRosterFilterSpecification[],
+  ): Promise<CanonicalPseudonymRosterRow[]> {
+    const filter = buildOperationRosterFilterSql(filters);
+    const [rows] = await executor.execute<OperationRosterRow[]>(
+      `SELECT ${operationRosterSelectSql()}
+       FROM candidate_record cr
+       INNER JOIN examinee e ON e.examinee_no = cr.examinee_no
+       LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+       WHERE e.exam_name = ? AND e.status = 'ACTIVE'
+         AND cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.admission = ?${filter.sql}
+       ORDER BY cr.designated_sort, cr.examinee_no
+       LIMIT ${PSEUDONYM_ROSTER_EXPORT_MAX_ROWS + 1}`,
+      [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName, ...filter.parameters],
+    );
+    return rows;
+  }
+
+  async countAutoAssignedAbsentees(executor: SqlExecutor, input: PseudonymOperationScopeInput): Promise<number> {
+    const [rows] = await executor.execute<Array<RowDataPacket & { autoAssignedAbsenteeCount: number }>>(
+      `SELECT COUNT(*) AS autoAssignedAbsenteeCount
+       FROM pseudonym_assignment pa
+       INNER JOIN candidate_record cr ON cr.id = pa.candidate_record_id
+       WHERE pa.auto_assigned_on_close = TRUE
+         AND pa.exam_name = ? AND pa.admission_name = ?
+         AND cr.exam_date = ? AND cr.start_time = ?
+         AND cr.period_name = ? AND cr.admission = ?`,
+      [input.examName, input.admissionName, input.examDate, input.examTime, input.periodName, input.admissionName],
+    );
+    return Number(rows[0]?.autoAssignedAbsenteeCount || 0);
+  }
+
+  async ensureOperation(executor: SqlExecutor, input: PseudonymOperationScopeInput): Promise<void> {
+    await executor.execute(ensureOperationSql, operationParams(input));
+  }
+
+  async lockOperation(
+    executor: SqlExecutor,
+    input: PseudonymOperationScopeInput,
+  ): Promise<OperationLockRow | undefined> {
+    const [rows] = await executor.execute<Array<RowDataPacket & OperationLockRow>>(
+      lockOperationSql,
+      operationParams(input),
+    );
+    return rows[0];
+  }
+
+  async findOperationForUpdate(
+    executor: SqlExecutor,
+    input: PseudonymOperationScopeInput,
+  ): Promise<OperationLockRow | undefined> {
+    const [rows] = await executor.execute<Array<RowDataPacket & OperationLockRow>>(
+      `SELECT id, closed FROM pseudonym_operation
+       WHERE exam_name = ? AND exam_date = ? AND exam_time = ?
+         AND period_name = ? AND admission_name = ? LIMIT 1 FOR UPDATE`,
+      operationParams(input),
+    );
+    return rows[0];
+  }
+
+  async listUnassignedCandidatesForUpdate(
+    executor: SqlExecutor,
+    input: PseudonymOperationScopeInput,
+  ): Promise<CandidateRow[]> {
+    const [rows] = await executor.execute<CandidateRow[]>(
+      `SELECT e.id, cr.id AS candidateRecordId, cr.examinee_no AS examineeNo, cr.name, e.exam_name AS examName,
+              NULLIF(cr.temporary_no, '') AS preassignedNumber,
+              DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate, cr.start_time AS examTime,
+              cr.period_name AS period, cr.admission, cr.unit_name AS unit, cr.major,
+              cr.building_name AS building, cr.room_name AS room
+       FROM candidate_record cr
+       INNER JOIN examinee e ON e.examinee_no = cr.examinee_no AND e.status = 'ACTIVE'
+       LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+       WHERE e.exam_name = ? AND cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?
+          AND cr.admission = ? AND pa.id IS NULL
+       ORDER BY cr.designated_sort, cr.examinee_no FOR UPDATE`,
+      [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName],
+    );
+    return rows;
+  }
+
+  async insertAbsenteeAssignment(
+    executor: SqlExecutor,
+    candidate: CandidateRow,
+    admissionName: string,
+    uniquenessScopeKey: string,
+    pseudonymNumber: string,
+    assignmentMode: PseudonymAssignmentMode,
+    actorUserId: number,
+  ): Promise<void> {
+    await executor.execute(
+      `INSERT INTO pseudonym_assignment
+        (examinee_id, candidate_record_id, exam_name, admission_name, uniqueness_scope_key,
+         pseudonym_no, assignment_mode, is_absentee, auto_assigned_on_close, assigned_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, TRUE, TRUE, ?)`,
+      [
+        candidate.id,
+        candidate.candidateRecordId,
+        candidate.examName,
+        admissionName,
+        uniquenessScopeKey,
+        pseudonymNumber,
+        assignmentMode,
+        actorUserId,
+      ],
+    );
+  }
+
+  async closeOperation(executor: SqlExecutor, operationId: number, actorUserId: number): Promise<void> {
+    await executor.execute(
+      `UPDATE pseudonym_operation
+       SET closed = TRUE, closed_by = ?, closed_at = CURRENT_TIMESTAMP(3), reopened_by = NULL, reopened_at = NULL
+       WHERE id = ?`,
+      [actorUserId, operationId],
+    );
+  }
+
+  async deleteAutoAssignedAbsentees(executor: SqlExecutor, input: PseudonymOperationScopeInput): Promise<number> {
+    const [result] = await executor.execute<ResultSetHeader>(
+      `DELETE pa FROM pseudonym_assignment pa
+       INNER JOIN candidate_record cr ON cr.id = pa.candidate_record_id
+       WHERE pa.auto_assigned_on_close = TRUE
+         AND pa.exam_name = ? AND pa.admission_name = ?
+         AND cr.exam_date = ? AND cr.start_time = ?
+         AND cr.period_name = ? AND cr.admission = ?`,
+      [input.examName, input.admissionName, input.examDate, input.examTime, input.periodName, input.admissionName],
+    );
+    return result.affectedRows;
+  }
+
+  async reopenOperation(executor: SqlExecutor, operationId: number, actorUserId: number): Promise<void> {
+    await executor.execute(
+      `UPDATE pseudonym_operation
+       SET closed = FALSE, reopened_by = ?, reopened_at = CURRENT_TIMESTAMP(3)
+       WHERE id = ?`,
+      [actorUserId, operationId],
+    );
+  }
+
+  async findCandidateInScope(
+    executor: SqlExecutor,
+    input: AssignPseudonymInput,
+    options: { forUpdate: boolean },
+  ): Promise<CandidateRow | undefined> {
+    const [rows] = await executor.execute<CandidateRow[]>(
+      `SELECT e.id, cr.id AS candidateRecordId, cr.examinee_no AS examineeNo, cr.name,
+              COALESCE(NULLIF(?, ''), e.exam_name) AS examName,
+              NULLIF(cr.temporary_no, '') AS preassignedNumber,
+              DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate, cr.start_time AS examTime,
+              cr.period_name AS period, cr.admission, cr.unit_name AS unit, cr.major,
+              cr.building_name AS building, cr.room_name AS room
+       FROM examinee e
+       INNER JOIN candidate_record cr ON cr.examinee_no = e.examinee_no
+       WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
+         AND cr.period_name = ? AND cr.admission = ? AND e.status = 'ACTIVE'
+       LIMIT 1${options.forUpdate ? " FOR UPDATE" : ""}`,
+      [
+        input.examName?.trim() || "",
+        input.examineeNo.trim(),
+        input.examDate,
+        input.examTime,
+        input.periodName,
+        input.admissionName,
+      ],
+    );
+    return rows[0];
+  }
+
+  async findAssignmentForUpdate(executor: SqlExecutor, candidateRecordId: number): Promise<AssignmentData | undefined> {
+    const [rows] = await executor.execute<AssignmentRow[]>(
+      `SELECT id, pseudonym_no AS pseudonymNumber, assignment_mode AS mode, assigned_at AS assignedAt
+       FROM pseudonym_assignment WHERE candidate_record_id = ? LIMIT 1 FOR UPDATE`,
+      [candidateRecordId],
+    );
+    return rows[0];
+  }
+
+  async updateTimeRangeSequence(
+    executor: SqlExecutor,
+    timeRangeId: number,
+    nextSequence: number,
+    actorUserId: number,
+  ): Promise<void> {
+    await executor.execute("UPDATE pseudonym_time_range SET next_sequence = ?, updated_by = ? WHERE id = ?", [
+      nextSequence,
+      actorUserId,
+      timeRangeId,
+    ]);
+  }
+
+  async updateSettingSequence(
+    executor: SqlExecutor,
+    settingId: number,
+    nextSequence: number,
+    actorUserId: number,
+  ): Promise<void> {
+    await executor.execute("UPDATE pseudonym_setting SET next_sequence = ?, updated_by = ? WHERE id = ?", [
+      nextSequence,
+      actorUserId,
+      settingId,
+    ]);
+  }
+
+  async insertAssignment(
+    executor: SqlExecutor,
+    candidate: CandidateRow,
+    admissionName: string,
+    uniquenessScopeKey: string,
+    pseudonymNumber: string,
+    assignmentMode: PseudonymAssignmentMode,
+    actorUserId: number,
+  ): Promise<number> {
+    const [result] = await executor.execute<ResultSetHeader>(
+      `INSERT INTO pseudonym_assignment
+        (examinee_id, candidate_record_id, exam_name, admission_name, uniqueness_scope_key,
+         pseudonym_no, assignment_mode, assigned_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        candidate.id,
+        candidate.candidateRecordId,
+        candidate.examName,
+        admissionName,
+        uniquenessScopeKey,
+        pseudonymNumber,
+        assignmentMode,
+        actorUserId,
+      ],
+    );
+    return result.insertId;
+  }
+
+  async loadPseudonymNumberPolicyForUpdate(executor: SqlExecutor): Promise<PseudonymNoUniqueness> {
+    const [rows] = await executor.execute<PseudonymPolicyRow[]>(
+      `SELECT pseudonym_no_uniqueness AS pseudonymNoUniqueness
+       FROM system_profile WHERE id = 1 LIMIT 1 FOR UPDATE`,
+    );
+    return rows[0]?.pseudonymNoUniqueness ?? "ADMISSION";
+  }
+
+  async loadReservedNumbers(
+    executor: SqlExecutor,
+    examName: string,
+    admissionName: string,
+    policy: PseudonymNoUniqueness,
+    scope: PseudonymScheduleScope,
+  ): Promise<Set<number>> {
+    const scopeKey = pseudonymUniquenessScopeKey(policy, scope);
+    const [rows] = await executor.execute<NumberRow[]>(
+      `SELECT pseudonym_no AS pseudonymNumber
+       FROM pseudonym_assignment
+       WHERE exam_name = ? AND admission_name = ?
+         AND (
+           uniqueness_scope_key = ?
+           OR (? = 'SCHEDULE' AND candidate_record_id IS NULL AND uniqueness_scope_key = '')
+         )
+       UNION
+       SELECT NULLIF(cr.temporary_no, '') AS pseudonymNumber
+       FROM candidate_record cr
+       WHERE cr.admission = ? AND cr.temporary_no <> ''
+         AND (? = 'ADMISSION' OR (
+           cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?
+         ))
+         AND EXISTS (
+           SELECT 1 FROM examinee e
+           WHERE e.examinee_no = cr.examinee_no AND e.exam_name = ? AND e.status = 'ACTIVE'
+         )`,
+      [
+        examName,
+        admissionName,
+        scopeKey,
+        policy,
+        admissionName,
+        policy,
+        scope.date,
+        scope.time,
+        scope.period,
+        examName,
+      ],
+    );
+    return new Set(rows.map((row) => parsePseudonym(row.pseudonymNumber)));
+  }
+
+  async findPreassignedOwner(
+    executor: SqlExecutor,
+    examName: string,
+    admissionName: string,
+    number: string,
+    policy: PseudonymNoUniqueness,
+    scope: PseudonymScheduleScope,
+  ): Promise<number | null> {
+    const [rows] = await executor.execute<Array<RowDataPacket & { candidateRecordId: number }>>(
+      `SELECT cr.id AS candidateRecordId
+       FROM candidate_record cr
+       WHERE cr.admission = ? AND cr.temporary_no = ?
+         AND (? = 'ADMISSION' OR (
+           cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?
+         ))
+         AND EXISTS (
+           SELECT 1 FROM examinee e
+           WHERE e.examinee_no = cr.examinee_no AND e.exam_name = ? AND e.status = 'ACTIVE'
+         )
+       ORDER BY cr.id LIMIT 1`,
+      [admissionName, number, policy, scope.date, scope.time, scope.period, examName],
+    );
+    return rows[0]?.candidateRecordId ?? null;
+  }
+}
+
+const settingSelectSql = `SELECT id, version, exam_name AS examName, admission_name AS admissionName, range_start AS rangeStart, range_end AS rangeEnd,
+  next_sequence AS nextSequence, assignment_method AS assignmentMethod,
+  auto_draw_enabled AS autoDrawEnabled, auto_draw_delay_seconds AS autoDrawDelaySeconds,
+  print_preassigned_label AS printPreassignedLabel,
+  auto_assign_absentees_on_close AS autoAssignAbsenteesOnClose,
+  delete_absentee_info_on_reopen AS deleteAbsenteeInfoOnReopen,
+  use_candidate_photos AS useCandidatePhotos, enable_bulk_draw AS enableBulkDraw
+  FROM pseudonym_setting`;
+
+const ensureOperationSql = `INSERT IGNORE INTO pseudonym_operation
+  (exam_name, exam_date, exam_time, period_name, admission_name, closed)
+ VALUES (?, ?, ?, ?, ?, FALSE)`;
+
+const lockOperationSql = `SELECT id, closed FROM pseudonym_operation
+ WHERE exam_name = ? AND exam_date = ? AND exam_time = ?
+   AND period_name = ? AND admission_name = ? LIMIT 1 FOR UPDATE`;
+
+function operationParams(input: PseudonymOperationScopeInput) {
+  return [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName];
+}

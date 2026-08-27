@@ -1,0 +1,2 @@
+ALTER TABLE audit_log
+  MODIFY COLUMN request_id VARCHAR(128) NULL;
