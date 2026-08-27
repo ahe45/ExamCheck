@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap");
-
 @import "./styles/base.css";
 @import "./styles/legacy-admin.css";
 @import "./styles/system-settings.css";

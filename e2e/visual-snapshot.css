@@ -1,0 +1,14 @@
+*,
+*::before,
+*::after {
+  animation: none !important;
+  caret-color: transparent !important;
+  transition: none !important;
+}
+
+/* Query and database timestamps vary by execution time. Keep their layout while
+   excluding only the changing text from the approved visual contract. */
+.admin-dashboard-heading > div:last-child > span,
+.developer-settings-card > footer span {
+  visibility: hidden !important;
+}

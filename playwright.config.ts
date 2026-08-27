@@ -17,6 +17,7 @@ if (!e2eDatabaseName || !/^examcheck_e2e_[0-9a-f]{32}$/.test(e2eDatabaseName)) {
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "test-results/playwright",
+  snapshotPathTemplate: "{testDir}/visual-baselines/{platform}/{projectName}/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
@@ -27,10 +28,12 @@ export default defineConfig({
   reporter: [["list"], ["html", { outputFolder: "test-results/playwright-report", open: "never" }]],
   use: {
     baseURL,
-    channel: "chrome",
     headless: true,
     locale: "ko-KR",
     timezoneId: "Asia/Seoul",
+    colorScheme: "light",
+    reducedMotion: "reduce",
+    deviceScaleFactor: 1,
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
     video: "off",
@@ -74,6 +77,18 @@ export default defineConfig({
     {
       name: "qhd",
       testMatch: /role-smoke\.spec\.ts/,
+      use: { viewport: { width: 2560, height: 1440 } },
+    },
+    {
+      name: "visual-fhd",
+      testMatch: /visual\.spec\.ts/,
+      retries: 0,
+      use: { viewport: { width: 1920, height: 1080 } },
+    },
+    {
+      name: "visual-qhd",
+      testMatch: /visual\.spec\.ts/,
+      retries: 0,
       use: { viewport: { width: 2560, height: 1440 } },
     },
     {

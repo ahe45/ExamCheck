@@ -96,7 +96,7 @@ async function login(page: Page, account: { loginId: string; password: string })
 }
 
 async function verifyReadOnlyPage(page: Page, testInfo: TestInfo, name: string) {
-  await expect.poll(async () => page.evaluate(() => document.fonts.status)).toBe("loaded");
+  await waitForProjectFonts(page);
 
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("브라우저 viewport 정보를 확인할 수 없습니다.");
@@ -108,7 +108,13 @@ async function verifyReadOnlyPage(page: Page, testInfo: TestInfo, name: string) 
   expect(layout.scrollWidth, "페이지에 가로 스크롤이 없어야 합니다.").toBeLessThanOrEqual(viewport.width + 1);
 
   const screenshotPath = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path: screenshotPath, fullPage: false });
+  await page.screenshot({
+    path: screenshotPath,
+    animations: "disabled",
+    caret: "hide",
+    fullPage: false,
+    scale: "css",
+  });
   await testInfo.attach(`${name}-${testInfo.project.name}`, { path: screenshotPath, contentType: "image/png" });
 
   const accessibility = await new AxeBuilder({ page })
@@ -132,4 +138,22 @@ async function verifyReadOnlyPage(page: Page, testInfo: TestInfo, name: string) 
     })),
     "핵심 화면에 WCAG A/AA 위반이 없어야 합니다.",
   ).toEqual([]);
+}
+
+async function waitForProjectFonts(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        await Promise.all([
+          document.fonts.load('16px "DM Sans Variable"', "ExamCheck 2026"),
+          document.fonts.load('16px "Noto Sans KR Variable"', "가번호 관리 시스템"),
+        ]);
+        await document.fonts.ready;
+        return {
+          dmSans: document.fonts.check('16px "DM Sans Variable"', "ExamCheck 2026"),
+          notoSansKr: document.fonts.check('16px "Noto Sans KR Variable"', "가번호 관리 시스템"),
+        };
+      }),
+    )
+    .toEqual({ dmSans: true, notoSansKr: true });
 }

@@ -56,7 +56,7 @@ jobs:
       - run: npm run check:integration
 
   browser-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       mariadb:
@@ -87,11 +87,52 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chrome
-      - run: npm run test:e2e
+      - run: npx --no-install playwright install --with-deps chromium
+      - run: npm run test:e2e:smoke
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: playwright-report
           path: test-results/
-          retention-days: 7
+          retention-days: 14
+
+  visual-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
+          MARIADB_DATABASE: examcheck
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      NODE_ENV: test
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: ""
+      DB_NAME: examcheck
+      JWT_SECRET: ci-visual-regression-secret-at-least-thirty-two-random-characters
+      VITE_PRINTER_MODE: mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx --no-install playwright install --with-deps chromium
+      - run: npm run test:visual
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: visual-regression-report
+          path: test-results/
+          retention-days: 30

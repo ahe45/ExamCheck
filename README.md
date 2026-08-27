@@ -109,6 +109,9 @@ npm run build
 npm run test
 npm run test:coverage
 npm run test:e2e
+npm run test:e2e:smoke
+npm run test:visual
+npm run test:visual:update
 npm run typecheck
 npm run check
 npm run check:integration
@@ -127,13 +130,23 @@ npm run db:bootstrap
 `npm run check:integration`은 `.env`의 MariaDB 서버에 임시 `examcheck_it_<nonce>` 데이터베이스를
 만들고 실제 병렬 트랜잭션을 검증한 뒤 자신이 만든 데이터베이스만 삭제합니다. 운영 `DB_NAME`은
 통합 테스트에서 사용하지 않습니다. fresh DB뿐 아니라 N-1(`025`)에서 latest(`026`)로 올릴 때
-기존 행이 보존되고 재실행 가능한지도 확인합니다. `npm run test:e2e`는 역할별 핵심 화면 3개를
-HD(1366×768), HD+(1600×900), FHD(1920×1080), QHD(2560×1440) Chrome에서 검사하는 12개 smoke와
-FHD 변경 작업 5개를 합쳐 총 17개 시나리오로 구성됩니다. 실행기는 매번
+기존 행이 보존되고 재실행 가능한지도 확인합니다. `npm run test:e2e`는 Playwright가 관리하는
+번들 Chromium에서 역할별 핵심 화면 3개를 HD(1366×768), HD+(1600×900), FHD(1920×1080),
+QHD(2560×1440)로 검사하는 읽기 전용 smoke 12개, FHD 변경 작업 5개, 공식 시각 회귀 18개를
+합쳐 총 35개 시나리오로 구성됩니다. 실행기는 매번
 `examcheck_e2e_<nonce>` DB와 동적 API/Web 포트를 만들고 자신이 시작한 정확한 프로세스 PID만
 종료한 뒤 DB 잔존 여부를 확인합니다. 작은 해상도에서는 핵심 요소 가시성과 가로 overflow를,
-FHD/QHD에서는 세로 overflow와 반응형 확대 하한까지 확인합니다. 2026-08-28 최종 로컬 실행에서
-17개 시나리오가 모두 통과했고 테스트 서버는 정상 종료됐으며 `examcheck_e2e_*` DB 잔존은 0건이었습니다.
+FHD/QHD에서는 세로 overflow와 반응형 확대 하한까지 확인합니다. 여기서 Playwright의 FHD와 QHD는
+브라우저 탭·주소창·창 테두리를 제외한 CSS viewport 1920×1080과 2560×1440을 뜻합니다.
+
+공식 시각 회귀는 로그인, 관리자 5개 화면, 개발자 설정, 사용자 교시 선택과 운영 콘솔 등 9개
+화면을 FHD/QHD에서 각각 비교합니다. 기준 이미지는 Windows와 Linux로 분리하고, CI는 Ubuntu
+24.04·번들 Chromium·로컬 Fontsource 글꼴·재시도 0 조건에서 Linux 기준 이미지를 읽기 전용으로
+검사합니다. `npm run test:visual:update`는 변경 화면을 사람이 직접 확인하고 승인한 경우에만
+로컬에서 실행해야 하며 CI에서는 기준 이미지를 생성하거나 갱신하지 않습니다. 일반 확인은
+`npm run test:visual`, 시각 회귀를 제외한 기존 17개 흐름만 빠르게 확인할 때는
+`npm run test:e2e:smoke`를 사용합니다. 자세한 기준과 승인 절차는
+[브라우저 회귀 검수 기준](./docs/testing/browser-matrix.md)을 참고하세요.
 
 `npm run metrics:baseline`은 환경변수나 DB 내용을 읽지 않고 source/test/CSS/migration의 파일·줄
 수와 production build asset byte를 JSON으로 출력합니다. 수치는 리팩토링 중 고정 문구로 복사하지

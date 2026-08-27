@@ -4,8 +4,8 @@
 
 ## 자동 시나리오
 
-`npm run test:e2e`는 시스템 Chrome에서 역할별 읽기 전용 smoke 12개와 FHD 변경 workflow 5개,
-총 17개 시나리오를 순차 검증하도록 구성되어 있다.
+`npm run test:e2e`는 Playwright가 관리하는 번들 Chromium에서 역할별 읽기 전용 smoke 12개,
+FHD 변경 workflow 5개, 공식 visual 18개를 합친 총 35개 시나리오를 순차 검증한다.
 
 ### 역할별 읽기 전용 smoke — 12개
 
@@ -43,6 +43,35 @@
 각 mutation 시나리오는 전용 reset command로 fixture를 복구한다. 이 흐름은 운영 DB나 `.env`의
 `DB_NAME`을 사용하지 않는다.
 
+### FHD/QHD 공식 visual — 18개
+
+공식 visual은 아래 9개 화면을 FHD와 QHD에서 각각 한 번씩 비교한다.
+
+| 구분   | 화면                               |
+| ------ | ---------------------------------- |
+| 공통   | 로그인                             |
+| 관리자 | 대시보드, 수험생 데이터, 양식 관리 |
+| 관리자 | 시스템 설정, 계정 관리             |
+| 개발자 | 개발자 설정                        |
+| 사용자 | 교시 선택, 운영 콘솔               |
+
+FHD 1920×1080과 QHD 2560×1440은 모니터 전체나 브라우저 창 외곽 크기가 아니라 Playwright가
+브라우저 탭·주소창·창 테두리를 제외하고 페이지에 제공하는 **CSS viewport** 크기다. 따라서 실제
+브라우저 UI를 포함한 데스크톱 캡처와 픽셀 크기를 직접 비교하지 않는다.
+
+시각 비교는 다음 조건을 고정한다.
+
+- Playwright 버전에 대응하는 번들 Chromium과 `deviceScaleFactor: 1`
+- 로컬 패키지로 고정한 Fontsource의 DM Sans/Noto Sans KR 가변 글꼴
+- `ko-KR`, `Asia/Seoul`, light color scheme과 reduced motion
+- 화면별 명시적 준비 조건, 글꼴 준비, 최상단 scroll, focus·caret·animation 정규화
+- visual FHD/QHD 프로젝트의 재시도 0회
+- Windows(`win32`)와 Linux 기준 이미지 디렉터리 분리
+
+CI의 공식 비교 환경은 Ubuntu 24.04다. 운영체제별 글꼴 rasterization과 native control 차이를
+허용값으로 뭉개지 않도록 Linux CI는 Linux 기준 이미지만, Windows 로컬 검수는 Windows 기준
+이미지만 사용한다.
+
 ### 실행 격리와 현재 확인 상태
 
 - runner는 매 실행마다 `examcheck_e2e_<32자리 nonce>` DB를 생성하고 migration·seed를 적용한다.
@@ -53,26 +82,33 @@
 - 성공·실패 모두에서 소유 DB 이름·현재 연결 DB·migration 기준을 재검증한 뒤 해당 nonce DB만
   삭제하고 잔존 여부를 확인한다.
 
-2026-08-28 최종 로컬 실행에서 12개 viewport smoke와 5개 mutation workflow, 합계 17/17이
-통과했다. QHD 사용자 화면에서 발견된 좌측 패널 overflow는 높이 기반 폭 증가율을 최소 조정한 뒤
-단일 QHD와 전체 suite로 재검증했다. 테스트 서버는 정상 종료됐고 nonce DB 잔존은 0건이었다.
-승인된 golden 이미지 및 pixel diff gate는 아직 없다.
+전체 `test:e2e`는 12개 viewport smoke, 5개 mutation workflow, 18개 visual을 합친 35개로
+구성된다. QHD 사용자 화면의 좌측 패널 overflow와 반응형 확대 하한은 구조 assertion으로도 계속
+검사하며, 공식 visual은 승인된 운영체제별 기준 이미지와 pixel diff로 별도 확인한다.
 
 ## 실행
 
 ```text
 npm run test:e2e:list
 npm run test:e2e
+npm run test:e2e:smoke
+npm run test:visual
+npm run test:visual:update
 ```
 
-실패 화면, trace, 접근성 상세는 `test-results/`에 생성되며 Git에는 포함하지 않는다. 현재
-화면 캡처는 실행 결과 첨부이며 `toHaveScreenshot` 기반의 승인된 golden 이미지 비교는 아직
-구성하지 않았다. 디자인 기준과 갱신 승인 절차를 정하기 전에는 캡처를 golden으로 간주하지 않는다.
+`npm run test:e2e:smoke`는 visual을 제외한 기존 17개 smoke/workflow를, `npm run test:visual`은
+9개 화면×FHD/QHD의 공식 기준 이미지 18개만 비교한다. 실패 화면, diff, trace, 접근성 상세는
+`test-results/`에 생성되며 Git에는 포함하지 않는다.
 
-`.github/workflows/ci.yml`에는 브라우저용 격리 DB migration·seed와 전체 Playwright suite 작업이
-정의돼 있다. 최초 기준 commit `83c43e5`의
-[Quality Gate](https://github.com/ahe45/ExamCheck/actions/runs/33125056778)에서 browser-smoke 작업이
-성공했으며, 승인된 golden·pixel diff는 별도 후속 gate로 남는다.
+`npm run test:visual:update`는 UI 변경을 실제 FHD/QHD 결과로 육안 검수하고 새 기준 이미지가
+의도한 디자인임을 명시적으로 승인한 뒤에만 로컬에서 실행한다. 생성된 Windows/Linux 기준
+이미지는 서로 대체하지 않으며, 변경된 PNG를 코드 변경과 함께 검토한다. CI는 항상
+`npm run test:visual`만 실행하고 `--update-snapshots` 또는 `test:visual:update`를 호출하지 않는다.
+즉 CI 실패를 통과시키기 위해 기준 이미지를 자동 갱신하는 경로는 없다.
+
+`.github/workflows/ci.yml`은 Ubuntu 24.04에서 격리 DB migration·seed를 사용하는 browser smoke와
+visual regression을 별도 작업으로 실행한다. 두 작업 모두 번들 Chromium을 설치하며, visual
+regression 작업은 저장소의 Linux 기준 이미지를 읽기 전용으로 비교한다.
 
 Zebra Browser Print adapter는 fake SDK 단위 테스트로 스크립트 로드, 기본 프린터 조회, 프린터
 목록 조회, 데이터 전송의 성공·timeout·늦은 callback·중복 callback 처리를 검증한다. 이 검증은
