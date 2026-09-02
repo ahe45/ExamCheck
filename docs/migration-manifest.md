@@ -1,7 +1,8 @@
 # 데이터베이스 마이그레이션 체크섬 기준선
 
-> 수집일: 2026-08-28  
-> 상태: 실행기 강제 기준선. `001`~`026` 로컬 적용·재실행 검증 완료. 운영 환경은 별도 확인 필요.
+> 수집일: 2026-09-01
+> 상태: 실행기 강제 기준선. `001`~`039` fresh·재실행 및 `026`→`039` 로컬 MariaDB 검증 완료.
+> 운영 환경 적용과 backup/restore는 별도 승인·확인 필요.
 
 이미 적용된 마이그레이션 파일을 조용히 수정하면 환경마다 스키마가 달라질 수 있다. 아래 값은 각 마이그레이션을 기준선에 등록한 시점의 파일 크기와 SHA-256이며, 실행기에서 체크섬을 검증하기 위한 기준 자료다.
 
@@ -33,21 +34,43 @@
 | `024_app_user_session_version.sql`                    |         100 | `86E205CFD06405AD80B7335D027B1864C6115F4A5BBD3796C87A42626E718281` |
 | `025_print_job_request_fingerprint.sql`               |         130 | `3177FB5CC7CFDBA6240D39F34F39FA8C26BF35C9861CDE5BD1BC3E7D85188CD9` |
 | `026_expand_audit_request_id.sql`                     |          68 | `E11048D1AE752A7CE711A93CCAF77DEDA8E6FA12D01BDEFA5B0B48DFEA93689D` |
+| `027_target_identity_core.sql`                        |       8,398 | `0566B1E69BEA58E7AD82476C118BA1CE283172F8E0965D92A9638B39A49C2849` |
+| `028_target_identity_policies.sql`                    |       6,632 | `307F76600F78059AEEA2597D3201691AEACE91D64F1A8806DF3C43AB4842482B` |
+| `029_target_identity_operations.sql`                  |       7,600 | `2AC909AF49C26DCCF9F341A9306EB9278ABD3FF1EA9CAC3BA6B36226FB5D02BF` |
+| `030_target_identity_account_scope.sql`               |         668 | `55539D5A0A22124BF33D57BCE86404F4C27BF76B13BA4EBCDC5F4E146F4ED14B` |
+| `031_target_identity_candidate_photo.sql`             |         877 | `9F74DF652AFED46A99BB4B27E4E3538196F210594A6E72A68866896A26DDA030` |
+| `032_target_identity_print_template.sql`              |       2,703 | `62B2C3E6860BD7D9F3702FE6C7FFDBDC5B9F69AD41672CBA3B6658184697CF98` |
+| `033_target_identity_transition_control.sql`          |       4,513 | `16B52B437CA5F3D68414286B0C6CE4FCC5DDA9A35B4F07A9B9990857182C9DE5` |
+| `034_target_identity_transition_gate.sql`             |       7,357 | `CC3D657481ADBD759484B77399AEB01361CD367C3E56337FC4228D9FF2D580A2` |
+| `035_print_job_reissue_history.sql`                   |       1,726 | `F172608CDCF2B5B29726AA74C5FC480C168929254521D39AFB416F0131B28341` |
+| `036_identity_shadow_verification_batch.sql`          |       2,279 | `ABBDFD7C509DF82EFD1C04F848ABD6BF705AA2978C10D3231C9A72A9573F9DAD` |
+| `037_immutable_identity_history.sql`                  |       2,902 | `DDA8ABC7B74587D222EC501C0C2BDA8BE144AA80A3C82D04B21B0D3B557D9133` |
+| `038_form_template_deletion.sql`                      |         425 | `33F3485976F9A6F8C17B5800D5B30DB331A77E2B8A0EC66E80168208A5A36D95` |
+| `039_remove_form_template_versioning.sql`             |         883 | `4E4C4D4EDB05D4AEEF00F913F2C87F773C28DE22E6F6C936ED10F83F057EDEEA` |
 
-현재 소스 기준 migration은 `001`~`026`이다. 019는 번호 유일 정책과 assignment 일정 연결
+현재 소스 기준 migration은 `001`–`039`이다. 019는 번호 유일 정책과 assignment 일정 연결
 필드를 확장하고, 020은 일정 연결·scope key 기반 고유키로 전환하며, 021은 019 이전 할당 중
 정확히 한 일정에만 대응하는 행만 보정한다. 022는 전형 설정의 동시 저장 충돌을 감지하는 버전
 필드를 추가한다. 로컬 데이터 11건 중 6건이 정확히 매핑되었고, 자동 결정할 수 없는 레거시
 5건은 변경하지 않았다. 023은 사용자별 인쇄 작업 멱등 키를, 024는 계정 세션 강제 무효화
 버전을, 025는 동일 멱등 키의 다른 요청 재사용을 차단하는 요청 지문을 추가한다. 026은 HTTP
 request ID의 최대 길이와 맞도록 `audit_log.request_id`를 `VARCHAR(128)`로 확장하며 목표 identity
-모델의 테이블·키·데이터 의미는 변경하지 않는다.
+모델의 테이블·키·데이터 의미는 변경하지 않는다. `027`–`032`는 목표 identity의 ID 기반 관계·정책·이력과
+호환 projection을 expand-only로 추가하고, 033은 기본 `LEGACY/LEGACY` 전환 상태·backfill checkpoint·
+issue·shadow observation·canary allowlist를 추가한다. 034는 증적, 분리 승인, 요청, append-only 상태
+이력 구조를 추가하며 기존 업무 read/write를 자동으로 전환하지 않는다. 035는 실패·만료 작업의
+재시도와 전송 완료 작업의 재출력을 새 작업으로 만들고, 고정 사유 코드·작업자·시각을 변경·삭제
+불가 이력으로 보존하는 구조를 추가한다. 036은 shadow 검증 한 회차의 9개 domain observation을
+하나의 완료 batch로 묶고 allowlisted 업무 mutation을 직렬화하는 singleton source watermark를
+추가한다. 037은 과거 출력 snapshot과 identity 이력의 변경을 DB trigger로 차단한다. 038은
+양식 삭제 상태를 별도 기록하고, 039는 양식 코드별 최신 데이터 한 건을 보존한 뒤 발행·보관
+상태와 과거 이력 컬럼·trigger를 제거해 단일 양식을 직접 수정하는 구조로 전환한다.
 
-`001`~`026`은 2026-08-28 로컬 개발 DB와 fresh 임시 DB에서 적용·재실행·체크섬 검증했다.
-통합 harness는 `migrateThrough` 경계로 N-1(`025`)까지만 구성한 뒤 기존 인쇄 작업을 보존하면서
-latest(`026`)를 적용하고 전체 migration을 다시 실행한다. 이 시나리오는 `audit_log.request_id`가
-128자로 확장됐는지도 확인한다. 이는 현재 `025`→`026` 경로의 회귀 검증이며 향후 027+ 목표 identity
-migration이나 운영 snapshot upgrade 완료를 뜻하지 않는다.
+`001`–`039`는 fresh 임시 DB에서 적용·재실행·체크섬을 검증했다. 통합 harness는 `026` 상태의
+기존 인쇄·양식 데이터를 보존한 채 `027`–`039`를 적용하고 전체 migration을 다시 실행한다.
+목표 identity 테이블·제약과 기본 legacy 상태, 034 증적/승인/이력 제약, 036 batch 경계,
+identity 불변 trigger 및 039 단일 양식 전환을 실제 MariaDB에서 확인했다.
+이는 로컬 synthetic 검증이며 운영 snapshot upgrade 또는 운영 전환 완료를 뜻하지 않는다.
 각 staging·운영 환경의 적용 여부는 해당 환경의 `schema_migration`으로 확인해야 하며, 이
 기록은 backup/restore 리허설이나 운영 배포 완료를 의미하지 않는다.
 

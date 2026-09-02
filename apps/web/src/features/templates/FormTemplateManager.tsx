@@ -8,6 +8,65 @@ import type { TemplateNoticeValue } from "./TemplateNotice";
 
 const LazyTemplateEditorWorkspace = lazy(() => import("./TemplateEditorWorkspaceLazy"));
 
+export const formTemplateEditorSessionStorageKey = "examcheck.form-template-editor.session.v1";
+
+interface FormTemplateEditorSession {
+  sourceId: string;
+  draft?: DraftTemplate;
+}
+
+function isDraftTemplate(value: unknown): value is DraftTemplate {
+  if (!value || typeof value !== "object") return false;
+  const draft = value as Partial<DraftTemplate>;
+  return (
+    typeof draft.code === "string" &&
+    typeof draft.name === "string" &&
+    typeof draft.description === "string" &&
+    typeof draft.category === "string" &&
+    typeof draft.usageScope === "string" &&
+    typeof draft.layout === "object" &&
+    draft.layout !== null &&
+    typeof draft.active === "boolean" &&
+    typeof draft.isNew === "boolean"
+  );
+}
+
+function readEditorSession(): FormTemplateEditorSession | null {
+  try {
+    const rawValue = window.sessionStorage.getItem(formTemplateEditorSessionStorageKey);
+    if (!rawValue) return null;
+    const value = JSON.parse(rawValue) as Partial<FormTemplateEditorSession>;
+    if (typeof value.sourceId !== "string" || !value.sourceId) return null;
+    return {
+      sourceId: value.sourceId,
+      ...(isDraftTemplate(value.draft) ? { draft: value.draft } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistEditorSession(sourceId: string, draft?: DraftTemplate) {
+  if (!sourceId) return;
+  try {
+    window.sessionStorage.setItem(formTemplateEditorSessionStorageKey, JSON.stringify({ sourceId, draft }));
+  } catch {
+    try {
+      window.sessionStorage.setItem(formTemplateEditorSessionStorageKey, JSON.stringify({ sourceId }));
+    } catch {
+      // Storage may be unavailable or full. The editor remains usable without restoration.
+    }
+  }
+}
+
+function clearEditorSession() {
+  try {
+    window.sessionStorage.removeItem(formTemplateEditorSessionStorageKey);
+  } catch {
+    // Storage may be unavailable in hardened browser contexts.
+  }
+}
+
 export interface FormTemplateManagerHandle {
   save(): Promise<boolean>;
 }
@@ -21,6 +80,8 @@ interface FormTemplateManagerProps {
 export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTemplateManagerProps>(
   function FormTemplateManager({ token, resetKey = 0, onDirtyChange }, ref) {
     const workspaceRef = useRef<TemplateEditorWorkspaceHandle>(null);
+    const restoredSessionRef = useRef<FormTemplateEditorSession | null>(readEditorSession());
+    const editorSourceIdRef = useRef("");
     const [templates, setTemplates] = useState<FormTemplate[]>([]);
     const [dataTags, setDataTags] = useState<DataTagCatalog | null>(null);
     const [draft, setDraft] = useState<DraftTemplate | null>(null);
@@ -40,6 +101,27 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
           if (!active) return;
           setTemplates(loadedTemplates);
           setDataTags(loadedTags);
+          const restoredSession = restoredSessionRef.current;
+          restoredSessionRef.current = null;
+          if (restoredSession) {
+            const templateIdMatch = /^template-(\d+)$/.exec(restoredSession.sourceId);
+            const storedTemplate = templateIdMatch
+              ? loadedTemplates.find((template) => template.id === Number(templateIdMatch[1]))
+              : null;
+            const restoredDraft = restoredSession.sourceId.startsWith("new-")
+              ? restoredSession.draft || null
+              : storedTemplate
+                ? restoredSession.draft || toDraft(storedTemplate)
+                : null;
+
+            if (restoredDraft) {
+              editorSourceIdRef.current = restoredSession.sourceId;
+              setEditorSourceId(restoredSession.sourceId);
+              setDraft(restoredDraft);
+            } else {
+              clearEditorSession();
+            }
+          }
         })
         .catch((reason: unknown) => {
           if (!active) return;
@@ -57,7 +139,13 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     }, [token]);
 
     useEffect(() => {
-      if (resetKey > 0) setDraft(null);
+      if (resetKey > 0) {
+        clearEditorSession();
+        restoredSessionRef.current = null;
+        editorSourceIdRef.current = "";
+        setEditorSourceId("");
+        setDraft(null);
+      }
     }, [resetKey]);
 
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -67,14 +155,21 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
       if (!nextDraft) return;
       setNotice(null);
       setDraft(nextDraft);
-      setEditorSourceId(`template-${template.id}`);
+      const sourceId = `template-${template.id}`;
+      editorSourceIdRef.current = sourceId;
+      setEditorSourceId(sourceId);
+      persistEditorSession(sourceId, nextDraft);
     }, []);
 
     const createTemplate = useCallback(() => {
       const now = Date.now();
       setNotice(null);
-      setDraft(createBlankDraft(now));
-      setEditorSourceId(`new-${now}`);
+      const nextDraft = createBlankDraft(now);
+      const sourceId = `new-${now}`;
+      setDraft(nextDraft);
+      editorSourceIdRef.current = sourceId;
+      setEditorSourceId(sourceId);
+      persistEditorSession(sourceId, nextDraft);
     }, []);
 
     const refreshTemplates = useCallback(async () => {
@@ -99,7 +194,15 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     }, [refreshing, token]);
 
     const handleTemplateUpdated = useCallback((updated: FormTemplate) => {
-      setTemplates((current) => current.map((item) => (item.code === updated.code ? updated : item)));
+      setTemplates((current) =>
+        current.some((item) => item.code === updated.code)
+          ? current.map((item) => (item.code === updated.code ? updated : item))
+          : [...current, updated],
+      );
+    }, []);
+
+    const handleTemplateDeleted = useCallback((code: string) => {
+      setTemplates((current) => current.filter((item) => item.code !== code));
     }, []);
 
     const handleTemplateSaved = useCallback((saved: FormTemplate, refreshed: FormTemplate[]) => {
@@ -107,16 +210,23 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
       if (!nextDraft) return;
       setTemplates(refreshed);
       setDraft(nextDraft);
-      setEditorSourceId(`template-${saved.id}`);
+      const sourceId = `template-${saved.id}`;
+      editorSourceIdRef.current = sourceId;
+      setEditorSourceId(sourceId);
+      persistEditorSession(sourceId, nextDraft);
     }, []);
 
     const closeEditor = useCallback(() => {
+      clearEditorSession();
+      editorSourceIdRef.current = "";
+      setEditorSourceId("");
       setDraft(null);
       setNotice(null);
     }, []);
 
     const updateDraft = useCallback((nextDraft: DraftTemplate) => {
       setDraft(nextDraft);
+      persistEditorSession(editorSourceIdRef.current, nextDraft);
     }, []);
 
     if (loading) {
@@ -141,6 +251,7 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
           onCreate={createTemplate}
           onEdit={editTemplate}
           onRefresh={refreshTemplates}
+          onTemplateDeleted={handleTemplateDeleted}
           onTemplateUpdated={handleTemplateUpdated}
         />
       );

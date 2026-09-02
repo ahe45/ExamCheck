@@ -95,7 +95,9 @@ test.describe("FHD 변경 작업 흐름", () => {
     let photoSwitch = editor.getByRole("checkbox", { name: /수험생 사진 사용/ });
     await expect(photoSwitch).toBeChecked();
     await photoSwitch.click({ force: true });
-    await expect(editor.getByRole("button", { name: "설정 저장" })).toBeEnabled();
+    const saveButton = editor.getByRole("button", { name: "설정 저장" });
+    await expect(saveButton).toBeEnabled();
+    await expect(saveButton).toHaveClass(/exam-outline-button/);
 
     await editor.getByRole("button", { name: "닫기", exact: true }).click();
     let confirmation = page.getByRole("alertdialog", { name: /전형 설정을 저장하시겠습니까/ });

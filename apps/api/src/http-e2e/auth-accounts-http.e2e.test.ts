@@ -81,7 +81,7 @@ const accountsServiceStub = {
 };
 
 const developerSettingsServiceStub = {
-  async get() {
+  async getForUser() {
     developerSettingsGetCalls += 1;
     return {
       schoolName: "한국대학교",

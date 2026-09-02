@@ -33,8 +33,8 @@ export class DeveloperSettingsController {
   constructor(@Inject(DeveloperSettingsService) private readonly settingsService: DeveloperSettingsService) {}
 
   @Get()
-  get() {
-    return this.settingsService.get();
+  get(@CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.getForUser(user);
   }
 
   @Put()

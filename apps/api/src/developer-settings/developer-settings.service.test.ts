@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
+import type { SqlExecutor } from "../common/database/sql-executor.js";
+import type { IdentityReadRouteRequest, IdentityReadRouter } from "../identity-transition/identity-read-router.js";
 import type { UpdateDeveloperSettingsDto } from "./developer-settings.dto.js";
 import { DeveloperSettingsService } from "./developer-settings.service.js";
 
@@ -23,6 +25,33 @@ const updateInput: UpdateDeveloperSettingsDto = {
 };
 
 describe("DeveloperSettingsService mutation transactions", () => {
+  it("routes an authenticated developer policy read on one transaction connection", async () => {
+    const route = vi.fn(async (_connection: SqlExecutor, request: IdentityReadRouteRequest<unknown>) => {
+      const legacy = await request.legacy();
+      const target = await request.target();
+      expect(legacy.rows).toEqual([
+        {
+          entityId: 1,
+          projection: { academicYear: 2026, examineeScope: "SYSTEM", pseudonymScope: "ADMISSION" },
+        },
+      ]);
+      return { value: target.value };
+    });
+    const fixture = createFixture({ route } as unknown as IdentityReadRouter);
+
+    await expect(fixture.service.getForUser(developer)).resolves.toMatchObject({
+      examineeNoUniqueness: "SCHEDULE",
+      pseudonymNoUniqueness: "SCHEDULE",
+    });
+
+    expect(route).toHaveBeenCalledWith(
+      fixture.connection,
+      expect.objectContaining({ userId: developer.id, observationType: "identity-live.developer-number-policy.v1" }),
+    );
+    expect(fixture.connectionCommit).toHaveBeenCalledOnce();
+    expect(fixture.connectionRelease).toHaveBeenCalledOnce();
+  });
+
   it("commits a profile update and its audit on the same connection before reading the response", async () => {
     const fixture = createFixture();
 
@@ -356,7 +385,7 @@ describe("DeveloperSettingsService.changePassword", () => {
   });
 });
 
-function createFixture() {
+function createFixture(identityReadRouter?: IdentityReadRouter) {
   const profile = {
     schoolName: "한국대학교",
     academicYear: 2026,
@@ -376,7 +405,22 @@ function createFixture() {
     }
     return [{ affectedRows: 1 }, []];
   });
-  const connectionQuery = vi.fn().mockResolvedValue([[{ conflictCount: 0 }], []]);
+  const connectionQuery = vi.fn(async (sql: string): Promise<[unknown[], unknown[]]> => {
+    if (sql.includes("number_uniqueness_policy")) {
+      return [
+        [
+          {
+            ...profile,
+            examineeNoUniqueness: "SCHEDULE",
+            pseudonymNoUniqueness: "SCHEDULE",
+          },
+        ],
+        [],
+      ];
+    }
+    if (sql.includes("FROM system_profile")) return [profileRows, []];
+    return [[{ conflictCount: 0 }], []];
+  });
   const connectionBegin = vi.fn().mockResolvedValue(undefined);
   const connectionCommit = vi.fn().mockResolvedValue(undefined);
   const connectionRollback = vi.fn().mockResolvedValue(undefined);
@@ -395,7 +439,14 @@ function createFixture() {
     query: poolQuery,
   } as unknown as Pool;
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
-  const service = new DeveloperSettingsService(pool, audit as unknown as MutationAuditRepository);
+  const service = new DeveloperSettingsService(
+    pool,
+    audit as unknown as MutationAuditRepository,
+    undefined,
+    undefined,
+    undefined,
+    identityReadRouter,
+  );
   return {
     audit,
     connection,

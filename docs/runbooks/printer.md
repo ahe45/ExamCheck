@@ -15,6 +15,14 @@
 
 이 키는 네트워크 재시도에 따른 서버 작업 중복을 막기 위한 장치다. 브라우저 전송 완료 이후 사용자가 새로 누른 재출력까지 막는 장치는 아니며, 물리 출력 여부도 판정하지 않는다.
 
+실패·만료 작업의 재시도와 전송 완료 작업의 재출력은 `POST /print-jobs/:id/reissue`로 요청한다.
+원작업 상태를 되돌리지 않고 새 `READY` 작업을 만들며, 재발행 요청 자체에도 별도 UUID
+`idempotencyKey`를 사용한다. 새 payload는 원작업 테이블의 현재 값이 아니라 생성 시점의 불변
+`print_projection_snapshot`에서 복제하며, snapshot이 없는 레거시 작업은 재발행을 거부한다.
+재시도 사유는 `CLIENT_SEND_RETRY`, `PRINTER_RECOVERY`, 재출력 사유는
+`LABEL_DAMAGED`, `PRINT_QUALITY_ISSUE`, `OPERATOR_REQUEST` 중 하나만 허용한다. 이름·수험번호·오류 원문
+같은 자유문구는 사유에 입력하지 않는다.
+
 ## 유효 시간 설정
 
 `PRINT_JOB_EXPIRY_SECONDS`는 양의 정수 초 단위로 설정한다. 값이 없으면 `300`초를 사용하며, 0·음수·소수·숫자가 아닌 값은 서버 시작 시 설정 오류로 처리한다. 만료된 `READY` 작업에 결과가 들어오면 서버는 상태를 `EXPIRED`로 확정하고 이후 `SENT`나 `FAILED`로 되돌리지 않는다.
@@ -22,8 +30,8 @@
 ## 장애 확인 순서
 
 1. 브라우저 알림에서 서버 작업 생성 실패인지 Browser Print 전송 실패인지 구분한다.
-2. `print_job`의 최종 상태와 `audit_log`의 `PRINT_JOB_CREATED`, `PRINT_JOB_SENT`, `PRINT_JOB_FAILED`, `PRINT_JOB_EXPIRED` 이벤트를 확인한다.
+2. `print_job`의 최종 상태와 `audit_log`의 `PRINT_JOB_CREATED`, `PRINT_JOB_SENT`, `PRINT_JOB_FAILED`, `PRINT_JOB_EXPIRED`, `PRINT_JOB_REISSUED` 이벤트를 확인한다.
 3. `SENT`인 경우에도 Windows 인쇄 대기열, GT800 전원·USB 연결, 용지·리본·헤드 상태와 실제 출력물을 확인한다.
-4. 동일 사용자·동일 `idempotency_key`에 작업이 하나만 존재하고 `request_fingerprint`가 64자리인지 확인한다. 원본 오류 문구는 최대 500자까지 그대로 보관된다.
+4. 동일 사용자·동일 `idempotency_key`에 작업이 하나만 존재하고 `request_fingerprint`가 64자리인지 확인한다. 재발행이면 `print_job_reissue_event`의 원작업·새 작업·사유 코드·작업자·시각도 확인한다. 이 이력은 수정·삭제할 수 없다. 원본 오류 문구는 최대 500자까지 그대로 보관된다.
 
 수험번호, 중복 방지 키, 요청 지문, 프린터 오류 원문은 감사 로그의 `details`에 복제하지 않는다. 오류 원문은 접근이 제한된 `print_job.error_message`에서만 확인하고, 감사 로그에는 작업 번호·매수·최종 상태처럼 운영 추적에 필요한 최소 정보만 남긴다.

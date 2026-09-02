@@ -56,6 +56,68 @@
   font-size: 12px;
 }
 
+/* 대시보드는 관리자 공통 제목·버튼과 같은 글자 위계를 사용한다. */
+.exam-admin-app .admin-dashboard-updated {
+  color: #59687e;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.exam-admin-app .admission-dashboard-overview h3,
+.exam-admin-app .admission-status-section h3 {
+  font-size: 17px;
+  line-height: 1.35;
+}
+.exam-admin-app .admission-dashboard-overview header p,
+.exam-admin-app .admission-status-section header p {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.exam-admin-app .admission-summary-panel > div p,
+.exam-admin-app .admission-ratio-legend p {
+  font-size: 14px;
+}
+.exam-admin-app .admission-summary-panel > div strong,
+.exam-admin-app .admission-ratio-legend strong {
+  font-size: 15px;
+}
+.exam-admin-app .admission-donut small,
+.exam-admin-app .admission-donut i,
+.exam-admin-app .admission-ratio-legend b {
+  font-size: 12px;
+}
+.exam-admin-app .admission-progress-list span strong {
+  font-size: 14px;
+}
+.exam-admin-app .admission-progress-list span small {
+  font-size: 12px;
+}
+.exam-admin-app .admission-progress-list > div > b {
+  font-size: 14px;
+}
+.exam-admin-app .admission-progress-list > div > em {
+  font-size: 12px;
+}
+.exam-admin-app .admission-status-section > header > span {
+  padding: 9px 12px;
+  font-size: 12px;
+}
+.exam-admin-app .admission-card-state,
+.exam-admin-app .admission-status-card > p,
+.exam-admin-app .admission-status-card dt,
+.exam-admin-app .admission-card-progress > span,
+.exam-admin-app .admission-card-progress > strong,
+.exam-admin-app .admission-dashboard-empty span {
+  font-size: 12px;
+}
+.exam-admin-app .admission-status-card h4 {
+  font-size: 15px;
+}
+.exam-admin-app .admission-status-card dd,
+.exam-admin-app .admission-dashboard-empty strong {
+  font-size: 14px;
+}
+
 .account-admin-main .candidate-data-actions button {
   display: inline-flex;
   align-items: center;
@@ -103,9 +165,6 @@
   font-size: 12px;
 }
 
-.exam-admin-app .template-card-title-row span {
-  font-size: var(--template-card-xs);
-}
 .exam-admin-app .exam-template-card footer {
   font-size: var(--template-card-sm);
 }

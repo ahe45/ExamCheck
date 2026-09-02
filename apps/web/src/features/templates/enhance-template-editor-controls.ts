@@ -1,0 +1,92 @@
+import type {
+  TemplateEditorDocument,
+  TemplateEditorInstance,
+  TemplateEditorPage,
+} from "../../shared/templates/template-editor-contracts";
+import { bindLineHeightControl } from "examlist-template-editor/examlist/template-editor/editor-line-height-control";
+import { bindObjectAlignmentControls } from "examlist-template-editor/examlist/template-editor/object-alignment-controls";
+import { bindObjectPointerControls } from "examlist-template-editor/examlist/template-editor/object-pointer-controls";
+import { bindObjectSizeControls } from "examlist-template-editor/examlist/template-editor/object-size-controls";
+import { bindPageNumberControls } from "examlist-template-editor/examlist/template-editor/page-number-controls";
+import { bindSignatureNameControls } from "./signature-name-controls";
+import { bindDataTagFormatControls } from "./data-tag-format-controls";
+import type { TemplateEditorTransactionCoordinator } from "./editor/template-editor-transaction-coordinator";
+import {
+  createTemplateEditorCommandDispatcher,
+  type TemplateEditorCommandDispatcher,
+} from "./editor/template-editor-command-dispatcher";
+import {
+  bindTemplateEditorCanvasSelectionPersistence,
+  bindTemplateEditorToolbarFocusPersistence,
+} from "./template-editor-selection-sync";
+
+function getSelectedPage(editor: TemplateEditorInstance): TemplateEditorPage | null {
+  const value = editor.getValue();
+  if (!value || typeof value === "string") return null;
+  const pages = (value as TemplateEditorDocument).layout?.pages || [];
+  const selectedPageId = editor.getSelectedPageId();
+  return pages.find((page) => page.id === selectedPageId) || pages[0] || null;
+}
+
+export function enhanceTemplateEditorControls(
+  root: HTMLElement,
+  editor: TemplateEditorInstance,
+  transactions: TemplateEditorTransactionCoordinator,
+  commandDispatcher?: TemplateEditorCommandDispatcher,
+) {
+  const pagePropertiesHost = root.querySelector<HTMLElement>(".template-page-properties-panel");
+  const surfaceElement = root.querySelector<HTMLElement>("[data-template-editor-runtime-surface]");
+  const toolbarHost = root.querySelector<HTMLElement>(".editor-toolbar");
+  const dataTagHost = root.querySelector<HTMLElement>("[data-template-editor-runtime-tag-panel]");
+  const selectedPage = getSelectedPage(editor);
+  if (!pagePropertiesHost || !surfaceElement || !toolbarHost || !selectedPage) return () => undefined;
+
+  const appState = {
+    templateEditor: {
+      get selectedPageId() {
+        return editor.getSelectedPageId();
+      },
+      get template() {
+        return editor.getValue();
+      },
+    },
+  };
+  const markDirty = () => transactions.request("editor-control.change");
+  const runtime = editor.getRuntime();
+  const commands =
+    commandDispatcher ||
+    createTemplateEditorCommandDispatcher({ documentSurface: surfaceElement, editor, transactions });
+  const disposers = [
+    bindTemplateEditorCanvasSelectionPersistence(editor, surfaceElement),
+    bindTemplateEditorToolbarFocusPersistence(
+      editor,
+      surfaceElement,
+      toolbarHost,
+      commands,
+      dataTagHost ? [dataTagHost] : [],
+    ),
+    bindDataTagFormatControls({ commandDispatcher: commands, rootElement: root }),
+    bindObjectPointerControls({
+      editor: runtime,
+      onDirty: markDirty,
+      rootElement: root,
+      selectedPage,
+      surfaceElement,
+    }),
+    bindLineHeightControl({ editor: runtime, surfaceElement, toolbarHost }),
+    bindObjectSizeControls({ editor: runtime, onDirty: markDirty, selectedPage, surfaceElement, toolbarHost }),
+    bindObjectAlignmentControls({ editor: runtime, surfaceElement, toolbarHost }),
+    bindPageNumberControls({ appState, onDirty: markDirty, pagePropertiesHost, selectedPage, surfaceElement }),
+    bindSignatureNameControls({ pagePropertiesHost, selectedPage, surfaceElement, onDirty: markDirty }),
+  ];
+
+  const dataBlockSection = pagePropertiesHost.querySelector(".examlist-candidate-block-grid-field");
+  const pageNumberSection = pagePropertiesHost.querySelector(".examlist-page-number-field");
+  const signatureSection = pagePropertiesHost.querySelector(".examcheck-signature-name-field");
+  if (dataBlockSection && pageNumberSection) dataBlockSection.after(pageNumberSection);
+  if (pageNumberSection && signatureSection) pageNumberSection.after(signatureSection);
+
+  return () => {
+    [...disposers].reverse().forEach((dispose) => dispose?.());
+  };
+}

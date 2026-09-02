@@ -59,11 +59,10 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
   const navigateToSection = useCallback(
     (targetSection: AdminSection) => {
       if (!developerMode && targetSection === "developer") targetSection = "dashboard";
-      const previousSection = activeSectionRef.current;
       onNavigate(adminSectionPaths[targetSection]);
       setActiveSection(targetSection);
       activeSectionRef.current = targetSection;
-      if (targetSection === "templates" && previousSection !== "templates") {
+      if (targetSection === "templates") {
         setTemplateResetKey((value) => value + 1);
       }
       if (targetSection === "dashboard") onDashboardOpen();
@@ -100,7 +99,11 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
     (targetSection: AdminSection) => {
       const currentSection = activeSectionRef.current;
       const dirtyState = { settings: settingsDirtyRef.current, templates: templateDirtyRef.current };
-      if (shouldGuardAdminNavigation(currentSection, targetSection, dirtyState)) {
+      const reopeningTemplateLibrary = currentSection === "templates" && targetSection === "templates";
+      if (
+        shouldGuardAdminNavigation(currentSection, targetSection, dirtyState) ||
+        (reopeningTemplateLibrary && dirtyState.templates)
+      ) {
         setPendingLeaveAction(targetSection);
         setPendingDirtySection(getActiveDirtySection(currentSection, dirtyState));
         setLeaveConfirmOpen(true);

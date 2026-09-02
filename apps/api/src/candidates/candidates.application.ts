@@ -4,6 +4,7 @@ import { MutationAuditRepository } from "../common/audit/mutation-audit.reposito
 import { withTransaction } from "../common/database/transaction.js";
 import { APP_CONFIG, type AppConfig } from "../config/app-config.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
+import { IdentityTransitionCoordinator } from "../identity-transition/identity-transition-coordinator.js";
 import {
   assertCandidateNumberUniqueness,
   buildCandidateImportPlan,
@@ -21,6 +22,7 @@ import {
   candidateWorkbookStateChecksum,
 } from "./candidate-preview-ticket.js";
 import { CandidatesRepository, type CandidateImportScopeGuardRow } from "./candidates.repository.js";
+import { CandidateIdentityRepository } from "./candidate-identity.repository.js";
 
 @Injectable()
 export class CandidatesApplicationService {
@@ -30,6 +32,8 @@ export class CandidatesApplicationService {
   constructor(
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     @Inject(CandidatesRepository) private readonly repository: CandidatesRepository,
+    @Inject(CandidateIdentityRepository) private readonly identityRepository: CandidateIdentityRepository,
+    @Inject(IdentityTransitionCoordinator) private readonly identityTransition: IdentityTransitionCoordinator,
     @Inject(MutationAuditRepository) private readonly audit: MutationAuditRepository,
     @Inject(APP_CONFIG) config: Readonly<AppConfig>,
   ) {
@@ -46,6 +50,8 @@ export class CandidatesApplicationService {
   ) {
     try {
       return await withTransaction(this.pool, async (connection) => {
+        const identityDecision = await this.identityTransition.decideWrite(connection);
+        assertLegacyCompatibilityWrite(identityDecision.writeLegacy);
         const uniqueness = await this.repository.loadExamineeNumberUniqueness(connection, { forUpdate: true });
         const existing = await this.repository.loadExisting(connection, { forUpdate: true });
         if (expectedStateChecksum) {
@@ -84,13 +90,20 @@ export class CandidatesApplicationService {
         }
 
         for (const item of plan.items) {
-          if (item.action === "skip") continue;
-          if (item.action === "update") {
-            await this.repository.updateCandidate(connection, item.current.id, item.candidate);
+          let sourceCandidateRecordId: number;
+          if (item.action === "skip") {
+            sourceCandidateRecordId = item.current.id;
+          } else if (item.action === "update") {
+            sourceCandidateRecordId = item.current.id;
+            await this.repository.updateCandidate(connection, sourceCandidateRecordId, item.candidate);
+            await this.repository.syncOperationalExaminee(connection, item.candidate, this.examName);
           } else {
-            await this.repository.insertCandidate(connection, item.candidate);
+            sourceCandidateRecordId = await this.repository.insertCandidate(connection, item.candidate);
+            await this.repository.syncOperationalExaminee(connection, item.candidate, this.examName);
           }
-          await this.repository.syncOperationalExaminee(connection, item.candidate, this.examName);
+          if (identityDecision.writeTarget) {
+            await this.identityRepository.syncCandidateRecord(connection, sourceCandidateRecordId, this.examName);
+          }
         }
 
         const result = {
@@ -120,6 +133,8 @@ export class CandidatesApplicationService {
   ) {
     try {
       return await withTransaction(this.pool, async (connection) => {
+        const identityDecision = await this.identityTransition.decideWrite(connection);
+        assertLegacyCompatibilityWrite(identityDecision.writeLegacy);
         const candidateRows = await this.repository.listCandidatePhotos(connection, { forUpdate: true });
         if (expectedStateChecksum) {
           assertCandidatePreviewState(
@@ -135,6 +150,9 @@ export class CandidatesApplicationService {
           for (const candidate of item.photo.candidateRows) {
             if (policy === "insert-only" && candidate.photoHash) continue;
             await this.repository.upsertCandidatePhoto(connection, candidate.id, item.photo);
+            if (identityDecision.writeTarget) {
+              await this.identityRepository.syncCandidatePhoto(connection, candidate.id);
+            }
           }
         }
 
@@ -155,6 +173,12 @@ export class CandidatesApplicationService {
     } catch (error) {
       throw toCandidateHttpError(error);
     }
+  }
+}
+
+function assertLegacyCompatibilityWrite(writeLegacy: boolean): void {
+  if (!writeLegacy) {
+    throw new Error("Candidate canonical writes are blocked until the target candidate import contract is activated.");
   }
 }
 

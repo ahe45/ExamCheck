@@ -96,5 +96,10 @@ export default defineConfig({
       testMatch: /workflow\.spec\.ts/,
       use: { viewport: { width: 1920, height: 1080 } },
     },
+    {
+      name: "template-editor-fhd",
+      testMatch: /template-editor\.spec\.ts/,
+      use: { viewport: { width: 1920, height: 1080 } },
+    },
   ],
 });

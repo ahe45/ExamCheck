@@ -5,11 +5,13 @@ import type { MutationAuditRepository } from "../src/common/audit/mutation-audit
 import { MutationAuditRepository as AuditRepository } from "../src/common/audit/mutation-audit.repository.js";
 import { runWithRequestContext } from "../src/common/http/request-context.js";
 import type { CandidatePhotoArchiveFiles } from "../src/candidates/candidate-domain.js";
+import type { CandidateIdentityRepository } from "../src/candidates/candidate-identity.repository.js";
 import { candidateFields, type CandidateInput } from "../src/candidates/candidate-fields.js";
 import { CandidatesApplicationService } from "../src/candidates/candidates.application.js";
 import { CandidatesRepository } from "../src/candidates/candidates.repository.js";
 import { CandidatesService } from "../src/candidates/candidates.service.js";
 import { resolveAppConfig } from "../src/config/app-config.js";
+import type { IdentityTransitionCoordinator } from "../src/identity-transition/identity-transition-coordinator.js";
 import { createMariaDbIntegrationHarness, type MariaDbIntegrationHarness } from "../test-support/mariadb-harness.js";
 
 let harness: MariaDbIntegrationHarness;
@@ -306,6 +308,13 @@ function createApplication(audit: MutationAuditRepository, repository = new Cand
   return new CandidatesApplicationService(
     harness.pool,
     repository,
+    {
+      syncCandidateRecord: vi.fn(),
+      syncCandidatePhoto: vi.fn(),
+    } as unknown as CandidateIdentityRepository,
+    {
+      decideWrite: vi.fn().mockResolvedValue({ writeLegacy: true, writeTarget: false }),
+    } as unknown as IdentityTransitionCoordinator,
     audit,
     resolveAppConfig({ DEFAULT_EXAM_NAME: "IT 수험생 업로드 시험" }),
   );

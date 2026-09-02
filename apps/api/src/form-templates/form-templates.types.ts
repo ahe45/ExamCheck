@@ -14,3 +14,7 @@ export interface UpdateFormTemplateMetadataInput {
   name: string;
   description?: string;
 }
+
+export interface UpdateFormTemplateActiveInput {
+  active: boolean;
+}

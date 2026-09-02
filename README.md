@@ -5,7 +5,7 @@
 ## 현재 구성
 
 - `apps/web`: React + TypeScript + Vite, 권한별 로그인·가번호 부여·관리자 양식 편집·선택적 라벨 출력
-- `apps/api`: NestJS + MariaDB 11.4/MySQL 호환 DB, 인증·수험생 조회·가번호 부여·양식 버전·출력 작업 API
+- `apps/api`: NestJS + MariaDB 11.4/MySQL 호환 DB, 인증·수험생 조회·가번호 부여·양식 관리·출력 작업 API
 - `apps/api/src/database/migrations`: 버전 관리되는 MariaDB/MySQL 호환 SQL 스키마
 - `vendor/examlist-template-editor-1.1.0.tgz`: ExamList에서 가져온 동일 양식 편집기 패키지
 - `docs`: 실기기 POC 전에 채워야 할 환경/장비 체크 문서

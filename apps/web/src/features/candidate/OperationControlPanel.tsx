@@ -1,5 +1,6 @@
 import type { FormEvent, RefObject } from "react";
 import { ConfirmButtonIcon } from "../../shared/components/ActionIcons";
+import { useToastAutoDismiss } from "../../shared/hooks/useToastAutoDismiss";
 import type { Examinee } from "../../shared/api/examinees";
 import type { AssignmentMode, PseudonymAssignment } from "../../shared/api/pseudonyms";
 import { assignmentActionLabel } from "./operation-view-model";
@@ -46,6 +47,11 @@ export function OperationControlPanel({
   onManualNumber,
   onAssign,
 }: Props) {
+  const toastLifecycle = useToastAutoDismiss({
+    enabled: Boolean(notice),
+    resetKey: notice ? `${notice.kind}:${notice.text}` : "",
+    onClose: onCloseNotice,
+  });
   return (
     <aside className="operator-control-panel">
       <form className="operator-lookup" onSubmit={onSearch}>
@@ -80,7 +86,12 @@ export function OperationControlPanel({
         </div>
         {notice && (
           <div className="operator-toast-region" aria-live={notice.kind === "error" ? "assertive" : "polite"}>
-            <div className={`operator-toast ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
+            <div
+              className={`operator-toast ${notice.kind}${toastLifecycle.fading ? " is-fading" : ""}`}
+              role={notice.kind === "error" ? "alert" : "status"}
+              onMouseEnter={toastLifecycle.onMouseEnter}
+              onMouseLeave={toastLifecycle.onMouseLeave}
+            >
               <span aria-hidden="true">{notice.kind === "success" ? "✓" : "!"}</span>
               <div>
                 <strong>{notice.kind === "success" ? "처리 완료" : "확인 필요"}</strong>

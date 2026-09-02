@@ -52,6 +52,14 @@ export function EditButtonIcon() {
     </svg>
   );
 }
+export function CopyButtonIcon() {
+  return (
+    <svg className="button-action-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="6.5" y="6.5" width="9.5" height="9.5" rx="1.5" />
+      <path d="M13.5 6.5V5A1.5 1.5 0 0 0 12 3.5H5A1.5 1.5 0 0 0 3.5 5v7A1.5 1.5 0 0 0 5 13.5h1.5" />
+    </svg>
+  );
+}
 export function DeleteButtonIcon() {
   return (
     <svg className="button-action-icon" viewBox="0 0 20 20" aria-hidden="true">
@@ -108,6 +116,14 @@ export function BackButtonIcon() {
   return (
     <svg className="button-action-icon" viewBox="0 0 20 20" aria-hidden="true">
       <path d="m8.5 5-5 5 5 5M4 10h12" />
+    </svg>
+  );
+}
+export function ListButtonIcon() {
+  return (
+    <svg className="button-action-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="3.5" y="3.5" width="13" height="13" rx="2" />
+      <path d="M7.5 7h6M7.5 10h6M7.5 13h6M5.8 7h.01M5.8 10h.01M5.8 13h.01" />
     </svg>
   );
 }

@@ -9,9 +9,12 @@ const packageMock = vi.hoisted(() => ({
   destroy: vi.fn(),
   getHtml: vi.fn(() => "<p>양식</p>"),
   getRuntime: vi.fn(() => ({ setHtml: vi.fn() })),
+  getSelectedPageId: vi.fn(() => "page-1"),
+  getValue: vi.fn(() => ({ layout: { pages: [] } })),
   mountTemplateEditor: vi.fn(),
   preview: vi.fn(async () => ({ html: "<p>미리보기</p>" })),
   save: vi.fn(async () => ({ layout: { pages: [] } })),
+  sync: vi.fn(() => ({ layout: { pages: [] } })),
 }));
 
 vi.mock("examlist-template-editor", () => ({
@@ -37,8 +40,11 @@ function mountedPackageEditor() {
     destroy: packageMock.destroy,
     getHtml: packageMock.getHtml,
     getRuntime: packageMock.getRuntime,
+    getSelectedPageId: packageMock.getSelectedPageId,
+    getValue: packageMock.getValue,
     preview: packageMock.preview,
     save: packageMock.save,
+    sync: packageMock.sync,
   };
 }
 

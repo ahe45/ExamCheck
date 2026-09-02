@@ -158,6 +158,8 @@ export function PseudonymAssignmentPage(props: Props) {
     loading: templatesLoading,
     generating: generatingPdf,
     progress: printProgress,
+    signatureFields,
+    signatureNames,
   } = operationPrint;
 
   useLayoutEffect(() => {
@@ -190,12 +192,6 @@ export function PseudonymAssignmentPage(props: Props) {
     document.addEventListener("pointerdown", closeOnOutsideClick);
     return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
   }, [headerSettingsOpen]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), notice.kind === "success" ? 4000 : 6000);
-    return () => window.clearTimeout(timer);
-  }, [notice, setNotice]);
 
   useLayoutEffect(() => {
     if (!drawPopoverOpen || !candidatePreviewRef.current) {
@@ -369,7 +365,10 @@ export function PseudonymAssignmentPage(props: Props) {
           loading={templatesLoading}
           generating={generatingPdf}
           progress={printProgress}
+          signatureFields={signatureFields}
+          signatureNames={signatureNames}
           onSelect={operationPrint.setSelectedTemplateCode}
+          onSignatureNameChange={operationPrint.updateSignatureName}
           onClose={operationPrint.close}
           onGenerate={() => void operationPrint.generate()}
         />

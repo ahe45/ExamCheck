@@ -91,6 +91,10 @@ export interface AssignmentData {
 
 interface AssignmentRow extends RowDataPacket, AssignmentData {}
 
+interface IdRow extends RowDataPacket {
+  id: number;
+}
+
 export interface ScheduleCountRow extends RowDataPacket {
   date: string;
   time: string;
@@ -505,8 +509,8 @@ export class PseudonymsRepository {
     pseudonymNumber: string,
     assignmentMode: PseudonymAssignmentMode,
     actorUserId: number,
-  ): Promise<void> {
-    await executor.execute(
+  ): Promise<number> {
+    const [result] = await executor.execute<ResultSetHeader>(
       `INSERT INTO pseudonym_assignment
         (examinee_id, candidate_record_id, exam_name, admission_name, uniqueness_scope_key,
          pseudonym_no, assignment_mode, is_absentee, auto_assigned_on_close, assigned_by)
@@ -522,6 +526,7 @@ export class PseudonymsRepository {
         actorUserId,
       ],
     );
+    return result.insertId;
   }
 
   async closeOperation(executor: SqlExecutor, operationId: number, actorUserId: number): Promise<void> {
@@ -544,6 +549,24 @@ export class PseudonymsRepository {
       [input.examName, input.admissionName, input.examDate, input.examTime, input.periodName, input.admissionName],
     );
     return result.affectedRows;
+  }
+
+  async listAutoAssignedAbsenteeIdsForUpdate(
+    executor: SqlExecutor,
+    input: PseudonymOperationScopeInput,
+  ): Promise<number[]> {
+    const [rows] = await executor.execute<IdRow[]>(
+      `SELECT pa.id
+       FROM pseudonym_assignment pa
+       INNER JOIN candidate_record cr ON cr.id = pa.candidate_record_id
+       WHERE pa.auto_assigned_on_close = TRUE
+         AND pa.exam_name = ? AND pa.admission_name = ?
+         AND cr.exam_date = ? AND cr.start_time = ?
+         AND cr.period_name = ? AND cr.admission = ?
+       ORDER BY pa.id FOR UPDATE`,
+      [input.examName, input.admissionName, input.examDate, input.examTime, input.periodName, input.admissionName],
+    );
+    return rows.map((row) => Number(row.id));
   }
 
   async reopenOperation(executor: SqlExecutor, operationId: number, actorUserId: number): Promise<void> {

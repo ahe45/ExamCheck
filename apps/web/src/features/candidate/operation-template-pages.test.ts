@@ -136,13 +136,31 @@ describe("buildOperationTemplatePages", () => {
     ).rejects.toSatisfy(isAbortError);
     expect(mocks.renderTemplateHtml).not.toHaveBeenCalled();
   });
+
+  it("projects entered author and reviewer names into every rendered page", async () => {
+    mocks.getTemplateDocumentHtml.mockReturnValue("<p></p>");
+    mocks.renderTemplateHtml.mockImplementation(
+      (_layout: unknown, values: Record<string, unknown>) =>
+        `${values["signature.author"]}/${values["signature.reviewer"]}`,
+    );
+
+    await expect(
+      buildOperationTemplatePages(candidateTemplate(), [operationRow(1)], {
+        token: "token",
+        systemProfile,
+        schedule,
+        examName: "2026년도 자격시험",
+        operationClosed: true,
+        signatureNames: { "signature.author": "김작성", "signature.reviewer": "이확인" },
+      }),
+    ).resolves.toEqual(["김작성/이확인"]);
+  });
 });
 
 function candidateTemplate(): FormTemplate {
   return {
     id: 1,
     code: "CANDIDATE_CARD",
-    version: 1,
     name: "수험생 확인표",
     description: null,
     category: "운영",

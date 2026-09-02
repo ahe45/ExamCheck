@@ -13,6 +13,7 @@ import { WorkstationsModule } from "./workstations/workstations.module.js";
 import { CandidatesModule } from "./candidates/candidates.module.js";
 import { AccountsModule } from "./accounts/accounts.module.js";
 import { DeveloperSettingsModule } from "./developer-settings/developer-settings.module.js";
+import { IdentityTransitionModule } from "./identity-transition/identity-transition.module.js";
 
 @Module({})
 export class AppModule {
@@ -22,6 +23,7 @@ export class AppModule {
       imports: [
         AppConfigModule.forRoot(config),
         DatabaseModule,
+        IdentityTransitionModule,
         AuthModule,
         DriversModule,
         ExamineesModule,

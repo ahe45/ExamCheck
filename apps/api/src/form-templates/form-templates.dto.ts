@@ -1,5 +1,9 @@
 import { IsBoolean, IsIn, IsObject, IsOptional, IsString, Length, Matches } from "class-validator";
-import type { SaveFormTemplateInput, UpdateFormTemplateMetadataInput } from "./form-templates.types.js";
+import type {
+  SaveFormTemplateInput,
+  UpdateFormTemplateActiveInput,
+  UpdateFormTemplateMetadataInput,
+} from "./form-templates.types.js";
 
 export class FormTemplateCodeParamDto {
   @IsString()
@@ -47,4 +51,9 @@ export class UpdateFormTemplateMetadataDto implements UpdateFormTemplateMetadata
   @IsString()
   @Length(0, 500)
   description?: string;
+}
+
+export class UpdateFormTemplateActiveDto implements UpdateFormTemplateActiveInput {
+  @IsBoolean()
+  active!: boolean;
 }

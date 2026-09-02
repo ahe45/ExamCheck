@@ -3,6 +3,8 @@ import type { Pool, PoolConnection } from "mysql2/promise";
 import { describe, expect, it, vi } from "vitest";
 import type { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { resolveAppConfig } from "../config/app-config.js";
+import type { IdentityTransitionCoordinator } from "../identity-transition/identity-transition-coordinator.js";
+import type { CandidateIdentityRepository } from "./candidate-identity.repository.js";
 import type { CandidatePhotoArchiveFiles } from "./candidate-domain.js";
 import { candidateKey, type CandidateInput } from "./candidate-fields.js";
 import { CandidatesApplicationService } from "./candidates.application.js";
@@ -68,6 +70,24 @@ describe("CandidatesApplicationService", () => {
     expect(fixture.connection.rollback).toHaveBeenCalledOnce();
     expect(fixture.connection.commit).not.toHaveBeenCalled();
     expect(fixture.connection.release).toHaveBeenCalledOnce();
+  });
+
+  it("projects inserted candidates to the target model before audit in DUAL mode", async () => {
+    const fixture = createFixture();
+    fixture.identityTransition.decideWrite.mockResolvedValue({ writeLegacy: true, writeTarget: true });
+    fixture.repository.loadExamineeNumberUniqueness.mockResolvedValue("SYSTEM");
+    fixture.repository.loadExisting.mockResolvedValue(new Map());
+    fixture.repository.insertCandidate.mockResolvedValue(91);
+
+    await fixture.application.importCandidates([candidate()], "insert-update", "workbook-sha256", 7);
+
+    expect(fixture.identityRepository.syncCandidateRecord).toHaveBeenCalledWith(fixture.connection, 91, "테스트 시험");
+    expect(fixture.repository.syncOperationalExaminee.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.identityRepository.syncCandidateRecord.mock.invocationCallOrder[0]!,
+    );
+    expect(fixture.identityRepository.syncCandidateRecord.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.audit.record.mock.invocationCallOrder[0]!,
+    );
   });
 
   it("maps pure candidate validation errors back to the existing HTTP bad-request contract", async () => {
@@ -286,14 +306,23 @@ function createFixture() {
     upsertCandidatePhoto: vi.fn(),
   };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
+  const identityRepository = {
+    syncCandidateRecord: vi.fn().mockResolvedValue(undefined),
+    syncCandidatePhoto: vi.fn().mockResolvedValue(undefined),
+  };
+  const identityTransition = {
+    decideWrite: vi.fn().mockResolvedValue({ writeLegacy: true, writeTarget: false }),
+  };
   const config = resolveAppConfig({ DEFAULT_EXAM_NAME: "테스트 시험" });
   const application = new CandidatesApplicationService(
     pool,
     repository as unknown as CandidatesRepository,
+    identityRepository as unknown as CandidateIdentityRepository,
+    identityTransition as unknown as IdentityTransitionCoordinator,
     audit as unknown as MutationAuditRepository,
     config,
   );
-  return { application, audit, connection, pool, repository };
+  return { application, audit, connection, identityRepository, identityTransition, pool, repository };
 }
 
 function scopeGuard(guardType: "RANGE" | "CLOSED") {

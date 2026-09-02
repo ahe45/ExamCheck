@@ -14,6 +14,9 @@ import { MutationAuditRepository } from "../common/audit/mutation-audit.reposito
 import { isDuplicateEntryError as isDuplicateEntry } from "../common/database/mysql-errors.js";
 import { withTransaction } from "../common/database/transaction.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
+import { IdentityBackfillProjectionRepository } from "../database/identity-backfill-projection.repository.js";
+import { IdentityReadRouter, type IdentityReadProjection } from "../identity-transition/identity-read-router.js";
+import { IdentityTransitionCoordinator } from "../identity-transition/identity-transition-coordinator.js";
 import type { PseudonymNoUniqueness } from "../uniqueness/number-uniqueness.js";
 import type { ChangeDeveloperPasswordDto, UpdateDeveloperSettingsDto } from "./developer-settings.dto.js";
 import { DeveloperSettingsRepository, type ProfileRow } from "./developer-settings.repository.js";
@@ -35,6 +38,15 @@ export class DeveloperSettingsService {
     @Inject(DATABASE_POOL) private readonly pool: Pool,
     @Inject(MutationAuditRepository) private readonly audit: MutationAuditRepository,
     @Optional() @Inject(DeveloperSettingsRepository) repository?: DeveloperSettingsRepository,
+    @Optional()
+    @Inject(IdentityTransitionCoordinator)
+    private readonly identityTransition: IdentityTransitionCoordinator = legacyIdentityTransitionCoordinator(),
+    @Optional()
+    @Inject(IdentityBackfillProjectionRepository)
+    private readonly identityProjection: IdentityBackfillProjectionRepository = new IdentityBackfillProjectionRepository(),
+    @Optional()
+    @Inject(IdentityReadRouter)
+    private readonly identityReadRouter: IdentityReadRouter = legacyIdentityReadRouter(),
   ) {
     this.repository = repository ?? new DeveloperSettingsRepository(pool);
   }
@@ -45,12 +57,29 @@ export class DeveloperSettingsService {
     return profileResponse(profile);
   }
 
+  async getForUser(user: AuthenticatedUser) {
+    return withTransaction(this.pool, async (connection) => {
+      const routed = await this.identityReadRouter.route(connection, {
+        userId: user.id,
+        observationType: "identity-live.developer-number-policy.v1",
+        legacy: async () => profileReadProjection(await this.repository.getProfileForRead(connection)),
+        target: async () => profileReadProjection(await this.repository.getTargetProfileForRead(connection)),
+      });
+      return routed.value;
+    });
+  }
+
   async update(input: UpdateDeveloperSettingsDto, user: AuthenticatedUser) {
     try {
       await withTransaction(this.pool, async (connection) => {
+        const identityDecision = await this.identityTransition.decideWrite(connection);
+        assertLegacyCompatibilityWrite(identityDecision.writeLegacy);
         const profile = await this.lockProfile(connection);
         const examineeNoUniqueness = input.examineeNoUniqueness ?? profile.examineeNoUniqueness;
         const pseudonymNoUniqueness = input.pseudonymNoUniqueness ?? profile.pseudonymNoUniqueness;
+        if (identityDecision.writeTarget && profile.academicYear !== input.academicYear) {
+          await this.identityProjection.assertAcademicYearChangeAllowed(connection, input.academicYear);
+        }
 
         if (profile.examineeNoUniqueness !== examineeNoUniqueness && examineeNoUniqueness === "SYSTEM") {
           await this.assertNoSystemExamineeNumberConflicts(connection);
@@ -70,6 +99,9 @@ export class DeveloperSettingsService {
           pseudonymNoUniqueness,
           updatedBy: user.id,
         });
+        if (identityDecision.writeTarget) {
+          await this.identityProjection.syncCurrentNumberPolicyAndClaims(connection, user.id);
+        }
         await this.audit.record(connection, {
           eventType: "SYSTEM_PROFILE_UPDATED",
           actorUserId: user.id,
@@ -199,6 +231,56 @@ export class DeveloperSettingsService {
   }
 }
 
+function legacyIdentityTransitionCoordinator(): IdentityTransitionCoordinator {
+  return {
+    decideWrite: async () => ({
+      state: {
+        enabled: false,
+        writeMode: "LEGACY",
+        readMode: "LEGACY",
+        phase: "EXPANDED",
+        version: 0,
+        shadowHmacSecret: null,
+      },
+      writeLegacy: true,
+      writeTarget: false,
+      authority: "LEGACY",
+    }),
+  } as unknown as IdentityTransitionCoordinator;
+}
+
+function legacyIdentityReadRouter(): IdentityReadRouter {
+  return {
+    route: async (_executor: unknown, request: { legacy: () => Promise<IdentityReadProjection<unknown>> }) => {
+      const legacy = await request.legacy();
+      return {
+        value: legacy.value,
+        decision: {
+          state: {
+            enabled: false,
+            writeMode: "LEGACY",
+            readMode: "LEGACY",
+            phase: "EXPANDED",
+            version: 0,
+            shadowHmacSecret: null,
+          },
+          readLegacy: true,
+          readTarget: false,
+          compare: false,
+          responseSource: "LEGACY",
+          canarySelected: false,
+        },
+      };
+    },
+  } as unknown as IdentityReadRouter;
+}
+
+function assertLegacyCompatibilityWrite(writeLegacy: boolean): void {
+  if (!writeLegacy) {
+    throw new Error("System-profile canonical writes are blocked until the target profile contract is activated.");
+  }
+}
+
 function isLogoMimeType(value: string): value is LogoMimeType {
   return logoMimeTypes.has(value as LogoMimeType);
 }
@@ -245,5 +327,22 @@ function profileResponse(profile: ProfileRow) {
         ? `data:${profile.logoMimeType};base64,${profile.logoData.toString("base64")}`
         : null,
     updatedAt: profile.updatedAt,
+  };
+}
+
+function profileReadProjection(profile: ProfileRow | null): IdentityReadProjection<ReturnType<typeof profileResponse>> {
+  if (!profile) throw new NotFoundException("시스템 기본 설정을 찾을 수 없습니다.");
+  return {
+    value: profileResponse(profile),
+    rows: [
+      {
+        entityId: 1,
+        projection: {
+          academicYear: Number(profile.academicYear),
+          examineeScope: profile.examineeNoUniqueness,
+          pseudonymScope: profile.pseudonymNoUniqueness,
+        },
+      },
+    ],
   };
 }

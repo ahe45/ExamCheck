@@ -3,6 +3,7 @@ import { fetchExamineePhoto, type OperationSchedule } from "../../shared/api/exa
 import type { FormTemplate } from "../../shared/api/form-templates";
 import { boundedMap, isAbortError, throwIfAborted } from "../../shared/async/bounded-map";
 import { getTemplateDocumentHtml, renderTemplateHtml } from "../templates/template-renderer";
+import { emptyTemplateSignatureNames, type TemplateSignatureNames } from "../templates/template-signatures";
 import type { OperationRow } from "./operation-view-model";
 
 export interface OperationTemplateContext {
@@ -11,6 +12,7 @@ export interface OperationTemplateContext {
   schedule: OperationSchedule;
   examName: string;
   operationClosed: boolean;
+  signatureNames?: TemplateSignatureNames;
   signal?: AbortSignal;
   onPhotoProgress?(completed: number, total: number): void;
 }
@@ -82,6 +84,8 @@ function templateValues(
   ).length;
   const presentCount = groupRows.filter((item) => item.assignment && !item.candidate.absent).length;
   return {
+    ...emptyTemplateSignatureNames(),
+    ...(context.signatureNames || {}),
     "system.title": context.systemProfile.systemName,
     "system.printedAt": new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(
       new Date(),

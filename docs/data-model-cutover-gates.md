@@ -2,10 +2,11 @@
 
 > 기준 제안: [ADR 0002](./adr/0002-target-identity-model-proposal.md)  
 > 작성일: 2026-08-28  
-> 현재 상태: `001`~`026`은 로컬 적용·재실행 검증 완료. N-1(`025`)→latest(`026`) upgrade harness와
-> 합성 입력용 정규화·dry-run·shadow 비교 도구는 준비했지만 목표 identity 모델의 schema/data 변경,
-> live DB 진단, backfill, dual-write, read/write cutover는 수행하지 않음. 025는 인쇄 요청 지문,
-> 026은 감사 request ID 폭만 보강해 둘 다 이 전환 범위에 포함되지 않음.
+> 현재 상태: D-01–D-22 원칙과 ADR 0002는 사용자에게 2026-08-28 승인됐고, migration
+> `027`–`037`과 격리 backfill·shadow·transition 도구는 소스 및 nonce MariaDB에서 검증됨.
+> backup/restore, 운영 DB 적용, 운영 backfill, 실제 traffic dual-write/shadow, read/write 승격은
+> 아직 게이트를 통과하지 않았으며 계속 No-Go다. 보존기간·관찰량·성능 임계치의 구체 숫자는
+> 운영 전환 전에 별도 확정한다.
 
 ## 1. 목적과 적용 범위
 
@@ -24,74 +25,61 @@
 
 ### 2.1 재현 가능한 비식별 기준선
 
-| 기준                                           |                                 현재값 |
-| ---------------------------------------------- | -------------------------------------: |
-| migration                                      | 로컬 적용·소스 모두 26개 (`001`–`026`) |
-| 업로드 행 / candidate 후보                     |                              138 / 138 |
-| admission / operation slot / segment 후보      |                              1 / 6 / 6 |
-| exact registration 후보                        |                                    138 |
-| 복수 일정 수험번호 그룹                        |                                      0 |
-| 고립 활성 `examinee`                           |                                      8 |
-| 할당 전체 / exact mapping / legacy 미매핑      |                             11 / 6 / 5 |
-| 설정 / 범위 / 운영 상태                        |                              2 / 6 / 1 |
-| segment 범위 합 / 범위 합집합 / 대상자         |                         138 / 39 / 138 |
-| 겹치는 범위 쌍                                 |                                     15 |
-| 사진                                           |                                      0 |
-| print job / registration exact mapping         |                                  3 / 0 |
-| 사용자 권한 계정 / implicit-all 계정 / 배정 행 |                              1 / 0 / 1 |
+| 기준                                           |                                                       현재값 |
+| ---------------------------------------------- | -----------------------------------------------------------: |
+| migration                                      | 진단 기준 DB `001`–`026`; 현재 소스·격리 harness `001`–`037` |
+| 업로드 행 / candidate 후보                     |                                                    138 / 138 |
+| admission / operation slot / segment 후보      |                                                    1 / 6 / 6 |
+| exact registration 후보                        |                                                          138 |
+| 복수 일정 수험번호 그룹                        |                                                            0 |
+| 고립 활성 `examinee`                           |                                                            8 |
+| 할당 전체 / exact mapping / legacy 미매핑      |                                                   11 / 6 / 5 |
+| 설정 / 범위 / 운영 상태                        |                                                    2 / 6 / 1 |
+| segment 범위 합 / 범위 합집합 / 대상자         |                                               138 / 39 / 138 |
+| 겹치는 범위 쌍                                 |                                                           15 |
+| 사진                                           |                                                            0 |
+| print job / registration exact mapping         |                                                        3 / 0 |
+| 사용자 권한 계정 / implicit-all 계정 / 배정 행 |                                                    1 / 0 / 1 |
 
 ### 2.2 현재 알 수 없는 것
 
 - 로컬 DB가 실제 운영 데이터의 완전한 복제인지 여부
 - 운영 DB의 동일 집계값과 peak 규모
 - 승인된 운영 복원본에 NFKC를 적용했을 때의 전형·교시·공간 이름 충돌 수
-- `SYSTEM` 수험번호 범위가 DB 전체 수명인지 시험 주기인지
-- 5개 레거시 할당과 8개 고립 `examinee`가 운영 이력인지 sample인지
-- 기존 출력 작업 3건의 실제 업무 대상
-- 현재 사용자 배정 1건이 `ALL` 의도인지 `ASSIGNED` 의도인지
-- 운영 사진이 개인 단위인지 registration 단위인지
 - backup 보관 위치, 보존 기간, 암호화·접근 정책, 복원 RTO/RPO
+- 사진·출력 이력의 보존·파기 기간, 인쇄 expiry·최대 재시도
+- shadow 관찰 기간·처리량, latency·오류율·lock 임계치
 - 익명화 staging DB 제공 일정과 운영 규모 성능·lock 검증 환경
 
-CI용 MariaDB 11.4 service, fresh 임시 DB 검증, N-1(`025`)→latest(`026`) upgrade 시나리오는
-구성됐지만 운영 backup 복원본이나 익명화 staging을 대신하지 않는다. `identity-transition`의
-순수 도구는 NFKC·trim·수험번호 선행 0 보존, exact/unmapped/ambiguous/conflict·범위 용량 분류,
-salted HMAC projection 비교를 합성 fixture로 검증한다. DB나 API에 연결되지 않았으며 원문 PII를
-보고서에 직렬화하지 않는다.
+CI용 MariaDB 11.4 service, `001`~`037` fresh·재실행, `026`→`037` 기존 행 보존 upgrade가
+구성됐다. 격리 backfill과 consistent-snapshot shadow verifier도 nonce MariaDB 합성 fixture에
+연결해 검증했다. verifier는 후보자·사진·설정·범위·운영·배정·계정·인쇄를 source bridge로
+비교하고, 사진 BLOB은 조회/HMAC 입력에서 제외하며 HMAC으로 얻은 분류 집계만
+`identity_shadow_observation`에 기록한다. 이 결과는 운영 backup 복원본이나 익명화 staging,
+운영 traffic을 대신하지 않는다.
 
-미확인 항목을 기본값으로 추정해 schema나 데이터를 변경하지 않는다.
+미확인 운영값을 코드 기본값으로 추정하거나 운영 DB 적용·cutover 조건으로 사용하지 않는다.
 
 ## 3. 외부 결정 게이트
 
-아래 항목은 업무 책임자, 개인정보/운영 책임자, 개발 책임자의 기록된 승인이 필요하다.
+사용자가 2026-08-28 D-01~D-22 권장안을 목표 모델 범위로 승인했다. 상세 결정·예외는
+[결정 기록부 revision 2](./data-model-decision-register.md)에 있다. 실행 게이트에 직접 영향을 주는
+결정은 다음과 같다.
 
-| ID   | 필요한 결정                 | 선택지 또는 결정 내용                                            | 승인 전 금지                                    |
-| ---- | --------------------------- | ---------------------------------------------------------------- | ----------------------------------------------- |
-| D-01 | 시험 주기 identity          | cycle code 원본, 표시 시험명 원본, 학년도와 시험기간             | `DEFAULT_EXAM_NAME`을 임의 cycle ID로 고정      |
-| D-02 | 수험번호 `SYSTEM` 의미      | 모든 연도 DB 전체 또는 한 exam cycle                             | candidate claim scope 구현·정책 이름 변경       |
-| D-03 | 동일 수험번호 인적 identity | 같은 cycle의 복수 교시는 동일인으로 간주, 이름/생년 충돌 처리    | 마지막 업로드 행으로 인적정보 자동 덮기         |
-| D-04 | 전형 identity               | 외부 코드 도입 계획, 코드가 없을 때 이름 alias, 전형명 변경 절차 | 이름 변경을 신규 전형 또는 자동 merge로 처리    |
-| D-05 | slot identity               | 교시 코드/이름 우선순위, 종료시간 포함 여부, timezone            | 문자열 조합을 무검증 surrogate mapping으로 사용 |
-| D-06 | segment identity            | 모집단위·전공·건물·고사실 구성과 빈 값 규칙                      | 코드 공란을 임의 코드로 채우기                  |
-| D-07 | 수험번호 정규화             | NFKC, 공백, 허용문자, 선행 0, 최대 길이                          | 정규화 충돌 보고 없이 unique 생성               |
-| D-08 | 가번호 표시                 | canonical 숫자, 선행 0 자릿수, 전형/segment별 display width      | 문자열 `001`과 `1`을 다른 번호로 취급           |
-| D-09 | 가번호 유일 범위            | `ADMISSION`/`SCHEDULE` 의미와 사전부여 포함 전체 경로 적용       | 개발자 설정과 claim unique 제약을 다르게 구현   |
-| D-10 | 범위 겹침·용량              | 겹침 금지 또는 합집합 용량만 보장, 연속 배치 규칙                | 현재 39개 합집합으로 138명 canonical 운영 전환  |
-| D-11 | 레거시 할당 5건             | 운영 이력 보존, 승인 mapping, sample 삭제                        | 자동 삭제·임의 registration 연결·번호 재사용    |
-| D-12 | 고립 `examinee` 8건         | 운영 이력/호환 조회 보존, candidate 이관, sample 정리            | 자동 삭제 또는 첫 일정 생성                     |
-| D-13 | 기존 출력 3건               | immutable legacy 보존, 외부 증거로 mapping, retention            | 수험번호 추정으로 신규 FK 채움                  |
-| D-14 | 계정 전형 범위              | 현재 사용자별 `ALL`/`ASSIGNED`; 새 전형 추가 시 동작             | 배정 행 수만으로 목표 mode를 자동 추정          |
-| D-15 | 사진 identity·보존          | candidate 공통 사진 또는 registration별 사진, 보존·파기·접근     | 동일 수험번호 사진 자동 병합                    |
-| D-16 | 빈 전형 fallback 설정       | 전역 기본 유지, 전형별 복제, legacy 보존/제외                    | 첫 전형에 자동 연결                             |
-| D-17 | 양식 lifecycle              | draft/publish/version/metadata 수정과 과거 버전 보존             | 현재 active 동작을 근거 없이 변경               |
-| D-18 | 인쇄 재시도·보존            | expiry, 재출력 사유, retention, 실패 상태                        | 만료·재출력·폐기 정책을 코드 기본값으로 확정    |
-| D-19 | 관찰 기준                   | 최소 운영 기간/처리 건수, mismatch·latency·error 기준            | 정량 기준 없는 read/canonical cutover           |
+- 계층은 `exam_cycle → admission → operation_slot → schedule_segment`이고 candidate와
+  registration을 분리한다. `SYSTEM`은 exam cycle 범위다.
+- 수험번호는 NFKC·trim 후 선행 0을 보존한다. 가번호는 numeric canonical 값과 display width를
+  분리한다.
+- `ADMISSION`은 전형 내 범위 중복을 금지하고 union capacity를 충족해야 한다. `SCHEDULE`은 다른
+  slot 간 재사용을 허용하되 같은 slot 안에서는 중복을 금지한다.
+- 레거시 할당 5건, 고립 수험생 8건, 출력 3건은 추정·삭제하지 않고 legacy history로 보존한다.
+- 계정 scope는 명시적 `ALL/ASSIGNED`, 사진은 candidate 기준, 빈 전형 설정은 global default다.
+- published template과 과거 출력 snapshot은 immutable이고, reopen·재부여는 current projection과
+  append-only history를 분리한다. 필수 template 값 누락은 오류다.
+- exact old/new mismatch가 0일 때만 cutover할 수 있다.
 
-결정 기록에는 결정자, 일시, 적용 exam cycle, 예외 목록, 되돌림 조건을 포함한다.
-
-| D-20 | 마감 해제 삭제 의미 | current projection 삭제, event/audit 보존 또는 법적 hard delete | 이력 보존 정책 없이 assignment event 삭제 |
-| D-21 | 재부여 history | 한 현재값 + append-only events, 또는 별도 revision 모델 | 기존 assignment를 audit 없이 overwrite |
-| D-22 | template projection 호환 | tag alias 기간, null fallback, 지원 종료 버전 | 신규 모델에 없는 tag를 조용히 빈 값으로 처리 |
+보존 기간, expiry, 관찰 기간·처리량과 성능 임계치는 **원칙 승인/세부 운영값 별도 확정**이다.
+값이 정해지기 전에는 관련 운영 게이트를 통과한 것으로 보지 않는다.
 
 ## 4. Gate G0 — 설계 승인
 
@@ -104,6 +92,12 @@ salted HMAC projection 비교를 합성 fixture로 검증한다. DB나 API에 �
 - 개발자 메뉴의 두 유일 정책이 claim unique 제약과 같은 의미임을 리뷰함
 - history 테이블에 cascade delete를 사용하지 않는 원칙 승인
 - 역할별 API identity 계약과 compatibility 기간 승인
+
+### 현재 판정
+
+설계 원칙과 schema expand 작성은 **Go**다. compatibility 종료 기간의 숫자와 운영 증거는 후속
+게이트 항목으로 남는다. 현재 39/138 범위 부족은 schema 작성을 막지 않지만 운영 backfill과
+canonical cutover를 막는다.
 
 ### No-Go
 
@@ -144,7 +138,7 @@ salted HMAC projection 비교를 합성 fixture로 검증한다. DB나 API에 �
 
 ### Go 조건
 
-- 신규 migration은 기존 `001`~`026`을 수정하지 않음
+- 신규 migration은 기존 `001`~`037`을 수정하지 않음
 - 직전 배포 migration에서 신규 migration으로 올리는 N-1→latest 시나리오가 있고 기존 행 보존,
   nullable/default 동작, 재실행을 검증
 - nullable FK, 신규 테이블, 신규 인덱스만 추가하고 legacy write를 유지
@@ -156,17 +150,21 @@ salted HMAC projection 비교를 합성 fixture로 검증한다. DB나 API에 �
 
 ### 현재 상태
 
-`001`~`026` 현 모델 migration은 로컬 개발 DB와 fresh 임시 DB에서 적용·재실행·체크섬을
-검증했다. `025_print_job_request_fingerprint.sql`은 출력 요청 안전성을, 026은 HTTP 계약과 맞춘
-감사 request ID 폭을 보강하며 둘 다 목표 identity 모델 expand에 포함되지 않는다. **목표 모델용
-expand migration(후속 027 이상)은 작성하거나 적용하지 않았다.** G0와 G1이 끝나기 전에는 목표
-모델 expand를 시작하지 않는다.
+`027`–`032` 목표 identity expand, 033 transition/backfill/shadow control, 034 증적·분리 승인·
+상태 이력, 035 재출력 이력, 036 완결 shadow batch, 037 발행 양식·이력·출력 snapshot 불변
+trigger가 작성됐다. `001`–`037` fresh 적용·재실행·체크섬과 기존 `026` 행을 보존하는
+`026`→`037` upgrade를 nonce MariaDB에서 검증했다. 이는 **schema 후보의 합성·격리
+증거**다. 승인된 backup 복원, 실제 데이터 분포, index build 시간·lock 영향과 운영
+`schema_migration` 적용 이력은 확인하지 않았으므로 운영 schema 적용에 대한 G2 판정은 No-Go다.
 
 ## 7. Gate G3 — mapping dry-run과 dual-write
 
-현재 저장소의 `identity-transition` 순수 함수는 이 단계의 보고서 schema와 분류·비식별 원칙을
-합성 데이터로 먼저 고정한다. 승인된 복원 DB를 읽는 command, checkpoint, quarantine 저장소,
-dual-write feature flag는 아직 없으므로 Gate G3를 통과한 상태가 아니다.
+현재 저장소에는 정규화·dry-run 외에 DB transition state, legacy/dual/canonical write
+coordinator, legacy/shadow/canary/canonical read router, user/admission canary allowlist, 권한
+교집합 fail-closed helper가 있다. 격리 backfill은 checkpoint·high-water mark·issue 분류를
+저장하고 일부 업무 write의 target projection hook도 같은 transaction 경계에 연결됐다. 다만
+승인된 복원 DB의 전체 dry-run, 모든 업무 write의 dual rollback·경합 증거, 운영 feature flag
+rehearsal과 old/new API compatibility 증거는 없으므로 Gate G3는 통과하지 않았다.
 
 ### dry-run 필수 출력
 
@@ -201,6 +199,12 @@ dual-write feature flag는 아직 없으므로 Gate G3를 통과한 상태가 �
 
 ## 8. Gate G4 — backfill
 
+현재 `db:backfill:identity`는 `--confirm-isolated-copy`와 격리 DB 이름을 강제하고 advisory lock,
+source high-water mark, entity별 checkpoint, PII 없는 issue, `--resume` 재개 경계를 제공한다.
+합성 MariaDB fixture에서 exact projection, legacy reservation, immutable print snapshot과 재실행을
+검증했다. 승인된 복원본의 138개 candidate/예외 집계, 중단 복구 rehearsal와 운영 부하 증거는
+없으므로 이는 G4 완료 증거가 아니다.
+
 ### command 요구사항
 
 - migration SQL과 별도인 재실행 가능한 job
@@ -218,7 +222,7 @@ dual-write feature flag는 아직 없으므로 Gate G3를 통과한 상태가 �
 - legacy assignment 5건이 승인된 reservation 분류로 유지
 - 고립 examinee 8건이 승인된 분류로 유지
 - range 6건과 operation 1건의 exact mapping 확인
-- print job 3건은 승인 없이는 legacy snapshot으로 남음
+- print job 3건은 승인된 결정에 따라 immutable legacy snapshot으로 남음
 - high-water mark 이후 증분 reconciliation 완료
 
 ### No-Go
@@ -230,9 +234,20 @@ dual-write feature flag는 아직 없으므로 Gate G3를 통과한 상태가 �
 
 ## 9. Gate G5 — shadow read
 
-salted HMAC으로 두 projection의 count·digest·mismatch 분류만 비교하는 순수 도구와 합성 테스트는
-있다. salt 저장·회전 정책, live old/new query adapter, metric/alert, 관찰 기간은 구현·승인되지
-않았으므로 이는 shadow read 운영 증거가 아니다.
+격리 `db:verify:identity-shadow`는 한 `REPEATABLE READ` consistent snapshot에서 9개 source-bridge
+projection을 HMAC 비교하고 match/mismatch/old-only/new-only/ambiguous 집계만 저장한다. 후보자
+사진은 file name·MIME·content hash만 비교하고 BLOB은 읽지 않는다. 재실행, target hash 변조,
+print snapshot 누락, cleanup 복합 오류 보존을 단위·nonce MariaDB에서 검증했다. read router의
+SHADOW/CANARY 경계도 구현됐지만 HMAC key 회전, 운영 query 성능, metric/alert, 승인 관찰 기간과
+실제 traffic 증거는 없으므로 Gate G5는 통과하지 않았다.
+
+036은 한 consistent snapshot의 9개 관찰을 하나의 `COMPLETED` batch로 묶고, 모두 같은
+`identity_source_mutation_watermark.sequence`를 기록한다. 이 sequence는 승인된 identity·print·
+workstation mutation 감사가 `audit_log`에 같은 transaction으로 들어올 때 singleton row를 잠가
+증가한다. 이 직렬화는 동시 transaction의 audit ID와 commit 순서가 어긋나도 누락을 막는다.
+`AUTH_*` 로그인 감사와 observation 저장은 sequence를 바꾸지 않으며, verifier와 gate는 같은 값을
+비교한다. 업무 변경+감사 원자성 계약, trigger/application allowlist 일치, 동시 commit blocking은
+테스트 증거로 유지한다. 이 계약 밖의 직접 DB 변경이나 audit 누락은 즉시 No-Go다.
 
 ### 비교 방식
 
@@ -244,7 +259,10 @@ salted HMAC으로 두 projection의 count·digest·mismatch 분류만 비교하�
 
 ### Go 조건
 
-- exact 대상 mismatch 0
+- system-profile, candidate, candidate-photo, pseudonym-setting, pseudonym-range, operation, assignment,
+  account-scope, print-snapshot 9개 type 각각에서 phase 진입 이후 표본이 존재함
+- 9개 type 각각의 비교 entity 처리량과 최초~최종 표본 기간이 승인 임계치를 충족함
+- 9개 type 각각에서 mismatch/old-only/new-only/ambiguous 0
 - 승인된 legacy exception만 남음
 - 역할별 admin/developer/user API와 브라우저 smoke 통과
 - HD·HD+에서 핵심 요소 가시성·가로 overflow 회귀가 없고 FHD/QHD에서 기능·가로/세로 overflow와
@@ -252,6 +270,14 @@ salted HMAC으로 두 projection의 count·digest·mismatch 분류만 비교하�
 - 신규 query의 `EXPLAIN ANALYZE`와 index row scan이 승인 기준 내
 - D-19에서 정한 최소 관찰 기간 또는 처리 건수 충족
 - D-22의 template tag alias·fallback 계약이 승인됨
+- candidate-registration cycle/slot, policy-admission cycle, range-policy-segment admission,
+  assignment-registration-operation slot, claim scope/key, print registration/assignment/slot 불일치 집계 0
+- 승격 직전 재계산한 `ADMISSION` admission 전체 또는 `SCHEDULE` slot별 range overlap 0과 union
+  capacity deficit 0
+- range 재계산은 전형 `ADMISSION` override 우선, 없으면 같은 cycle `DEFAULT`를 사용하고
+  `DRAW`·`SEQUENTIAL` 방식에만 적용함. `MATCHING`·`PREASSIGNED`는 범위 용량 게이트 대상이 아님
+- 승격 게이트 산출물은 고정 invariant/issue code와 aggregate count만 포함하며 개별 위반 행이나 PII
+  원문을 반환·저장하지 않음
 
 ### 즉시 중단
 
@@ -291,7 +317,8 @@ DB expand는 rollback 시 삭제하지 않는다. 사용되지 않는 신규 테
 ### Go 조건
 
 - 모든 G0~G6 evidence가 보존됨
-- 최소 관찰 기준 충족
+- 고정 9개 observation type 각각의 최소 관찰 기준 충족
+- target 관계 invariant와 현재 range overlap/union capacity 재검증 통과
 - old/new Web/API 교차 호환 종료 계획 공지
 - printer와 PDF 경로의 실제 운영 검수 완료
 - backup/restore 리허설을 최신 schema로 다시 수행
@@ -326,6 +353,10 @@ DB expand는 rollback 시 삭제하지 않는다. 사용되지 않는 신규 테
 - migration checksum 불일치 또는 dirty/부분 적용 상태
 - old/new dual-write 일부 commit
 - exact 대상 mismatch 1건 이상
+- 고정 observation type 누락 또는 type별 표본·기간·비교 처리량 부족
+- 최신 완료 batch의 9개 watermark 불일치, 마지막 clean batch 뒤 allowlisted source mutation commit,
+  업무 변경과 audit의 원자성 계약 이탈
+- target 관계 invariant 집계 누락·불일치 또는 현재 range overlap/union capacity deficit
 - 승인되지 않은 ambiguous/unmapped 자동 연결
 - 권한 범위 확대 또는 타 전형 데이터 노출
 - 수험번호·이름·생년월일·사진·가번호 원문 로그 노출
@@ -358,13 +389,15 @@ DB expand는 rollback 시 삭제하지 않는다. 사용되지 않는 신규 테
 
 현재 다음 항목은 준비됐다.
 
-- migration `001`~`026` 기반 현 모델 inventory와 로컬 적용·재실행·체크섬 검증
-- N-1(`025`) 기존 행 보존 후 latest(`026`) 적용·재실행을 검증하는 MariaDB harness
-- 현재→목표 entity/field mapping 제안
+- migration `001`–`026` 기반 현 모델 inventory와 migration `001`–`037` source/checksum 기준선
+- `001`–`037` fresh·재실행 및 기존 `026` 행 보존 후 `027`–`037`을 적용하는 MariaDB harness
+- 현재→목표 entity/field source bridge와 expand schema
 - 대체키·자연키·정규화·claim unique 설계 제안
 - 비식별 로컬 집계와 기존 기준선 교차 확인
-- NFKC·trim·선행 0 보존과 exact/unmapped/ambiguous/conflict·범위 용량을 분류하는 합성 dry-run 도구
-- 원문 PII 없이 salted digest를 비교하는 합성 shadow projection 도구
+- NFKC·trim·선행 0 보존과 exact/unmapped/ambiguous/conflict·범위 용량을 분류하는 dry-run 기반
+- 격리 backfill CLI와 checkpoint·issue·legacy reservation
+- 원문 PII 없이 9개 projection을 비교하는 격리 consistent-snapshot shadow verifier
+- 분리 승인·증적·단계 순서를 강제하는 격리 transition CLI와 append-only 상태 이력 schema
 - dual-write/backfill/shadow-read/cutover 순서
 - 단계별 Go/No-Go와 rollback 조건
 - `docs/runbooks/backup-restore.md`와 `docs/runbooks/migration.md` 절차서 초안
@@ -372,12 +405,13 @@ DB expand는 rollback 시 삭제하지 않는다. 사용되지 않는 신규 테
 현재 다음 항목은 차단 상태다.
 
 - backup 위치·개인정보 복제 정책·복원 리허설
-- D-01~D-22 외부 결정
 - 승인된 운영 복원본 또는 익명화 staging을 대상으로 한 실제 NFKC 충돌 진단
 - 현재 `ADMISSION` 범위 용량 부족(합집합 39, 대상 138)
-- 레거시 할당 5건, 고립 examinee 8건, 출력 작업 3건 처리 승인
-- 사용자 `ALL/ASSIGNED` mode 승인
+- 개인정보·출력 보존 기간, expiry와 재시도 한도 확정
+- 관찰 기간·처리량, latency·오류율·lock 임계치 확정
 - 익명화 staging과 운영 규모 성능 검증
 
-따라서 다음 안전 단계는 외부 결정을 기록하고 익명화 복원 환경에서 mapping dry-run을 재현하는
-것이다. 그 전에는 목표 identity schema expand, backfill, read/write cutover를 진행하지 않는다.
+따라서 schema expand 소스와 비운영 rehearsal 도구는 준비됐지만, 다음 운영 준비 단계는 여전히
+backup/restore 게이트를 통과하고 승인된 익명화 복원 환경에서 `026`→`037`, mapping/backfill,
+shadow 비교를 재현하는 것이다. 그 전에는 운영 migration 적용, backfill, transition evidence
+등록·승격과 read/write cutover를 진행하지 않는다.

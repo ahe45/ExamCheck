@@ -54,6 +54,19 @@ describe("identity transition shadow comparison", () => {
     expect(() => compareIdentityProjections([], [], "short")).toThrow("at least 16 bytes");
   });
 
+  it("supports non-PII string source bridges such as print job UUIDs", () => {
+    const printJobId = "108ab21f-4f86-4f8e-9e4d-7731cb0c87ef";
+    const report = compareIdentityProjections(
+      [{ entityId: printJobId, projection: { status: "CREATED" } }],
+      [{ entityId: printJobId, projection: { status: "CREATED" } }],
+      SALT,
+    );
+
+    expect(report.counts.match).toBe(1);
+    expect(report.entries[0]?.entityId).toBe(printJobId);
+    expect(() => createProjectionDigest("unsafe bridge id", { status: "CREATED" }, SALT)).toThrow("safe bridge");
+  });
+
   it("does not serialize raw PII even when both projections match", () => {
     const privateProjection = {
       examineeNo: "RAW-EXAMINEE-777",

@@ -53,11 +53,20 @@ export interface MutationAuditDetailsByEvent {
   };
   FORM_TEMPLATE_SAVED: {
     code: string;
-    version: number;
+    templateId: number;
     active: boolean;
     riskCount: number;
   };
   FORM_TEMPLATE_METADATA_UPDATED: {
+    code: string;
+    templateId: number;
+  };
+  FORM_TEMPLATE_AVAILABILITY_UPDATED: {
+    code: string;
+    templateId: number;
+    active: boolean;
+  };
+  FORM_TEMPLATE_DELETED: {
     code: string;
     templateId: number;
   };
@@ -93,8 +102,6 @@ export interface MutationAuditDetailsByEvent {
   PSEUDONYM_ASSIGNED: {
     assignmentId: number;
     candidateRecordId: number;
-    examineeNo: string;
-    pseudonymNo: string;
     mode: "RANDOM" | "SEQUENTIAL" | "MANUAL" | "PREASSIGNED";
   };
   PRINT_JOB_CREATED: {
@@ -111,6 +118,10 @@ export interface MutationAuditDetailsByEvent {
   PRINT_JOB_EXPIRED: {
     requestedStatus: "SENT" | "FAILED";
     status: "EXPIRED";
+  };
+  PRINT_JOB_REISSUED: {
+    reissueType: "RETRY" | "REPRINT";
+    reasonCode: "CLIENT_SEND_RETRY" | "PRINTER_RECOVERY" | "LABEL_DAMAGED" | "PRINT_QUALITY_ISSUE" | "OPERATOR_REQUEST";
   };
 }
 
@@ -250,11 +261,20 @@ const EVENT_CONTRACTS = {
   ),
   FORM_TEMPLATE_SAVED: fields({
     code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
-    version: positiveInteger,
+    templateId: positiveInteger,
     active: booleanValue,
     riskCount: nonNegativeInteger,
   }),
   FORM_TEMPLATE_METADATA_UPDATED: fields({
+    code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
+    templateId: positiveInteger,
+  }),
+  FORM_TEMPLATE_AVAILABILITY_UPDATED: fields({
+    code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
+    templateId: positiveInteger,
+    active: booleanValue,
+  }),
+  FORM_TEMPLATE_DELETED: fields({
     code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
     templateId: positiveInteger,
   }),
@@ -290,8 +310,6 @@ const EVENT_CONTRACTS = {
   PSEUDONYM_ASSIGNED: fields({
     assignmentId: positiveInteger,
     candidateRecordId: positiveInteger,
-    examineeNo: string({ min: 1, max: 50 }),
-    pseudonymNo: string({ min: 1, max: 50, pattern: /^\d+$/ }),
     mode: oneOf("RANDOM", "SEQUENTIAL", "MANUAL", "PREASSIGNED"),
   }),
   PRINT_JOB_CREATED: printEventFields({
@@ -304,6 +322,19 @@ const EVENT_CONTRACTS = {
     requestedStatus: oneOf("SENT", "FAILED"),
     status: oneOf("EXPIRED"),
   }),
+  PRINT_JOB_REISSUED: printEventFields(
+    {
+      reissueType: oneOf("RETRY", "REPRINT"),
+      reasonCode: oneOf(
+        "CLIENT_SEND_RETRY",
+        "PRINTER_RECOVERY",
+        "LABEL_DAMAGED",
+        "PRINT_QUALITY_ISSUE",
+        "OPERATOR_REQUEST",
+      ),
+    },
+    printJobReissueReasonMatchesType,
+  ),
 } as const satisfies Record<MutationAuditEventType, EventContract>;
 
 const envelopeKeys = new Set(["eventType", "actorUserId", "workstationId", "printJobId", "requestId", "details"]);
@@ -388,8 +419,11 @@ function fields(
   return { fields: value, correlation, validateDetails, validateRecord };
 }
 
-function printEventFields(value: Readonly<Record<string, FieldRule>>): EventContract {
-  return fields(value, undefined, { workstationId: "required", printJobId: "required" });
+function printEventFields(
+  value: Readonly<Record<string, FieldRule>>,
+  validateDetails?: EventContract["validateDetails"],
+): EventContract {
+  return fields(value, validateDetails, { workstationId: "required", printJobId: "required" });
 }
 
 function integer(options: { min: number; max?: number }): FieldRule {
@@ -442,6 +476,14 @@ function candidatePhotoCountsMatch(details: Readonly<Record<string, boolean | nu
     details.totalFiles ===
     Number(details.uploaded) + Number(details.updated) + Number(details.skipped) + Number(details.duplicateCount)
   );
+}
+
+function printJobReissueReasonMatchesType(details: Readonly<Record<string, boolean | number | string>>): boolean {
+  return details.reissueType === "RETRY"
+    ? details.reasonCode === "CLIENT_SEND_RETRY" || details.reasonCode === "PRINTER_RECOVERY"
+    : details.reasonCode === "LABEL_DAMAGED" ||
+        details.reasonCode === "PRINT_QUALITY_ISSUE" ||
+        details.reasonCode === "OPERATOR_REQUEST";
 }
 
 function workstationCorrelationMatchesDetails(

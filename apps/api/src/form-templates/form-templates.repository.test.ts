@@ -3,13 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { FormTemplatesRepository } from "./form-templates.repository.js";
 
 describe("FormTemplatesRepository", () => {
-  it("maps persisted JSON and active state at the infrastructure boundary", async () => {
+  it("maps persisted JSON and active state without exposing version metadata", async () => {
     const execute = vi.fn().mockResolvedValue([
       [
         {
           id: 8,
           code: "CANDIDATE_CARD",
-          version: 2,
           name: "수험표",
           description: null,
           category: "수험생",
@@ -24,9 +23,12 @@ describe("FormTemplatesRepository", () => {
     ]);
     const repository = new FormTemplatesRepository({ execute } as unknown as Pool);
 
-    await expect(repository.listLatest(true)).resolves.toMatchObject([
+    await expect(repository.list(true)).resolves.toMatchObject([
       { code: "CANDIDATE_CARD", active: true, layout: { pages: [] } },
     ]);
-    expect(execute.mock.calls[0]?.[0]).toContain("WHERE ft.active = TRUE");
+    const sql = String(execute.mock.calls[0]?.[0]);
+    expect(sql).toContain("ft.active = TRUE");
+    expect(sql).not.toContain("version");
+    expect(sql).not.toContain("lifecycle_state");
   });
 });

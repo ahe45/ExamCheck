@@ -63,10 +63,15 @@ const validRecords: MutationAuditRecord[] = [
   {
     eventType: "FORM_TEMPLATE_SAVED",
     actorUserId: 1,
-    details: { code: "CANDIDATE_LABEL", version: 2, active: true, riskCount: 0 },
+    details: { code: "CANDIDATE_LABEL", templateId: 2, active: true, riskCount: 0 },
   },
   {
     eventType: "FORM_TEMPLATE_METADATA_UPDATED",
+    actorUserId: 1,
+    details: { code: "CANDIDATE_LABEL", templateId: 12 },
+  },
+  {
+    eventType: "FORM_TEMPLATE_DELETED",
     actorUserId: 1,
     details: { code: "CANDIDATE_LABEL", templateId: 12 },
   },
@@ -117,8 +122,6 @@ const validRecords: MutationAuditRecord[] = [
     details: {
       assignmentId: 31,
       candidateRecordId: 41,
-      examineeNo: "1162001",
-      pseudonymNo: "1001",
       mode: "RANDOM",
     },
   },
@@ -149,6 +152,13 @@ const validRecords: MutationAuditRecord[] = [
     workstationId: 4,
     printJobId: "56070238-e738-446f-a8df-bbdb86e82451",
     details: { requestedStatus: "SENT", status: "EXPIRED" },
+  },
+  {
+    eventType: "PRINT_JOB_REISSUED",
+    actorUserId: 1,
+    workstationId: 4,
+    printJobId: "56070238-e738-446f-a8df-bbdb86e82451",
+    details: { reissueType: "RETRY", reasonCode: "CLIENT_SEND_RETRY" },
   },
 ];
 
@@ -197,6 +207,22 @@ describe("MutationAuditRepository", () => {
       null,
       JSON.stringify({ userId: 7 }),
     ]);
+  });
+
+  it("rejects a reissue reason that does not match the retry or reprint type", async () => {
+    const executor = { execute: vi.fn().mockResolvedValue([{ affectedRows: 1 }, []]) };
+    const repository = new MutationAuditRepository();
+
+    await expect(
+      repository.record(executor as unknown as SqlExecutor, {
+        eventType: "PRINT_JOB_REISSUED",
+        actorUserId: 1,
+        workstationId: 4,
+        printJobId: "56070238-e738-446f-a8df-bbdb86e82451",
+        details: { reissueType: "RETRY", reasonCode: "LABEL_DAMAGED" },
+      }),
+    ).rejects.toBeInstanceOf(MutationAuditContractError);
+    expect(executor.execute).not.toHaveBeenCalled();
   });
 
   it("inherits the active HTTP request ID when the caller does not override it", async () => {
@@ -287,9 +313,7 @@ describe("MutationAuditRepository", () => {
           actorUserId: 1,
           details: {
             assignmentId: 31,
-            candidateRecordId: 41,
-            examineeNo: "1162001",
-            pseudonymNo: "raw-candidate-name",
+            candidateRecordId: -1,
             mode: "RANDOM",
           },
         } as unknown as MutationAuditRecord,

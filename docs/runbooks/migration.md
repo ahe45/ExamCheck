@@ -1,8 +1,8 @@
 # 데이터베이스 마이그레이션·전환 실행서
 
 > 상태: 안전 절차 템플릿  
-> 현재 기준: migration `001`~`026`  
-> 목표 identity 모델 migration: 승인 후 `027` 이상에서만 추가
+> 현재 코드 기준: migration `001`–`037`
+> 운영 적용 상태: 미승인·미실행 (`027`–`037`은 로컬/합성 MariaDB 검증만 완료)
 
 ## 1. 원칙
 
@@ -17,16 +17,21 @@
 
 다음 항목이 모두 충족되어야 목표 identity migration을 작성·적용할 수 있다.
 
-1. `docs/data-model-decision-register.md`의 D-01~D-22가 승인됨
-2. `docs/adr/0002-target-identity-model-proposal.md`가 Accepted 상태로 변경됨
+1. `docs/data-model-decision-register.md`의 D-01~D-22 승인 revision과 적용 범위가 확인됨
+2. `docs/adr/0002-target-identity-model-proposal.md`의 Accepted revision이 확인됨
 3. `docs/runbooks/backup-restore.md` 리허설이 최신 schema에서 성공함
 4. 익명화 staging 또는 승인된 격리 복원 환경이 준비됨
-5. migration `001`~`026` checksum과 N-1(`025`)→latest(`026`) 테스트가 통과하고,
+5. migration `001`~`037` checksum과 기존 기준(`026`)→latest(`037`) 테스트가 통과하고,
    `schema_migration.status <> 'APPLIED'`인 이력이 없음
 6. 현재 데이터의 exact/unmapped/ambiguous, 범위 용량, 권한 mode 집계가 보존됨
 7. 작업 창, 중단 임계치, 담당자와 rollback 의사결정자가 정해짐
 
 충족되지 않은 항목이 있으면 현재 모델의 테스트·문서·순수 진단 도구만 개선할 수 있다.
+
+2026-08-28 현재 D-01–D-22와 ADR 원칙은 승인됐고, `027`–`037`의 fresh·재실행·`026`→`037`
+합성 MariaDB 검증은 통과했다. 그러나 승인 복원본, 운영 lock·성능, backup/restore, live dual-write와
+target read/write 전체 계약 증적은 아직 검증하지 않았다. 또한 현재 비식별 진단에서 ADMISSION 범위
+중복과 union capacity 부족이 남아 있으므로 운영 backfill·CANARY·CANONICAL은 No-Go다.
 
 ## 3. 단계별 실행
 
@@ -44,7 +49,8 @@
 
 ### G2 — schema expand
 
-- 목표 identity schema expand migration 번호는 `027` 이상을 사용한다.
+- 목표 identity schema expand와 전환 통제·불변성 후보는 `027`~`037`이며, 이후 변경은 새 번호의 forward
+  migration만 사용한다.
 - 신규 FK는 backfill 전에 nullable로 추가하고 기존 쓰기를 깨지 않게 한다.
 - 신규 unique는 dry-run 충돌 0 또는 승인된 quarantine 이후에만 활성화한다.
 - migration manifest에 크기·SHA-256·선행/후행 조건을 기록한다.
@@ -62,6 +68,8 @@
 
 ### G4 — backfill
 
+- `db:backfill:identity`는 격리 복원본 전용 command이며 운영 DB 이름을 거부한다. 운영 control
+  plane 승인 전에는 우회 옵션을 추가하지 않는다.
 - 재실행 가능한 별도 command/job으로 실행한다.
 - checkpoint에는 last source ID, high-water mark, 처리/성공/실패/격리 건수만 저장한다.
 - chunk 크기와 대기 시간을 조절할 수 있게 하고 lock wait와 DB latency를 관찰한다.
@@ -74,12 +82,20 @@
 - 정렬·표시를 canonical 형식으로 변환한 뒤 16바이트 이상 비밀 salt를 사용한 HMAC-SHA256 digest로 비교한다.
 - mismatch 보고서에는 entity 종류, 내부 ID, 분류 코드만 기록한다.
 - 권한 밖 전형 노출, 다른 교시 혼입, 가번호 충돌은 한 건이라도 즉시 중단한다.
+- system-profile, candidate, candidate-photo, pseudonym-setting, pseudonym-range, operation, assignment,
+  account-scope, print-snapshot의 고정 9개 observation type을 같은 phase window에서 모두 생성한다.
 
 ### G6 — read canary
 
 - 개발자 진단 → 관리자 read-only → 비운영 전형/교시 → 사용자 roster → 설정/할당/마감 read → 출력 projection 순으로 독립 flag를 켠다.
 - 각 단계의 오류율, latency, row count, mismatch와 권한 노출을 확인한다.
 - 중단 시 해당 flag만 OFF하고 old read로 복귀한다.
+- 승격 요청에는 observation 행 수가 아니라
+  `SUM(match + mismatch + old-only + new-only + ambiguous)`로 계산한 최소 비교 entity 처리량과 최소
+  관찰 시간을 명시한다.
+- 표본 존재, 최소 비교 entity 처리량, 최초~최종 표본 기간, mismatch/old-only/new-only/ambiguous 0을
+  9개 type별로 각각 확인한다. type 누락이나 한 type만의 충분한 표본은 No-Go다.
+- `identity_canary_user` 또는 `identity_canary_admission` 대상이 최소 1개 없으면 승격하지 않는다.
 
 ### G7 — canonical write
 
@@ -87,6 +103,26 @@
 - 최신 backup/restore 리허설과 실제 프린터·PDF 검수가 완료되어야 한다.
 - 신규 write를 canonical로 전환하되 compatibility projection은 승인 기간 동안 유지한다.
 - 임계치 초과 시 read/write flag를 이전 상태로 복귀하고 high-water mark를 고정한다.
+- `TARGET_READ_CONTRACT_READY`, `TARGET_WRITE_CONTRACT_READY`, canary validation, legacy compatibility와
+  operations/data owner/privacy/canonical owner의 분리 승인이 모두 있어야 한다.
+- CANONICAL은 자동 승격하지 않는다. 요청마다 명시적인 수동 확인을 기록한다.
+
+### G7.1 — `034` 전환 command 안전 경계
+
+`db:transition:identity`는 증적 기록 → 요청 생성 → 증적 연결 → 분리 승인 → 적용 순서를 강제한다.
+증적 `observed_at`이 미래이거나 유효기간이 끝났으면 승격에 사용하지 않는다. 운영 DB 실행은
+제공하지 않으며 `--confirm-isolated-copy`와 격리 목적이 드러나는 DB 이름을 함께 요구한다.
+
+각 승격은 상태 행을 잠근 transaction 안에서 target 관계 invariant와 현재 range를 다시 검증한다.
+candidate-registration cycle/slot, policy/admission cycle, range policy/segment admission,
+assignment registration/operation slot, candidate·pseudonym claim scope, print registration/assignment/slot의
+고정 집계가 모두 0이어야 한다. 이어서 `ADMISSION` admission 전체 또는 `SCHEDULE` slot별 범위 중복과
+union capacity deficit을 재계산한다. 보고·오류에는 고정 코드와 count만 사용하고 후보자·번호·사진·출력
+원문은 포함하지 않는다.
+
+비상 `LEGACY` 복귀는 사고 대응을 지연시키지 않도록 actor와 안전한 reason code, 잠근 상태 갱신과
+append-only 이력만 필수다. backup/rollback/compatibility 증적 부족으로 이를 차단하지 않는다. 비상
+`DUAL` 복귀는 target write 계약이 유효하고 마지막 backfill이 성공했으며 open issue가 0일 때만 허용한다.
 
 ### G8 — contract
 

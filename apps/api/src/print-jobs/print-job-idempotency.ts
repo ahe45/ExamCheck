@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ConflictException } from "@nestjs/common";
 import { normalizeAdmissionName } from "../authorization/admission-policy.js";
-import type { CreatePrintJobDto } from "./print-jobs.dto.js";
+import type { CreatePrintJobDto, ReissuePrintJobDto } from "./print-jobs.dto.js";
 
 const PRINT_JOB_REQUEST_FINGERPRINT_VERSION = 1;
 const IDEMPOTENCY_REQUEST_CONFLICT_MESSAGE =
@@ -17,6 +17,17 @@ export function createPrintJobRequestFingerprint(input: CreatePrintJobDto): stri
     examTime: input.examTime,
     periodName: input.periodName,
     admissionName: normalizeAdmissionName(input.admissionName),
+  });
+
+  return createHash("sha256").update(canonicalRequest, "utf8").digest("hex");
+}
+
+export function createPrintJobReissueRequestFingerprint(sourcePrintJobId: string, input: ReissuePrintJobDto): string {
+  const canonicalRequest = JSON.stringify({
+    version: PRINT_JOB_REQUEST_FINGERPRINT_VERSION,
+    operation: "PRINT_JOB_REISSUE",
+    sourcePrintJobId: sourcePrintJobId.toLowerCase(),
+    reasonCode: input.reasonCode,
   });
 
   return createHash("sha256").update(canonicalRequest, "utf8").digest("hex");

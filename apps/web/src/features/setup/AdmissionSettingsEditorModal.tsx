@@ -64,7 +64,7 @@ export function AdmissionSettingsEditorModal({
             <span>가번호 부여 방식과 운영 단계별 처리 정책을 설정합니다.</span>
           </div>
           <div className="admission-settings-modal-actions">
-            <button type="button" className="exam-primary-button" onClick={onSave} disabled={!saveState.canSave}>
+            <button type="button" className="exam-outline-button" onClick={onSave} disabled={!saveState.canSave}>
               <SaveButtonIcon />
               <span>{saveState.saving ? "저장 중…" : "설정 저장"}</span>
             </button>

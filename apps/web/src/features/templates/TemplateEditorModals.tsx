@@ -51,7 +51,7 @@ export function TemplateInformationModal({ draft, onChange, onClose }: TemplateI
             양식 코드
             <input
               value={draft.code}
-              disabled={draft.version > 0}
+              disabled={!draft.isNew}
               onChange={(event) => onChange("code", event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
             />
           </label>
@@ -113,7 +113,7 @@ export function DataTagSettingsModal({ catalog, onClose, onSave }: DataTagSettin
       ? catalog.groups.flatMap((group) => (Array.isArray(group.tags) ? group.tags : []))
       : []),
   ];
-  const groups = groupDataTags(definitions);
+  const groups = groupDataTags(catalog);
   const initialExamples = Object.fromEntries(
     definitions.map((tag) => [String(tag.key || ""), String(tag.example || "")]),
   );

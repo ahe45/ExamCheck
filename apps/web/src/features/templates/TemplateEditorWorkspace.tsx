@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { BackButtonIcon, InfoButtonIcon, PreviewButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
+import { ListButtonIcon, PreviewButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
 import { fetchAdminFormTemplates, saveFormTemplate, type FormTemplate } from "../../shared/api/form-templates";
 import type {
   DataTagCatalog,
@@ -7,7 +7,15 @@ import type {
   TemplateEditorInstance,
 } from "../../shared/templates/template-editor-contracts";
 import { decorateCatalog, enhanceDataTagPanel, readDataTagViewOptions } from "./enhance-data-tag-panel";
+import { enhanceTemplateEditorCanvas } from "./enhance-template-editor-canvas";
+import { enhanceTemplateEditorControls } from "./enhance-template-editor-controls";
+import { enhanceTemplatePageProperties } from "./enhance-template-page-properties";
+import { enhanceTemplateDataBlock } from "./enhance-template-data-block";
+import { buildTemplateEditorAssetUrl } from "./generated-object-assets";
 import { mountProjectTemplateEditor } from "./editor/examlist-template-editor-adapter";
+import { createTemplateEditorTransactionCoordinator } from "./editor/template-editor-transaction-coordinator";
+import { createTemplateEditorCommandDispatcher } from "./editor/template-editor-command-dispatcher";
+import { serializeTemplateEditorHtml, serializeTemplateEditorValue } from "./editor/template-editor-serialization";
 import { DataTagSettingsModal, TemplateInformationModal } from "./TemplateEditorModals";
 import {
   buildSampleValues,
@@ -21,6 +29,7 @@ import {
   type DraftTemplate,
 } from "./template-manager-model";
 import { TemplateNotice, type TemplateNoticeValue } from "./TemplateNotice";
+import { syncTemplateEditorPreservingCanvasSelection } from "./template-editor-selection-sync";
 import { openTemplatePrintWindow, renderTemplateHtml } from "./template-renderer";
 
 export interface TemplateEditorWorkspaceHandle {
@@ -102,6 +111,8 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
         dataTags: editorDataTags,
         layoutMode: "desktop",
         permissions: { canManageTemplates: true },
+        generatedObjectSourceKey: "candidate.examNo",
+        previewData: buildSampleValues(editorDataTags),
         getTemplateEditorTagDisplay: ({ definition, iconMarkup, label }) => {
           const example = String(definition?.example || "").trim();
           return {
@@ -112,9 +123,11 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
           };
         },
         adapters: {
+          buildApiUrl: buildTemplateEditorAssetUrl,
           saveTemplate: async ({ template }) => {
             const metadata = draftRef.current;
             if (!metadata || typeof template === "string") return template;
+            const serializedTemplate = serializeTemplateEditorValue(template);
             validateDraft(metadata);
             onNoticeChange(null);
             try {
@@ -125,14 +138,15 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
                 category: metadata.category,
                 usageScope: metadata.usageScope,
                 active: metadata.active,
-                layout: template,
+                layout: serializedTemplate,
               });
               const refreshed = await fetchAdminFormTemplates(token);
+              initialMetadataSnapshotRef.current = createDraftMetadataSnapshot(metadata);
               onTemplateSaved(saved, refreshed);
               setEditorDirty(false);
               onNoticeChange({
                 kind: "success",
-                text: `${saved.name} 버전 ${saved.version}을 저장했습니다.`,
+                text: `${saved.name} 양식을 저장했습니다.`,
               });
               return saved.layout;
             } catch (reason) {
@@ -141,22 +155,39 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
               throw reason;
             }
           },
-          previewPdf: ({ html }) => ({ html, pageCount: 1, warnings: [] }),
+          previewPdf: ({ html }) => ({ html: serializeTemplateEditorHtml(html), pageCount: 1, warnings: [] }),
         },
         onChange: (layout) => {
           if (typeof layout !== "string") {
             const current = draftRef.current;
-            onDraftChange({ ...current, layout });
+            onDraftChange({ ...current, layout: serializeTemplateEditorValue(layout) });
           }
         },
         onDirtyChange: setEditorDirty,
         onOverflowChange: (info, message) => setOverflowMessage(info.hasOverflow ? message : ""),
       });
       editorRef.current = editor;
+      const documentSurface = root.querySelector<HTMLElement>("[data-template-editor-runtime-surface]");
+      if (!documentSurface) {
+        editor.destroy();
+        editorRef.current = null;
+        return;
+      }
+      const transactions = createTemplateEditorTransactionCoordinator({
+        commit: () => syncTemplateEditorPreservingCanvasSelection(editor, documentSurface),
+        documentSurface,
+        onDirty: () => setEditorDirty(true),
+      });
+      const commands = createTemplateEditorCommandDispatcher({ documentSurface, editor, transactions });
+      const disposeCanvas = enhanceTemplateEditorCanvas(root);
+      const pageProperties = enhanceTemplatePageProperties(root);
+      const disposeDataBlock = enhanceTemplateDataBlock(root, editor, transactions);
+      const disposeEditorControls = enhanceTemplateEditorControls(root, editor, transactions, commands);
       const disposeTagPanel = enhanceDataTagPanel({
         root,
         catalog: editorDataTags,
         editor,
+        commandDispatcher: commands,
         viewOptions: viewOptionsRef.current,
         onViewOptionsChange: (options) => {
           viewOptionsRef.current = options;
@@ -165,6 +196,11 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       });
       return () => {
         disposeTagPanel();
+        disposeEditorControls();
+        disposeDataBlock();
+        pageProperties.dispose();
+        disposeCanvas();
+        transactions.dispose();
         editor.destroy();
         if (editorRef.current === editor) editorRef.current = null;
       };
@@ -191,7 +227,7 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       onNoticeChange(null);
       try {
         const previewTags = updateTagExamples(decoratedDataTags, getTemplateSampleData(metadata.layout));
-        const html = renderTemplateHtml(editor.getHtml(), buildSampleValues(previewTags));
+        const html = renderTemplateHtml(serializeTemplateEditorHtml(editor.getHtml()), buildSampleValues(previewTags));
         openTemplatePrintWindow(`${metadata.name} 미리보기`, html);
       } catch (reason) {
         onNoticeChange({
@@ -238,22 +274,22 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
     return (
       <section className="examlist-template-editor-view">
         <div className="template-editor-context-bar">
-          <button className="context-back-button" onClick={closeEditor} aria-label="양식 목록으로 돌아가기">
-            <BackButtonIcon />
-          </button>
           <div className="template-editor-context-fields">
-            <label>
-              <span>양식 제목</span>
+            <label className="template-editor-context-field">
+              <span>제목</span>
               <input
+                className="template-editor-title-input"
                 aria-label="양식 제목"
                 maxLength={200}
+                placeholder="양식 제목을 입력하세요."
                 value={draft.name}
                 onChange={(event) => updateMetadata("name", event.target.value)}
               />
             </label>
-            <label>
-              <span>양식 설명</span>
+            <label className="template-editor-context-field">
+              <span>설명</span>
               <input
+                className="template-editor-description-input"
                 aria-label="양식 설명"
                 maxLength={500}
                 placeholder="양식 설명을 입력하세요."
@@ -261,26 +297,30 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
                 onChange={(event) => updateMetadata("description", event.target.value)}
               />
             </label>
-            <small>v{draft.version || "새 양식"}</small>
-          </div>
-          {dirty && <span className="unsaved-badge">저장되지 않음</span>}
-          <div className="template-context-actions">
-            <button className="exam-ghost-button" onClick={() => setShowInformation(true)}>
-              <InfoButtonIcon />
-              <span>양식 정보</span>
-            </button>
-            <button className="exam-ghost-button" disabled={actionBusy !== null} onClick={previewTemplate}>
-              <PreviewButtonIcon />
-              <span>{actionBusy === "preview" ? "준비 중" : "미리보기"}</span>
-            </button>
-            <button
-              className="exam-primary-button"
-              disabled={actionBusy !== null || Boolean(overflowMessage)}
-              onClick={() => void saveTemplateVersion()}
-            >
-              <SaveButtonIcon />
-              <span>{actionBusy === "save" ? "저장 중" : "저장"}</span>
-            </button>
+            <div className="template-editor-context-actions">
+              <button className="exam-outline-button template-editor-list-button" type="button" onClick={closeEditor}>
+                <ListButtonIcon />
+                <span>양식 목록</span>
+              </button>
+              <button
+                className="exam-ghost-button ghost-button template-editor-preview-button"
+                type="button"
+                disabled={actionBusy !== null}
+                onClick={previewTemplate}
+              >
+                <PreviewButtonIcon />
+                <span>{actionBusy === "preview" ? "준비 중" : "미리보기"}</span>
+              </button>
+              <button
+                className="exam-primary-button primary-button template-editor-save-button"
+                type="button"
+                disabled={!dirty || actionBusy !== null || Boolean(overflowMessage)}
+                onClick={() => void saveTemplateVersion()}
+              >
+                <SaveButtonIcon />
+                <span>{actionBusy === "save" ? "저장 중" : "저장"}</span>
+              </button>
+            </div>
           </div>
         </div>
         {overflowMessage && (

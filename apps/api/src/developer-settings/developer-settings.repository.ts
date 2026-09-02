@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
+import type { SqlExecutor } from "../common/database/sql-executor.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import type { ExamineeNoUniqueness, PseudonymNoUniqueness } from "../uniqueness/number-uniqueness.js";
 
@@ -39,6 +40,16 @@ export class DeveloperSettingsRepository {
 
   async getProfile(): Promise<ProfileRow | null> {
     const [rows] = await this.pool.query<ProfileRow[]>(profileSelectSql);
+    return rows[0] ?? null;
+  }
+
+  async getProfileForRead(executor: SqlExecutor): Promise<ProfileRow | null> {
+    const [rows] = await executor.query<ProfileRow[]>(profileSelectSql);
+    return rows[0] ?? null;
+  }
+
+  async getTargetProfileForRead(executor: SqlExecutor): Promise<ProfileRow | null> {
+    const [rows] = await executor.query<ProfileRow[]>(targetProfileSelectSql);
     return rows[0] ?? null;
   }
 
@@ -165,3 +176,16 @@ const profileSelectSql = `SELECT school_name AS schoolName, academic_year AS aca
   logo_file_name AS logoFileName, logo_mime_type AS logoMimeType, logo_data AS logoData,
   updated_at AS updatedAt
  FROM system_profile WHERE id = 1 LIMIT 1`;
+
+const targetProfileSelectSql = `SELECT profile.school_name AS schoolName,
+  cycle.academic_year AS academicYear, profile.system_name AS systemName,
+  policy.examinee_scope AS examineeNoUniqueness,
+  policy.pseudonym_scope AS pseudonymNoUniqueness,
+  profile.logo_file_name AS logoFileName, profile.logo_mime_type AS logoMimeType,
+  profile.logo_data AS logoData, profile.updated_at AS updatedAt
+ FROM system_profile profile
+ INNER JOIN exam_cycle cycle
+   ON cycle.system_profile_id = profile.id AND cycle.status = 'ACTIVE'
+ INNER JOIN number_uniqueness_policy policy ON policy.exam_cycle_id = cycle.id
+ WHERE profile.id = 1
+ ORDER BY cycle.id DESC LIMIT 1`;

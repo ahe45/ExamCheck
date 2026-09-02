@@ -29,4 +29,18 @@ describe("DeveloperSettingsRepository", () => {
     expect(String(execute.mock.calls[0][0])).toContain("WHERE id = 1");
     expect(execute.mock.calls[0][1]).toEqual(["한국대학교", 2026, "가번호 관리 시스템", "SYSTEM", "ADMISSION", 7]);
   });
+
+  it("reads the identity policy from the active target cycle", async () => {
+    const query = vi.fn().mockResolvedValue([[{ academicYear: 2026, examineeNoUniqueness: "SCHEDULE" }], []]);
+    const repository = new DeveloperSettingsRepository({} as Pool);
+
+    await expect(repository.getTargetProfileForRead({ query } as unknown as PoolConnection)).resolves.toMatchObject({
+      academicYear: 2026,
+      examineeNoUniqueness: "SCHEDULE",
+    });
+
+    const sql = String(query.mock.calls[0]?.[0]);
+    expect(sql).toContain("cycle.status = 'ACTIVE'");
+    expect(sql).toContain("number_uniqueness_policy");
+  });
 });

@@ -28,6 +28,7 @@ describe("typed application configuration", () => {
       },
       candidates: { defaultExamName: DEFAULT_EXAM_NAME },
       printJobs: { expirySeconds: DEFAULT_PRINT_JOB_EXPIRY_SECONDS },
+      identityTransition: { enabled: false, shadowHmacSecret: null },
     });
     expect(Object.isFrozen(config)).toBe(true);
     expect(Object.isFrozen(config.auth.session)).toBe(true);
@@ -57,6 +58,8 @@ describe("typed application configuration", () => {
       AUTH_LOGIN_MAX_TRACKED_KEYS: "1234",
       DEFAULT_EXAM_NAME: "통합 설정 시험",
       PRINT_JOB_EXPIRY_SECONDS: "45",
+      IDENTITY_TRANSITION_ENABLED: "true",
+      IDENTITY_SHADOW_HMAC_SECRET: "0123456789abcdef0123456789abcdef",
     });
 
     expect(config).toMatchObject({
@@ -90,6 +93,10 @@ describe("typed application configuration", () => {
       },
       candidates: { defaultExamName: "통합 설정 시험" },
       printJobs: { expirySeconds: 45 },
+      identityTransition: {
+        enabled: true,
+        shadowHmacSecret: "0123456789abcdef0123456789abcdef",
+      },
     });
   });
 

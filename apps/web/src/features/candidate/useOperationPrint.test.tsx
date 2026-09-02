@@ -47,7 +47,6 @@ const systemProfile: DeveloperSettings = {
 const template: FormTemplate = {
   id: 1,
   code: "CANDIDATE_CARD",
-  version: 1,
   name: "수험생 확인표",
   description: null,
   category: "운영",
@@ -65,6 +64,88 @@ describe("useOperationPrint", () => {
     mocks.downloadTemplatePdf.mockReset();
     mocks.fetchActiveFormTemplates.mockResolvedValue([template]);
     mocks.downloadTemplatePdf.mockResolvedValue(undefined);
+  });
+
+  it("출력 양식 목록에서 미사용 양식을 제외한다", async () => {
+    mocks.fetchActiveFormTemplates.mockResolvedValue([
+      { ...template, id: 2, code: "DISABLED_CARD", name: "미사용 양식", active: false },
+      template,
+    ]);
+    const { result } = renderHook(() =>
+      useOperationPrint({
+        token: "token",
+        systemProfile,
+        examName: "2026년도 자격시험",
+        schedule,
+        scheduleKey: "schedule-1",
+        rows: [],
+        statusLoaded: true,
+        operationClosed: true,
+        isCurrentSchedule: () => true,
+        onNotice: vi.fn(),
+      }),
+    );
+
+    await act(async () => result.current.show());
+
+    expect(result.current.templates).toEqual([template]);
+    expect(result.current.selectedTemplateCode).toBe(template.code);
+  });
+
+  it("requires and forwards only signer names configured by tags used in the template", async () => {
+    const signatureTemplate: FormTemplate = {
+      ...template,
+      layout: {
+        layout: {
+          pages: [
+            {
+              settings: {
+                documentHtml:
+                  '<span data-template-tag-value="signature.author"></span><span data-template-tag-value="signature.reviewer"></span>',
+                signatureNames: { enabled: true },
+              },
+            },
+          ],
+        },
+      },
+    };
+    mocks.fetchActiveFormTemplates.mockResolvedValue([signatureTemplate]);
+    mocks.buildOperationTemplatePages.mockResolvedValue(["<p>page</p>"]);
+    const onNotice = vi.fn();
+    const { result } = renderHook(() =>
+      useOperationPrint({
+        token: "token",
+        systemProfile,
+        examName: "2026년도 자격시험",
+        schedule,
+        scheduleKey: "schedule-1",
+        rows: [],
+        statusLoaded: true,
+        operationClosed: true,
+        isCurrentSchedule: () => true,
+        onNotice,
+      }),
+    );
+
+    await act(async () => result.current.show());
+    expect(result.current.signatureFields.map((field) => field.label)).toEqual(["작성자", "확인자"]);
+    await act(async () => result.current.generate());
+    expect(mocks.buildOperationTemplatePages).not.toHaveBeenCalled();
+    expect(onNotice).toHaveBeenLastCalledWith({ kind: "error", text: "작성자 이름을 입력해 주세요." });
+
+    act(() => {
+      result.current.updateSignatureName("signature.author", " 김작성 ");
+      result.current.updateSignatureName("signature.reviewer", " 이확인 ");
+    });
+    await act(async () => result.current.generate());
+
+    expect(mocks.buildOperationTemplatePages).toHaveBeenCalledWith(
+      signatureTemplate,
+      [],
+      expect.objectContaining({
+        signatureNames: { "signature.author": "김작성", "signature.reviewer": "이확인" },
+      }),
+    );
   });
 
   it("aborts an in-flight PDF generation when the modal is closed", async () => {

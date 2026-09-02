@@ -75,7 +75,7 @@ describe("useAdminSectionNavigation", () => {
     expect(result.current.leaveConfirmation).toMatchObject({ open: true, dirtyLabel: "양식" });
   });
 
-  it("keeps developer access top-level and increments the template reset key on re-entry", () => {
+  it("keeps developer access top-level and resets the template editor when its menu is opened", () => {
     const onNavigate = vi.fn();
     const onDashboardOpen = vi.fn();
     const { result } = renderHook(() =>
@@ -95,9 +95,32 @@ describe("useAdminSectionNavigation", () => {
 
     act(() => result.current.openSection("templates"));
     expect(result.current.templateResetKey).toBe(1);
-    act(() => result.current.openSection("accounts"));
     act(() => result.current.openSection("templates"));
     expect(result.current.templateResetKey).toBe(2);
+    act(() => result.current.openSection("accounts"));
+    act(() => result.current.openSection("templates"));
+    expect(result.current.templateResetKey).toBe(3);
+  });
+
+  it("guards reopening the template library when the editor has unsaved changes", () => {
+    const { result } = renderHook(() =>
+      useAdminSectionNavigation({
+        section: "templates",
+        developerMode: false,
+        onNavigate: vi.fn(),
+        onLogout: vi.fn(),
+        onDashboardOpen: vi.fn(),
+      }),
+    );
+
+    act(() => result.current.updateTemplateDirty(true));
+    act(() => result.current.openSection("templates"));
+    expect(result.current.leaveConfirmation).toMatchObject({ open: true, dirtyLabel: "양식" });
+    expect(result.current.templateResetKey).toBe(0);
+
+    act(() => result.current.leaveConfirmation.discard());
+    expect(result.current.leaveConfirmation.open).toBe(false);
+    expect(result.current.templateResetKey).toBe(1);
   });
 
   it("guards logout and lets Escape cancel the top-level confirmation", () => {

@@ -6,7 +6,6 @@ export type FormTemplateScope = "CANDIDATE" | "ROOM" | "EXAM";
 export interface FormTemplate {
   id: number;
   code: string;
-  version: number;
   name: string;
   description: string | null;
   category: string;
@@ -60,6 +59,27 @@ export function updateFormTemplateMetadata(
     {
       method: "PATCH",
       body: JSON.stringify(input),
+    },
+    token,
+  );
+}
+
+export function updateFormTemplateActive(token: string, code: string, active: boolean) {
+  return apiFetch<FormTemplate>(
+    `/form-templates/${encodeURIComponent(code)}/active`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ active }),
+    },
+    token,
+  );
+}
+
+export function deleteFormTemplate(token: string, code: string) {
+  return apiFetch<void>(
+    `/form-templates/${encodeURIComponent(code)}`,
+    {
+      method: "DELETE",
     },
     token,
   );

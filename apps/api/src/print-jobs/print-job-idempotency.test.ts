@@ -1,7 +1,11 @@
 import { ConflictException } from "@nestjs/common";
 import { describe, expect, it } from "vitest";
-import type { CreatePrintJobDto } from "./print-jobs.dto.js";
-import { assertMatchingPrintJobRequest, createPrintJobRequestFingerprint } from "./print-job-idempotency.js";
+import type { CreatePrintJobDto, ReissuePrintJobDto } from "./print-jobs.dto.js";
+import {
+  assertMatchingPrintJobRequest,
+  createPrintJobReissueRequestFingerprint,
+  createPrintJobRequestFingerprint,
+} from "./print-job-idempotency.js";
 
 const baseRequest: CreatePrintJobDto = {
   idempotencyKey: "5f4955d9-4625-4b24-802f-f4f19b60c422",
@@ -51,5 +55,23 @@ describe("print-job request fingerprint", () => {
     expect(() => assertMatchingPrintJobRequest("0".repeat(64), fingerprint)).toThrow(
       "새 요청 키로 다시 시도해 주세요.",
     );
+  });
+
+  it("binds a reissue key to both its source job and safe reason code", () => {
+    const sourcePrintJobId = "00000000-0000-4000-8000-000000000001";
+    const request: ReissuePrintJobDto = {
+      idempotencyKey: "00000000-0000-4000-8000-000000000002",
+      reasonCode: "CLIENT_SEND_RETRY",
+    };
+    const fingerprint = createPrintJobReissueRequestFingerprint(sourcePrintJobId, request);
+
+    expect(fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(createPrintJobReissueRequestFingerprint(sourcePrintJobId.toUpperCase(), request)).toBe(fingerprint);
+    expect(createPrintJobReissueRequestFingerprint("00000000-0000-4000-8000-000000000003", request)).not.toBe(
+      fingerprint,
+    );
+    expect(
+      createPrintJobReissueRequestFingerprint(sourcePrintJobId, { ...request, reasonCode: "PRINTER_RECOVERY" }),
+    ).not.toBe(fingerprint);
   });
 });

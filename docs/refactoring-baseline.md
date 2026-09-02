@@ -153,14 +153,15 @@ bundle에는 포함되지 않는 경계 테스트가 통과했다.
 - 기준 태그: `refactor-baseline-2026-08-28`
 - 공개 원격: `https://github.com/ahe45/ExamCheck`, `origin/master`
 - 기준 commit의 GitHub Actions Quality Gate 세 작업 모두 성공
-- `setup/`은 분석용 로컬 레거시 자산이며 `.gitignore`로 제외
+- `setup/`은 기준선 수립 당시 `.gitignore`로 제외한 분석용 로컬 레거시 자산이었으며,
+  2026-08-28 사용자 명시 요청으로 프로젝트에서 삭제함
 - DB backup/restore rehearsal은 아직 필요
 - backup/restore와 migration 절차서는 `docs/runbooks/`에 있지만 승인된 backup 위치에서 실행한
   결과나 운영 cutover 증거는 아님
 
 ## 최초 배치 Go 조건
 
-1. `setup/`과 실제 `.env`가 source commit 대상에서 제외됨
+1. 기준선 수립 당시 `setup/`과 실제 `.env`가 source commit 대상에서 제외됨
 2. P0 수정마다 실패 재현 또는 최소 regression test가 존재함
 3. 실제 운영 DB를 직접 테스트 대상으로 사용하지 않음
 4. typecheck, 기존 테스트, build가 계속 성공함

@@ -7,7 +7,8 @@
 > 기준 상태: 최초 기준 commit `83c43e5`, 태그 `refactor-baseline-2026-08-28`  
 > 측정 환경: Windows NT 10.0.26200.0, Node.js 24.14.0, npm 11.9.0, Vite production build  
 > 최초 분석 대상 schema: migration `018_drop_account_display_name.sql`까지  
-> 현재 적용·검증 기준: migration `026_expand_audit_request_id.sql`까지. 기존 `001`~`025`는 불변이며, 목표 identity migration은 승인 후 `027` 이상만 사용
+> 현재 소스·격리 검증 기준: migration `037_immutable_identity_history.sql`까지. `001`~`037`은 forward-only 기준선이며, fresh 임시 MariaDB와 `026`→`037` upgrade를 검증했다. 이는 운영 DB 적용·승격 증거가 아니며 운영 단계는 계속 No-Go다.
+> 정리 이력: 계획 수립 당시의 로컬 `setup/` 레거시 자산 2,209개 파일(401,552,387 bytes)은 2026-08-28 사용자 명시 요청으로 삭제했다. 세부 기록은 `docs/legacy-inventory.md`에서 관리한다.
 
 ---
 
@@ -92,7 +93,7 @@
 - 루트 npm workspace와 스크립트
 - `apps/web`: React 19, TypeScript 5.9, Vite 7
 - `apps/api`: NestJS 11, `mysql2/promise`를 사용하는 MySQL 호환 DB 서버. 실제 운영 제품이 MySQL인지 MariaDB인지와 정확한 버전은 착수 시 확인해야 한다.
-- SQL 마이그레이션 001~~018(최초 분석 범위, 현재 진행 상태는 001~~026)
+- SQL 마이그레이션 001–018(최초 분석 범위, 현재 소스·격리 검증 상태는 001–037)
 - 수험생 XLSX·사진 ZIP 처리
 - 양식 편집기 패키지와 HTML/PDF 렌더링
 - Zebra Windows 드라이버, Browser Print, Print Job 흐름
@@ -272,10 +273,13 @@ MySQL 호환 운영 DB
   → 기존 구조 제거
 ```
 
-기존 001~025 마이그레이션은 수정하지 않는다. 026은 감사 request ID 폭만 넓힌 현 모델의
-forward-only 보강이며 목표 identity 모델 변경과 무관하고, 적용 후에는 이 파일도 수정하지 않는다.
-목표 identity 모델을 포함한 이후 변경은 027 이상의 forward-only 마이그레이션으로 추가한다. 아래에서
-019 이후를 예고한 문장은 최초 계획 당시의 번호이며 현재 manifest 기준으로 다시 번호를 배정한다.
+기존 `001`–`037` 마이그레이션은 수정하지 않는다. 026은 감사 request ID 폭만 넓힌 현 모델의
+forward-only 보강이고, 027–032는 목표 identity expand, 033은 병행 전환 상태·backfill·shadow
+control, 034는 증적·분리 승인·상태 이력을 추가한다. 035는 재시도·재출력 이력, 036은 완결된 shadow batch와
+소스 변경 watermark, 037은 발행 양식·업무 이력·출력 snapshot의 불변 제약을 추가한다. 이 파일들은 fresh 임시 DB와
+`026`→`037` upgrade에서만 검증됐으며 운영 적용이나 cutover를 의미하지 않는다. 이후 변경도 새 번호의
+forward-only 마이그레이션으로 추가한다. 아래에서 019 이후를 예고한 문장은 최초 계획 당시의
+번호이며 현재 manifest 기준으로 다시 번호를 배정한다.
 
 ### 5.5 실제 브라우저·운영 DB와 동일한 제품 검증
 
@@ -710,16 +714,13 @@ Toast, Dialog, Confirm, Button, IconButton, Popover, Brand, PageHeader, EmptySta
 
 로 점진 분리한다. CSS를 한 번에 다시 쓰지 않고 화면 단위로 옮긴다. FHD는 최소 기준, QHD는 제한적 확대, FHD 미만은 필요한 영역만 스크롤하는 계약을 토큰으로 고정한다.
 
-### P1-12. 양식 버전·편집기 통합·PDF 생성
+### P1-12. 양식 편집기 통합·PDF 생성
 
-- 버전 저장과 metadata 수정의 불변성 규칙이 일치하지 않는다.
-- 새 비활성 버전 저장 과정에서 활성 버전이 사라질 수 있다.
+- 양식 저장과 metadata 수정 경로가 나뉘어 있다.
 - 외부 editor DOM을 보정하는 코드가 feature에 강하게 결합돼 있다.
 - PDF 생성이 브라우저 메모리와 동시 사진 다운로드에 의존한다.
 
-`TemplateEditorAdapter`, immutable version, draft/published/archived lifecycle, layout schema version, sanitizer, PDF 진행률·취소·다운로드 동시성 제한을 도입한다.
-
-단, draft/published/archived lifecycle과 완전한 version 불변성은 사용자 동작을 바꿀 수 있으므로 별도 제품 ADR 승인 전에는 강제하지 않는다. 먼저 현재 저장·활성 버전 동작을 특성화 테스트로 고정하고 adapter, 신뢰 경계, sanitize report-only, 성능 개선부터 수행한다.
+`TemplateEditorAdapter`, 단일 양식 저장 흐름, layout schema 호환성 검사, sanitizer, PDF 진행률·취소·다운로드 동시성 제한을 도입한다.
 
 데이터 모델 전환 전에 현재 저장된 모든 template의 data tag key를 inventory하고 `TemplateDataProjection` compatibility mapper를 만든다. 신규 모델이 기존 tag 값을 계속 제공하지 못하면 migration을 중단하거나 승인된 alias/fallback을 기록한다.
 
@@ -920,7 +921,6 @@ pseudonym_operation(operation_slot_id)
 pseudonym_assignment(candidate_registration_id, pseudonym_operation_id)
 
 form_template
-  └─ form_template_version
 
 print_job
   └─ print_job_payload / reprint_relation
@@ -1058,7 +1058,7 @@ XL Phase를 하나의 branch나 PR로 구현하지 않는다. 각 하위 기능�
 9. 현재 API 응답 snapshot과 네트워크 요청 수 기록
 10. 최초 기준 커밋 및 `refactor-baseline-2026-08-28` 태그 생성
 11. 운영 DB 제품·버전·sql_mode·timezone·charset/collation·용량 inventory
-12. 기존 001~026 파일 hash를 known checksum manifest로 검증하고 승인
+12. 기존 001~037 파일 hash를 known checksum manifest로 검증하고 승인
 13. 저장된 모든 양식의 data tag key와 layout/editor version inventory
 14. 미사용 후보 코드·props·selector inventory 작성
 15. 개인정보 데이터 등급과 익명화 fixture 정책 수립
@@ -1340,7 +1340,7 @@ dual-write가 불가능하면 명시적인 maintenance window와 write 중단을
 **금지사항**
 
 - 이 단계에서 기존 테이블/컬럼을 drop하지 않는다.
-- 001~026 마이그레이션을 수정하지 않는다.
+- 001~037 마이그레이션을 수정하지 않는다.
 - 매핑 실패 데이터를 자동 추정해 덮어쓰지 않는다.
 - 대용량 backfill을 일반 DDL migration과 같은 파일에서 실행하지 않는다.
 - 신규 모델 read/write 안정화 전에 이름 기반 relation이나 legacy assignment를 제거하지 않는다.

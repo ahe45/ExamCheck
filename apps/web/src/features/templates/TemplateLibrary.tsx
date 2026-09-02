@@ -3,20 +3,29 @@ import {
   AddButtonIcon,
   CancelButtonIcon,
   ConfirmButtonIcon,
+  CopyButtonIcon,
+  DeleteButtonIcon,
   EditButtonIcon,
   RefreshButtonIcon,
 } from "../../shared/components/ActionIcons";
-import { updateFormTemplateMetadata, type FormTemplate } from "../../shared/api/form-templates";
+import {
+  deleteFormTemplate,
+  saveFormTemplate,
+  updateFormTemplateActive,
+  updateFormTemplateMetadata,
+  type FormTemplate,
+} from "../../shared/api/form-templates";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
 import {
   buildCardMetadataUpdate,
+  buildTemplateCopyInput,
   createCardMetadataEdit,
   groupTemplatesByCategory,
-  scopeLabel,
   type CardMetadataEdit,
   type TemplateMetadataField,
 } from "./template-manager-model";
 import { TemplateNotice, type TemplateNoticeValue } from "./TemplateNotice";
+import { TemplateDeleteModal } from "./TemplateDeleteModal";
 
 interface TemplateLibraryProps {
   token: string;
@@ -27,6 +36,7 @@ interface TemplateLibraryProps {
   onCreate(): void;
   onEdit(template: FormTemplate): void;
   onRefresh(): Promise<void>;
+  onTemplateDeleted(code: string): void;
   onTemplateUpdated(template: FormTemplate): void;
 }
 
@@ -39,10 +49,13 @@ export function TemplateLibrary({
   onCreate,
   onEdit,
   onRefresh,
+  onTemplateDeleted,
   onTemplateUpdated,
 }: TemplateLibraryProps) {
   const [cardMetadataEdit, setCardMetadataEdit] = useState<CardMetadataEdit | null>(null);
   const [metadataBusy, setMetadataBusy] = useState(false);
+  const [cardAction, setCardAction] = useState<{ templateId: number; type: "active" | "copy" | "delete" } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FormTemplate | null>(null);
   const groupedTemplates = useMemo(() => groupTemplatesByCategory(templates), [templates]);
 
   useEscapeKey(Boolean(cardMetadataEdit), () => setCardMetadataEdit(null));
@@ -82,6 +95,66 @@ export function TemplateLibrary({
       });
     } finally {
       setMetadataBusy(false);
+    }
+  }
+
+  async function changeTemplateActive(template: FormTemplate, active: boolean) {
+    if (cardAction) return;
+    setCardAction({ templateId: template.id, type: "active" });
+    onNoticeChange(null);
+    try {
+      const updated = await updateFormTemplateActive(token, template.code, active);
+      onTemplateUpdated(updated);
+      onNoticeChange({
+        kind: "success",
+        text: `${updated.name} 양식을 ${active ? "사용" : "미사용"} 상태로 변경했습니다.`,
+      });
+    } catch (reason) {
+      onNoticeChange({
+        kind: "error",
+        text: reason instanceof Error ? reason.message : "양식 사용 상태를 변경하지 못했습니다.",
+      });
+    } finally {
+      setCardAction(null);
+    }
+  }
+
+  async function copyTemplate(template: FormTemplate) {
+    if (cardAction) return;
+    setCardAction({ templateId: template.id, type: "copy" });
+    onNoticeChange(null);
+    try {
+      const copied = await saveFormTemplate(token, buildTemplateCopyInput(template, templates));
+      onTemplateUpdated(copied);
+      onNoticeChange({ kind: "success", text: `${copied.name}을 미사용 상태로 만들었습니다.` });
+    } catch (reason) {
+      onNoticeChange({
+        kind: "error",
+        text: reason instanceof Error ? reason.message : "양식을 복사하지 못했습니다.",
+      });
+    } finally {
+      setCardAction(null);
+    }
+  }
+
+  async function removeTemplate(template: FormTemplate): Promise<boolean> {
+    if (cardAction) return false;
+    setCardAction({ templateId: template.id, type: "delete" });
+    onNoticeChange(null);
+    try {
+      await deleteFormTemplate(token, template.code);
+      onTemplateDeleted(template.code);
+      setDeleteTarget(null);
+      onNoticeChange({ kind: "success", text: `${template.name} 양식을 삭제했습니다.` });
+      return true;
+    } catch (reason) {
+      onNoticeChange({
+        kind: "error",
+        text: reason instanceof Error ? reason.message : "양식을 삭제하지 못했습니다.",
+      });
+      return false;
+    } finally {
+      setCardAction(null);
     }
   }
 
@@ -155,70 +228,108 @@ export function TemplateLibrary({
   }
 
   return (
-    <section className="examlist-template-library">
-      <header className="admin-view-heading">
-        <div>
-          <h2>양식 관리</h2>
-          <p>가번호표와 라벨 출력 양식을 만들고 수정합니다.</p>
-        </div>
-        <div className="admin-view-actions">
-          <span className="count-badge">총 {templates.length}건</span>
-          <button className="exam-outline-button" onClick={() => void onRefresh()} disabled={refreshing}>
-            <RefreshButtonIcon />
-            <span>{refreshing ? "불러오는 중…" : "새로고침"}</span>
-          </button>
-          <button className="exam-primary-button" onClick={onCreate}>
-            <AddButtonIcon />
-            <span>새 양식</span>
-          </button>
-        </div>
-      </header>
-      {notice && <TemplateNotice notice={notice} onClose={() => onNoticeChange(null)} />}
-      <div className="exam-template-card-grid">
-        {Object.entries(groupedTemplates).flatMap(([category, items]) =>
-          items.map((template) => (
-            <article className="exam-template-card" key={template.id}>
-              <div className="exam-template-card-copy">
-                <div className="template-card-title-row">
-                  {renderCardMetadataField(template, "name")}
-                  <span>{category}</span>
-                </div>
-                {renderCardMetadataField(template, "description")}
-              </div>
-              <div className="exam-template-preview" aria-hidden="true">
-                <div className="preview-paper">
-                  <strong>{template.name}</strong>
-                  <span />
-                  <span />
-                  <span />
-                  <div>
-                    <i />
-                    <i />
-                  </div>
-                </div>
-              </div>
-              <footer>
-                <span>
-                  v{template.version} · {scopeLabel(template.usageScope)} · {template.active ? "사용 중" : "사용 중지"}
-                </span>
-                <button className="exam-primary-button compact" onClick={() => onEdit(template)}>
-                  <EditButtonIcon />
-                  <span>수정</span>
-                </button>
-              </footer>
-            </article>
-          )),
-        )}
-        {templates.length === 0 && (
-          <div className="admin-view-empty">
-            <p>등록된 양식이 없습니다.</p>
+    <>
+      <section className="examlist-template-library">
+        <header className="admin-view-heading">
+          <div>
+            <h2>양식 관리</h2>
+            <p>가번호표와 라벨 출력 양식을 만들고 수정합니다.</p>
+          </div>
+          <div className="admin-view-actions">
+            <span className="count-badge">총 {templates.length}건</span>
+            <button className="exam-outline-button" onClick={() => void onRefresh()} disabled={refreshing}>
+              <RefreshButtonIcon />
+              <span>{refreshing ? "불러오는 중…" : "새로고침"}</span>
+            </button>
             <button className="exam-primary-button" onClick={onCreate}>
               <AddButtonIcon />
-              <span>첫 양식 만들기</span>
+              <span>새 양식</span>
             </button>
           </div>
-        )}
-      </div>
-    </section>
+        </header>
+        {notice && <TemplateNotice notice={notice} onClose={() => onNoticeChange(null)} />}
+        <div className="exam-template-card-grid">
+          {Object.values(groupedTemplates).flatMap((items) =>
+            items.map((template) => (
+              <article className="exam-template-card" key={template.id}>
+                <div className="exam-template-card-copy">
+                  <div className="template-card-title-row">{renderCardMetadataField(template, "name")}</div>
+                  {renderCardMetadataField(template, "description")}
+                </div>
+                <div className="exam-template-preview" aria-hidden="true">
+                  <div className="preview-paper">
+                    <strong>{template.name}</strong>
+                    <span />
+                    <span />
+                    <span />
+                    <div>
+                      <i />
+                      <i />
+                    </div>
+                  </div>
+                </div>
+                <footer>
+                  <label className={`template-card-status-switch ${template.active ? "active" : ""}`}>
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      checked={template.active}
+                      disabled={Boolean(cardAction)}
+                      aria-label={`${template.name} 사용 여부`}
+                      onChange={(event) => void changeTemplateActive(template, event.target.checked)}
+                    />
+                    <i aria-hidden="true" />
+                    <span>{template.active ? "사용" : "미사용"}</span>
+                  </label>
+                  <div className="template-card-actions">
+                    <button
+                      className="exam-outline-button compact template-card-delete-button"
+                      disabled={Boolean(cardAction)}
+                      onClick={() => {
+                        onNoticeChange(null);
+                        setDeleteTarget(template);
+                      }}
+                    >
+                      <DeleteButtonIcon />
+                      <span>삭제</span>
+                    </button>
+                    <button
+                      className="exam-outline-button compact"
+                      disabled={Boolean(cardAction)}
+                      onClick={() => void copyTemplate(template)}
+                    >
+                      <CopyButtonIcon />
+                      <span>
+                        {cardAction?.templateId === template.id && cardAction.type === "copy" ? "복사 중…" : "복사"}
+                      </span>
+                    </button>
+                    <button
+                      className="exam-primary-button compact"
+                      disabled={Boolean(cardAction)}
+                      onClick={() => onEdit(template)}
+                    >
+                      <EditButtonIcon />
+                      <span>수정</span>
+                    </button>
+                  </div>
+                </footer>
+              </article>
+            )),
+          )}
+          {templates.length === 0 && (
+            <div className="admin-view-empty">
+              <p>등록된 양식이 없습니다.</p>
+              <button className="exam-primary-button" onClick={onCreate}>
+                <AddButtonIcon />
+                <span>첫 양식 만들기</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+      {deleteTarget && (
+        <TemplateDeleteModal template={deleteTarget} onClose={() => setDeleteTarget(null)} onDelete={removeTemplate} />
+      )}
+    </>
   );
 }

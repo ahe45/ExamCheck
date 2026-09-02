@@ -21,14 +21,16 @@ export function AdminDashboard({
 }: DashboardProps) {
   return (
     <section className="admin-standard-view admin-dashboard-view">
-      <header className="admin-dashboard-heading">
+      <header className="admin-view-heading">
         <div>
           <h2>전형 운영 대시보드</h2>
           <p>전형별 수험생 등록 현황과 가번호 부여 진행률을 빠르게 확인합니다.</p>
         </div>
-        <div>
-          <span>{lastUpdated ? `마지막 갱신 ${formatDashboardTime(lastUpdated)}` : "데이터 확인 중"}</span>
-          <button className="exam-ghost-button" onClick={onRefresh} disabled={loading}>
+        <div className="admin-view-actions">
+          <span className="admin-dashboard-updated">
+            {lastUpdated ? `마지막 갱신 ${formatDashboardTime(lastUpdated)}` : "데이터 확인 중"}
+          </span>
+          <button className="exam-outline-button" onClick={onRefresh} disabled={loading}>
             <RefreshButtonIcon />
             <span>{loading ? "갱신 중…" : "새로고침"}</span>
           </button>

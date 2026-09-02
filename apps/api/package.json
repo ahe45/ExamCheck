@@ -8,13 +8,16 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "test": "vitest run --configLoader runner",
-    "test:coverage": "vitest run --coverage --config vitest.config.ts --configLoader runner",
+    "test:coverage": "vitest run --coverage --config ./test-support/vitest.coverage.config.ts --configLoader runner",
     "test:integration": "vitest run --config ./test-support/vitest.integration.config.ts --configLoader runner",
     "typecheck": "tsc --noEmit",
     "typecheck:integration": "tsc -p test-support/tsconfig.integration.json",
     "check:integration": "npm run typecheck:integration && npm run test:integration",
     "db:setup": "tsx src/database/setup.ts",
     "db:migrate": "tsx src/database/migrate.ts",
+    "db:backfill:identity": "tsx src/database/identity-backfill-cli.ts",
+    "db:verify:identity-shadow": "tsx src/database/identity-shadow-verify-cli.ts",
+    "db:transition:identity": "tsx src/database/identity-transition-cli.ts",
     "db:bootstrap": "tsx src/database/bootstrap.ts"
   },
   "dependencies": {

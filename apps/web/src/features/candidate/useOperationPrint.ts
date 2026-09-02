@@ -7,6 +7,11 @@ import { buildOperationTemplatePages } from "./operation-template-pages";
 import type { OperationRow } from "./operation-view-model";
 import { downloadTemplatePdf } from "../templates/template-renderer";
 import { isAbortError } from "../../shared/async/bounded-map";
+import {
+  emptyTemplateSignatureNames,
+  getRequiredTemplateSignatureFields,
+  type TemplateSignatureKey,
+} from "../templates/template-signatures";
 
 export interface OperationPrintProgress {
   label: string;
@@ -34,6 +39,7 @@ export function useOperationPrint(options: Options) {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<OperationPrintProgress | null>(null);
+  const [signatureNames, setSignatureNames] = useState(emptyTemplateSignatureNames);
   const generationControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -42,6 +48,7 @@ export function useOperationPrint(options: Options) {
     setLoading(false);
     setGenerating(false);
     setProgress(null);
+    setSignatureNames(emptyTemplateSignatureNames());
     setOpen(false);
   }, [options.scheduleKey]);
 
@@ -61,13 +68,15 @@ export function useOperationPrint(options: Options) {
     const requestScheduleKey = options.scheduleKey;
     setOpen(true);
     setLoading(true);
+    setSignatureNames(emptyTemplateSignatureNames());
     options.onNotice(null);
     try {
       const nextTemplates = await fetchActiveFormTemplates(options.token);
       if (!options.isCurrentSchedule(requestScheduleKey)) return;
-      setTemplates(nextTemplates);
+      const activeTemplates = nextTemplates.filter((template) => template.active);
+      setTemplates(activeTemplates);
       setSelectedTemplateCode((current) =>
-        nextTemplates.some((item) => item.code === current) ? current : nextTemplates[0]?.code || "",
+        activeTemplates.some((item) => item.code === current) ? current : activeTemplates[0]?.code || "",
       );
     } catch (reason) {
       if (options.isCurrentSchedule(requestScheduleKey)) {
@@ -85,6 +94,13 @@ export function useOperationPrint(options: Options) {
   async function generate() {
     const template = templates.find((item) => item.code === selectedTemplateCode);
     if (!template || generating) return;
+    const missingSignature = getRequiredTemplateSignatureFields(template.layout).find(
+      (field) => !signatureNames[field.key].trim(),
+    );
+    if (missingSignature) {
+      options.onNotice({ kind: "error", text: `${missingSignature.label} 이름을 입력해 주세요.` });
+      return;
+    }
     const requestScheduleKey = options.scheduleKey;
     const controller = new AbortController();
     generationControllerRef.current?.abort(new DOMException("새 PDF 생성을 시작했습니다.", "AbortError"));
@@ -99,6 +115,9 @@ export function useOperationPrint(options: Options) {
         schedule: options.schedule,
         examName: options.examName,
         operationClosed: options.operationClosed,
+        signatureNames: Object.fromEntries(
+          Object.entries(signatureNames).map(([key, value]) => [key, value.trim()]),
+        ) as typeof signatureNames,
         signal: controller.signal,
         onPhotoProgress: (completed, total) => {
           if (generationControllerRef.current === controller) {
@@ -150,7 +169,17 @@ export function useOperationPrint(options: Options) {
     generationControllerRef.current = null;
     setGenerating(false);
     setProgress(null);
+    setSignatureNames(emptyTemplateSignatureNames());
     setOpen(false);
+  }
+
+  function updateSignatureName(key: TemplateSignatureKey, value: string) {
+    setSignatureNames((current) => ({ ...current, [key]: value }));
+  }
+
+  function selectTemplate(templateCode: string) {
+    setSelectedTemplateCode(templateCode);
+    setSignatureNames(emptyTemplateSignatureNames());
   }
 
   function isActiveGeneration(controller: AbortController, requestScheduleKey: string) {
@@ -168,7 +197,12 @@ export function useOperationPrint(options: Options) {
     loading,
     generating,
     progress,
-    setSelectedTemplateCode,
+    signatureFields: getRequiredTemplateSignatureFields(
+      templates.find((item) => item.code === selectedTemplateCode)?.layout || "",
+    ),
+    signatureNames,
+    setSelectedTemplateCode: selectTemplate,
+    updateSignatureName,
     show,
     generate,
     close,

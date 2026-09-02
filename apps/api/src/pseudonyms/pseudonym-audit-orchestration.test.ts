@@ -2,6 +2,8 @@ import { BadRequestException } from "@nestjs/common";
 import type { Pool, PoolConnection } from "mysql2/promise";
 import { describe, expect, it, vi } from "vitest";
 import type { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
+import type { IdentityBackfillProjectionRepository } from "../database/identity-backfill-projection.repository.js";
+import type { IdentityTransitionCoordinator } from "../identity-transition/identity-transition-coordinator.js";
 import { AssignPseudonymUseCase, ChangePseudonymOperationStatusUseCase } from "./pseudonyms.application.js";
 import type { CandidateRow, PseudonymsRepository, SettingRow } from "./pseudonyms.repository.js";
 import type { AssignPseudonymInput, PseudonymOperationScopeInput } from "./pseudonyms.types.js";
@@ -22,8 +24,6 @@ describe("pseudonym application audit orchestration", () => {
       details: {
         assignmentId: 42,
         candidateRecordId: 208,
-        examineeNo: "10001",
-        pseudonymNo: "1201",
         mode: "MANUAL",
       },
     });
@@ -90,6 +90,38 @@ describe("pseudonym application audit orchestration", () => {
       vi.mocked(reopenFixture.connection.commit).mock.invocationCallOrder[0],
     );
   });
+
+  it("projects exact absentee counts into immutable close and reopen events during dual writes", async () => {
+    const closeFixture = createOperationFixture({ dualWrite: true, autoAssignAbsenteesOnClose: true });
+    await closeFixture.useCase.close(operationScope, actor);
+
+    expect(closeFixture.identityProjection.syncAssignmentTree).toHaveBeenCalledWith(
+      closeFixture.connection,
+      91,
+      operationScope.examName,
+    );
+    expect(closeFixture.identityProjection.syncOperationTree).toHaveBeenCalledWith(
+      closeFixture.connection,
+      7,
+      operationScope.examName,
+      { autoAssignedAbsenteeCount: 1 },
+    );
+
+    const reopenFixture = createOperationFixture({ dualWrite: true, deleteAbsenteeInfoOnReopen: true });
+    await reopenFixture.useCase.reopen(operationScope, actor);
+
+    expect(reopenFixture.identityProjection.removeCurrentAssignments).toHaveBeenCalledWith(
+      reopenFixture.connection,
+      [91],
+      actor.id,
+    );
+    expect(reopenFixture.identityProjection.syncOperationTree).toHaveBeenCalledWith(
+      reopenFixture.connection,
+      7,
+      operationScope.examName,
+      { removedCurrentAbsenteeCount: 1 },
+    );
+  });
 });
 
 const actor = { id: 7, loginId: "admin", role: "ADMIN" as const, admissionNames: [] };
@@ -142,27 +174,66 @@ function createAssignmentFixture() {
   return { audit, connection, repository, useCase };
 }
 
-function createOperationFixture() {
+function createOperationFixture(
+  options: {
+    dualWrite?: boolean;
+    autoAssignAbsenteesOnClose?: boolean;
+    deleteAbsenteeInfoOnReopen?: boolean;
+  } = {},
+) {
   const connection = createConnection();
   const repository = {
     loadPseudonymNumberPolicyForUpdate: vi.fn().mockResolvedValue("ADMISSION"),
     ensureOperation: vi.fn().mockResolvedValue(undefined),
     lockOperation: vi.fn().mockResolvedValue({ id: 7, closed: false }),
     findOperationForUpdate: vi.fn().mockResolvedValue({ id: 7, closed: true }),
-    findSetting: vi.fn().mockResolvedValue(settingRow()),
+    findSetting: vi.fn().mockResolvedValue(
+      settingRow({
+        autoAssignAbsenteesOnClose: options.autoAssignAbsenteesOnClose ?? false,
+        deleteAbsenteeInfoOnReopen: options.deleteAbsenteeInfoOnReopen ?? false,
+      }),
+    ),
+    listTimeRangesForUpdate: vi.fn().mockResolvedValue([]),
+    listUnassignedCandidatesForUpdate: vi.fn().mockResolvedValue([candidateRow()]),
+    loadReservedNumbers: vi.fn().mockResolvedValue(new Set<number>()),
+    insertAbsenteeAssignment: vi.fn().mockResolvedValue(91),
+    listAutoAssignedAbsenteeIdsForUpdate: vi.fn().mockResolvedValue([91]),
+    deleteAutoAssignedAbsentees: vi.fn().mockResolvedValue(1),
     closeOperation: vi.fn().mockResolvedValue(undefined),
     reopenOperation: vi.fn().mockResolvedValue(undefined),
     findOperationStatus: vi.fn().mockResolvedValue({ closed: false, closedAt: null, closedByLoginId: null }),
     countAutoAssignedAbsentees: vi.fn().mockResolvedValue(0),
   };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
+  const identityTransition = {
+    decideWrite: vi.fn().mockResolvedValue({
+      state: {
+        enabled: true,
+        writeMode: "DUAL",
+        readMode: "LEGACY",
+        phase: "BACKFILLED",
+        version: 1,
+        shadowHmacSecret: null,
+      },
+      writeLegacy: true,
+      writeTarget: true,
+      authority: "LEGACY",
+    }),
+  };
+  const identityProjection = {
+    syncAssignmentTree: vi.fn().mockResolvedValue(undefined),
+    syncOperationTree: vi.fn().mockResolvedValue(undefined),
+    removeCurrentAssignments: vi.fn().mockResolvedValue(undefined),
+  };
   const pool = { getConnection: vi.fn().mockResolvedValue(connection) } as unknown as Pool;
   const useCase = new ChangePseudonymOperationStatusUseCase(
     pool,
     repository as unknown as PseudonymsRepository,
     audit as unknown as MutationAuditRepository,
+    (options.dualWrite ? identityTransition : undefined) as unknown as IdentityTransitionCoordinator,
+    identityProjection as unknown as IdentityBackfillProjectionRepository,
   );
-  return { audit, connection, repository, useCase };
+  return { audit, connection, identityProjection, repository, useCase };
 }
 
 function assignmentInput(overrides: Partial<AssignPseudonymInput> = {}): AssignPseudonymInput {
@@ -194,7 +265,9 @@ function candidateRow(): CandidateRow {
   } as CandidateRow;
 }
 
-function settingRow(): SettingRow {
+function settingRow(
+  overrides: Partial<Pick<SettingRow, "autoAssignAbsenteesOnClose" | "deleteAbsenteeInfoOnReopen">> = {},
+): SettingRow {
   return {
     id: 9,
     version: 3,
@@ -211,5 +284,6 @@ function settingRow(): SettingRow {
     deleteAbsenteeInfoOnReopen: false,
     useCandidatePhotos: false,
     enableBulkDraw: false,
+    ...overrides,
   } as SettingRow;
 }

@@ -4,7 +4,7 @@ import { CurrentUser } from "../auth/current-user.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { RequirePermissions } from "../auth/permissions.js";
 import { RolesGuard } from "../auth/roles.js";
-import { CompletePrintJobDto, CreatePrintJobDto } from "./print-jobs.dto.js";
+import { CompletePrintJobDto, CreatePrintJobDto, ReissuePrintJobDto } from "./print-jobs.dto.js";
 import { PrintJobsService } from "./print-jobs.service.js";
 
 @Controller("print-jobs")
@@ -25,5 +25,14 @@ export class PrintJobsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.printJobsService.complete(id, input, user);
+  }
+
+  @Post(":id/reissue")
+  reissue(
+    @Param("id", new ParseUUIDPipe({ version: "4" })) id: string,
+    @Body() input: ReissuePrintJobDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.printJobsService.reissue(id, input, user);
   }
 }

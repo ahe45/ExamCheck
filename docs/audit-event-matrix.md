@@ -40,8 +40,8 @@
 | 개발자 설정  | 로고 삭제                       | `SYSTEM_LOGO_REMOVED`              | 동일 transaction          | 없음                                                                                                                                                                                                                             |
 | 개발자 계정  | 본인 비밀번호 변경              | `DEVELOPER_PASSWORD_CHANGED`       | 동일 transaction          | `developerUserId`                                                                                                                                                                                                                |
 | 워크스테이션 | 생성                            | `WORKSTATION_CREATED`              | 동일 transaction          | `workstationId`, `code`; envelope에 `workstationId`                                                                                                                                                                              |
-| 양식         | 새 버전 저장                    | `FORM_TEMPLATE_SAVED`              | 동일 transaction          | `code`, `version`, `active`, `riskCount`                                                                                                                                                                                         |
-| 양식         | 최신 버전 제목·설명 수정        | `FORM_TEMPLATE_METADATA_UPDATED`   | 동일 transaction          | `code`, `templateId`                                                                                                                                                                                                             |
+| 양식         | 저장                            | `FORM_TEMPLATE_SAVED`              | 동일 transaction          | `code`, `templateId`, `active`, `riskCount`                                                                                                                                                                                      |
+| 양식         | 제목·설명 수정                  | `FORM_TEMPLATE_METADATA_UPDATED`   | 동일 transaction          | `code`, `templateId`                                                                                                                                                                                                             |
 | 가번호 설정  | 범위·부여 정책 저장             | `PSEUDONYM_SETTING_UPDATED`        | 동일 transaction          | `settingId`, `version`, `assignmentMethod`, `rangeCount`, `autoDrawEnabled`, `autoDrawDelaySeconds`, `printPreassignedLabel`, `autoAssignAbsenteesOnClose`, `deleteAbsenteeInfoOnReopen`, `useCandidatePhotos`, `enableBulkDraw` |
 | 가번호 운영  | 등록 완료(마감)                 | `PSEUDONYM_OPERATION_CLOSED`       | 동일 transaction          | `operationId`, `examDate`, `examTime`, `periodName`, `admissionName`, `autoAssignedAbsenteeCount`                                                                                                                                |
 | 가번호 운영  | 마감 해제                       | `PSEUDONYM_OPERATION_REOPENED`     | 동일 transaction          | `operationId`, `examDate`, `examTime`, `periodName`, `admissionName`, `deletedAbsenteeCount`                                                                                                                                     |
@@ -50,6 +50,7 @@
 | 출력         | Browser Print 전송 성공         | `PRINT_JOB_SENT`                   | 동일 transaction          | `status`; envelope에 `workstationId`, `printJobId`                                                                                                                                                                               |
 | 출력         | Browser Print 전송 실패         | `PRINT_JOB_FAILED`                 | 동일 transaction          | `status`, `errorRecorded`; envelope에 `workstationId`, `printJobId`                                                                                                                                                              |
 | 출력         | 만료된 READY 작업 완료 시도     | `PRINT_JOB_EXPIRED`                | 동일 transaction          | `requestedStatus`, `status`; envelope에 `workstationId`, `printJobId`                                                                                                                                                            |
+| 출력         | 실패 재시도·전송 완료 재출력    | `PRINT_JOB_REISSUED`               | 동일 transaction          | `reissueType`, 고정 `reasonCode`; envelope에 `workstationId`, 새 `printJobId`                                                                                                                                                    |
 
 마감 중 자동 결시자 가번호는 개별 `PSEUDONYM_ASSIGNED` 이벤트를 만들지 않고
 `PSEUDONYM_OPERATION_CLOSED.autoAssignedAbsenteeCount` 집계로 기록한다. 이 동작은 현재 계약을 보존한 것이다.
@@ -81,6 +82,7 @@
 - 수험생 이름, 생년월일, 사진 BLOB/base64, 사진 ZIP·XLSX 원문 행
 - 양식의 HTML/layout 전체, 인쇄 ZPL/PDF payload, 파일 원문
 - 프린터 실패 원문에 포함될 수 있는 장치·사용자 데이터. 출력 감사에는 `errorRecorded`만 저장
+- 재시도·재출력 자유문구. 출력 재발행 감사에는 허용 목록의 `reasonCode`만 저장
 - 임의 request body/query/header 전체, DB 오류 SQL·parameter 원문
 
 계정 이벤트의 `loginId`와 `PSEUDONYM_ASSIGNED`의 `examineeNo`, `pseudonymNo`는 기존 운영 추적 계약을

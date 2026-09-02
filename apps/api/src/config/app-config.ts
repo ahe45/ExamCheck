@@ -4,6 +4,11 @@ import {
   type LoginRateLimitConfig,
   type LoginRateLimitEnvironment,
 } from "./login-rate-limit-config.js";
+import {
+  resolveIdentityTransitionConfig,
+  type IdentityTransitionConfig,
+  type IdentityTransitionEnvironment,
+} from "./identity-transition-config.js";
 import { resolvePrintJobConfig, type PrintJobConfig, type PrintJobEnvironment } from "./print-job-config.js";
 import {
   resolveApiPort,
@@ -44,6 +49,8 @@ export const APP_CONFIG_KEYS = [
   "AUTH_LOGIN_MAX_TRACKED_KEYS",
   "DEFAULT_EXAM_NAME",
   "PRINT_JOB_EXPIRY_SECONDS",
+  "IDENTITY_TRANSITION_ENABLED",
+  "IDENTITY_SHADOW_HMAC_SECRET",
 ] as const;
 export type AppConfigKey = (typeof APP_CONFIG_KEYS)[number];
 
@@ -53,7 +60,8 @@ export interface AppConfigEnvironment
     FrontendOriginEnvironment,
     SecurityEnvironment,
     LoginRateLimitEnvironment,
-    PrintJobEnvironment {
+    PrintJobEnvironment,
+    IdentityTransitionEnvironment {
   DEFAULT_EXAM_NAME?: string;
 }
 
@@ -75,6 +83,7 @@ export interface AppConfig {
     defaultExamName: string;
   }>;
   printJobs: Readonly<PrintJobConfig>;
+  identityTransition: Readonly<IdentityTransitionConfig>;
 }
 
 export function readAppConfigEnvironment(getValue: (key: AppConfigKey) => string | undefined): AppConfigEnvironment {
@@ -100,5 +109,6 @@ export function resolveAppConfig(environment: AppConfigEnvironment): Readonly<Ap
       defaultExamName: environment.DEFAULT_EXAM_NAME === undefined ? DEFAULT_EXAM_NAME : environment.DEFAULT_EXAM_NAME,
     }),
     printJobs: Object.freeze(resolvePrintJobConfig(environment)),
+    identityTransition: Object.freeze(resolveIdentityTransitionConfig(environment)),
   });
 }

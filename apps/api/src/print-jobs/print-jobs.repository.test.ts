@@ -153,12 +153,120 @@ describe("PrintJobsRepository", () => {
     await repository.markFailed(executor, id, "전송 실패");
 
     expect(execute.mock.calls[0]).toEqual([expect.stringContaining("LIMIT 1 FOR UPDATE"), [id]]);
+    expect(execute.mock.calls[0]?.[0]).not.toContain("print_projection_snapshot");
     expect(execute.mock.calls[1]).toEqual([expect.stringContaining("status = 'EXPIRED'"), [id]]);
     expect(execute.mock.calls[2]).toEqual([expect.stringContaining("status = 'SENT'"), [id]]);
     expect(execute.mock.calls[3]).toEqual([expect.stringContaining("status = 'FAILED'"), ["전송 실패", id]]);
     for (const call of execute.mock.calls.slice(1)) {
       expect(call[0]).toContain("status = 'READY'");
     }
+  });
+
+  it("keeps target snapshot lookup isolated to the reissue-only source lock", async () => {
+    const source = { requestedBy: 9, workstationId: 4, status: "FAILED", isExpired: 0, hasSnapshot: 1 };
+    const execute = vi.fn().mockResolvedValue([[source], []]);
+    const repository = new PrintJobsRepository();
+    const executor = asExecutor(execute);
+    const id = "00000000-0000-4000-8000-000000000001";
+
+    await expect(repository.findReissueSourceForUpdate(executor, id)).resolves.toEqual(source);
+
+    expect(execute.mock.calls[0]).toEqual([expect.stringContaining("LIMIT 1 FOR UPDATE"), [id]]);
+    expect(execute.mock.calls[0]?.[0]).toContain("FROM print_projection_snapshot snapshot");
+  });
+
+  it("copies a reissued job and payload while appending one source-linked event", async () => {
+    const execute = vi.fn().mockResolvedValue([{ affectedRows: 1 } as ResultSetHeader, []]);
+    const repository = new PrintJobsRepository();
+    const executor = asExecutor(execute);
+    const record = {
+      id: "00000000-0000-4000-8000-000000000002",
+      jobNo: "PJ-RETRY-1",
+      sourcePrintJobId: "00000000-0000-4000-8000-000000000001",
+      requestedBy: 9,
+      idempotencyKey: "00000000-0000-4000-8000-000000000003",
+      requestFingerprint: "a".repeat(64),
+      expirySeconds: 300,
+      reissueType: "RETRY" as const,
+      reasonCode: "CLIENT_SEND_RETRY",
+    };
+
+    await repository.insertReissuedPrintJob(executor, record);
+    await repository.insertPayloadFromSnapshot(executor, record.id, record.sourcePrintJobId);
+    await repository.insertReissueEvent(executor, record);
+
+    expect(execute.mock.calls[0]?.[0]).toContain("COALESCE(source.original_job_id, source.id)");
+    expect(execute.mock.calls[0]?.[0]).toContain("source.canonical_assignment_id");
+    expect(execute.mock.calls[0]?.[1]).toEqual([
+      record.id,
+      record.jobNo,
+      record.requestedBy,
+      record.idempotencyKey,
+      record.requestFingerprint,
+      record.expirySeconds,
+      record.reasonCode,
+      record.sourcePrintJobId,
+    ]);
+    expect(execute.mock.calls[1]).toEqual([
+      expect.stringContaining("JSON_EXTRACT(projection_json, '$.payload')"),
+      [record.id, record.sourcePrintJobId],
+    ]);
+    expect(execute.mock.calls[2]).toEqual([
+      expect.stringContaining("INSERT INTO print_job_reissue_event"),
+      [record.sourcePrintJobId, record.id, record.reissueType, record.reasonCode, record.requestedBy],
+    ]);
+  });
+
+  it("locks the active target graph, current account scope and admission-first effective policy", async () => {
+    const context = {
+      actorRole: "OPERATOR",
+      actorAdmissionScopeMode: "ASSIGNED",
+      examCycleId: 21,
+      admissionId: 22,
+      admissionName: "배정 전형",
+      workstationEnabled: 1,
+    };
+    const execute = vi.fn(async (sql: string, _parameters?: unknown[]) => {
+      if (sql.includes("FROM print_job job")) return [[context], []];
+      if (sql.includes("FROM user_admission_scope_assignment")) return [[{ admissionId: 22 }], []];
+      if (sql.includes("FROM user_admission_assignment")) return [[{ admissionName: "배정 전형" }], []];
+      if (sql.includes("FROM pseudonym_policy policy")) {
+        return [[{ assignmentMethod: "PREASSIGNED", printPreassignedLabel: 1 }], []];
+      }
+      throw new Error(`Unexpected SQL in test: ${sql}`);
+    });
+    const repository = new PrintJobsRepository();
+    const executor = asExecutor(execute);
+    const printJobId = "00000000-0000-4000-8000-000000000001";
+
+    await expect(repository.findReissueContextForUpdate(executor, printJobId, 9)).resolves.toEqual(context);
+    await expect(repository.hasAdmissionScopeForUpdate(executor, 9, 22)).resolves.toBe(true);
+    await expect(repository.listLegacyAdmissionNamesForUpdate(executor, 9)).resolves.toEqual(["배정 전형"]);
+    await expect(repository.findEffectivePrintPolicyForUpdate(executor, 21, 22)).resolves.toEqual({
+      assignmentMethod: "PREASSIGNED",
+      printPreassignedLabel: 1,
+    });
+
+    const graphSql = String(execute.mock.calls[0]?.[0]);
+    expect(graphSql).toContain("registration.status = 'ACTIVE'");
+    expect(graphSql).toContain("candidate_identity.status = 'ACTIVE'");
+    expect(graphSql).toContain("segment.status = 'ACTIVE'");
+    expect(graphSql).toContain("slot.id = job.operation_slot_id AND slot.status = 'ACTIVE'");
+    expect(graphSql).toContain("admission.status = 'ACTIVE'");
+    expect(graphSql).toContain("admission.canonical_name AS admissionName");
+    expect(graphSql).toContain("cycle.status = 'ACTIVE'");
+    expect(graphSql).toContain("assignment.registration_id = registration.id");
+    expect(graphSql).toContain("operation.operation_slot_id = slot.id");
+    expect(graphSql).toContain("actor.enabled = TRUE");
+    expect(execute.mock.calls[0]?.[1]).toEqual([9, printJobId]);
+    expect(execute.mock.calls[1]).toEqual([expect.stringContaining("LIMIT 1 FOR UPDATE"), [9, 22]]);
+    expect(execute.mock.calls[2]).toEqual([expect.stringContaining("ORDER BY admission_name FOR UPDATE"), [9]]);
+    const policySql = String(execute.mock.calls[3]?.[0]);
+    expect(policySql).toContain("policy.scope_kind = 'ADMISSION'");
+    expect(policySql).toContain("policy.scope_kind = 'DEFAULT'");
+    expect(policySql).toContain("NOT EXISTS");
+    expect(policySql).toContain("admission_override.scope_kind = 'ADMISSION'");
+    expect(execute.mock.calls[3]?.[1]).toEqual([21, 22, 22]);
   });
 });
 

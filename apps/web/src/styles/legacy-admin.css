@@ -899,16 +899,25 @@
   height: calc(100vh - var(--exam-header-height));
   overflow: hidden;
 }
+.exam-admin-content.template-admin-main:has(> .examlist-template-library) {
+  height: auto;
+  overflow: visible;
+}
 .admin-standard-view,
 .examlist-template-library {
-  min-height: 100%;
-  overflow: auto;
   border: 1px solid #e0e6ef;
   border-radius: 17px;
   background: rgba(255, 255, 255, 0.94);
 }
 .admin-standard-view {
+  min-height: 100%;
   padding: 0 16px 30px;
+  overflow: auto;
+}
+.examlist-template-library {
+  min-height: calc(100vh - var(--exam-header-height) - 16px);
+  min-height: calc(100dvh - var(--exam-header-height) - 16px);
+  overflow: visible;
 }
 .admin-view-heading {
   display: flex;

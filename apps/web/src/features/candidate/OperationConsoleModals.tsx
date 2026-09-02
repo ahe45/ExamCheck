@@ -5,6 +5,7 @@ import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
 import type { OperationScheduleMismatch } from "./operation-candidate-state";
 import { operationTemplateScopeLabel } from "./operation-template-pages";
 import type { OperationPrintProgress } from "./useOperationPrint";
+import type { TemplateSignatureKey, TemplateSignatureNames } from "../templates/template-signatures";
 import { formatScheduleDate, type OperationRow } from "./operation-view-model";
 import { OperatorFinishIcon } from "./OperationRosterPanel";
 
@@ -184,7 +185,10 @@ interface OperationPrintModalProps {
   loading: boolean;
   generating: boolean;
   progress: OperationPrintProgress | null;
+  signatureFields: ReadonlyArray<{ key: TemplateSignatureKey; label: string }>;
+  signatureNames: TemplateSignatureNames;
   onSelect(templateCode: string): void;
+  onSignatureNameChange(key: TemplateSignatureKey, value: string): void;
   onClose(): void;
   onGenerate(): void;
 }
@@ -196,7 +200,10 @@ export function OperationPrintModal({
   loading,
   generating,
   progress,
+  signatureFields,
+  signatureNames,
   onSelect,
+  onSignatureNameChange,
   onClose,
   onGenerate,
 }: OperationPrintModalProps) {
@@ -270,7 +277,7 @@ export function OperationPrintModal({
                 <span className="operator-template-copy">
                   <strong>{template.name}</strong>
                   <small>
-                    {template.category} · {operationTemplateScopeLabel(template.usageScope)} · v{template.version}
+                    {template.category} · {operationTemplateScopeLabel(template.usageScope)}
                   </small>
                   <em>{template.description || "등록된 설명이 없습니다."}</em>
                 </span>
@@ -283,6 +290,32 @@ export function OperationPrintModal({
             </div>
           )}
         </div>
+        {signatureFields.length > 0 && (
+          <section className="operator-print-signature-inputs" aria-labelledby="operator-print-signature-title">
+            <header>
+              <strong id="operator-print-signature-title">서명자명 입력</strong>
+              <span>양식에 사용된 서명 태그에 입력한 이름이 PDF에 반영됩니다.</span>
+            </header>
+            <div>
+              {signatureFields.map((field) => (
+                <label key={field.key}>
+                  <span>{field.label}</span>
+                  <input
+                    type="text"
+                    value={signatureNames[field.key]}
+                    maxLength={100}
+                    autoComplete="off"
+                    disabled={generating}
+                    required
+                    placeholder={`${field.label} 이름을 입력하세요.`}
+                    aria-label={`${field.label} 이름`}
+                    onChange={(event) => onSignatureNameChange(field.key, event.target.value)}
+                  />
+                </label>
+              ))}
+            </div>
+          </section>
+        )}
         <footer>
           <button type="button" onClick={onClose}>
             <CancelButtonIcon />

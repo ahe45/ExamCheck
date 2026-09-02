@@ -1,4 +1,4 @@
-import type { FormTemplate, FormTemplateScope } from "../../shared/api/form-templates";
+import type { FormTemplate, FormTemplateScope, SaveFormTemplateInput } from "../../shared/api/form-templates";
 import type {
   DataTagCatalog,
   DataTagDefinition,
@@ -13,7 +13,7 @@ export interface DraftTemplate {
   usageScope: FormTemplateScope;
   layout: Exclude<TemplateEditorValue, string>;
   active: boolean;
-  version: number;
+  isNew: boolean;
 }
 
 export type TemplateMetadataField = "name" | "description";
@@ -58,6 +58,61 @@ export function buildCardMetadataUpdate(template: FormTemplate, edit: CardMetada
   };
 }
 
+export function buildTemplateActiveUpdate(template: FormTemplate, active: boolean): SaveFormTemplateInput {
+  return buildTemplateSaveInput(template, {
+    active,
+    code: template.code,
+    name: template.name,
+  });
+}
+
+export function buildTemplateCopyInput(
+  template: FormTemplate,
+  templates: readonly FormTemplate[],
+): SaveFormTemplateInput {
+  const existingCodes = new Set(templates.map((item) => item.code));
+  const existingNames = new Set(templates.map((item) => item.name));
+  return buildTemplateSaveInput(template, {
+    active: false,
+    code: createUniqueCopyCode(template.code, existingCodes),
+    name: createUniqueCopyName(template.name, existingNames),
+  });
+}
+
+function buildTemplateSaveInput(
+  template: FormTemplate,
+  overrides: Pick<SaveFormTemplateInput, "active" | "code" | "name">,
+): SaveFormTemplateInput {
+  if (typeof template.layout === "string") {
+    throw new Error("복사하거나 변경할 수 없는 양식 형식입니다.");
+  }
+  return {
+    ...overrides,
+    description: template.description || "",
+    category: template.category,
+    usageScope: template.usageScope,
+    layout: template.layout,
+  };
+}
+
+function createUniqueCopyCode(sourceCode: string, existingCodes: ReadonlySet<string>) {
+  for (let index = 1; index < 10_000; index += 1) {
+    const suffix = index === 1 ? "_COPY" : `_COPY_${index}`;
+    const code = `${sourceCode.slice(0, 100 - suffix.length)}${suffix}`;
+    if (!existingCodes.has(code)) return code;
+  }
+  throw new Error("복사본 양식 코드를 만들 수 없습니다.");
+}
+
+function createUniqueCopyName(sourceName: string, existingNames: ReadonlySet<string>) {
+  for (let index = 1; index < 10_000; index += 1) {
+    const suffix = index === 1 ? " 복사본" : ` 복사본 ${index}`;
+    const name = `${sourceName.slice(0, 200 - suffix.length)}${suffix}`;
+    if (!existingNames.has(name)) return name;
+  }
+  throw new Error("복사본 양식명을 만들 수 없습니다.");
+}
+
 export function updateDraftMetadata<K extends keyof DraftTemplate>(
   draft: DraftTemplate,
   key: K,
@@ -91,7 +146,7 @@ export function toDraft(template?: FormTemplate): DraftTemplate | null {
     usageScope: template.usageScope,
     layout: template.layout,
     active: template.active,
-    version: template.version,
+    isNew: false,
   };
 }
 
@@ -104,7 +159,7 @@ export function createBlankDraft(now = Date.now()): DraftTemplate {
     category: "기타",
     usageScope: "CANDIDATE",
     active: true,
-    version: 0,
+    isNew: true,
     layout: {
       id: `template-${now}`,
       name: "새 양식",

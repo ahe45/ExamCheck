@@ -2,6 +2,8 @@ import DOMPurify from "dompurify";
 import type { TemplateEditorValue } from "../../shared/templates/template-editor-contracts";
 import { throwIfAborted } from "../../shared/async/bounded-map";
 import { formatProjectDataTagSampleValue } from "./editor/examlist-template-formatting";
+import { createTemplateGeneratedObjectDataUrl } from "./generated-object-assets";
+import { normalizeTemplateDataTagKey, resolveTemplateDataTagValue } from "./template-data-projection";
 
 export function getTemplateDocumentHtml(template: TemplateEditorValue): string {
   if (typeof template === "string") return template;
@@ -26,16 +28,16 @@ export function getTemplateDocumentHtml(template: TemplateEditorValue): string {
 }
 
 export function renderTemplateHtml(template: TemplateEditorValue, values: Record<string, unknown>): string {
-  const source = sanitizeTemplateHtml(
-    getTemplateDocumentHtml(template).replace(/{{\s*([\w.]+)\s*}}/g, (_match, key: string) => escapeHtml(values[key])),
-  );
+  const source = sanitizeTemplateHtml(getTemplateDocumentHtml(template));
   const document = new DOMParser().parseFromString(`<div id="form-template-root">${source}</div>`, "text/html");
   const root = document.getElementById("form-template-root");
   if (!root) return source;
 
+  replaceTemplateTextTokens(root, values);
+
   root.querySelectorAll<HTMLElement>("[data-template-tag-value]").forEach((element) => {
-    const key = element.dataset.templateTagValue || "";
-    const rawValue = values[key] ?? "";
+    const key = normalizeTemplateDataTagKey(element.dataset.templateTagValue || "");
+    const rawValue = resolveTemplateDataTagValue(key, values);
     if (element instanceof HTMLImageElement && key === "candidate.photo") {
       element.src = String(rawValue || "");
       element.alt = String(values["candidate.name"] || "수험생 사진");
@@ -50,12 +52,32 @@ export function renderTemplateHtml(template: TemplateEditorValue, values: Record
 
   root.querySelectorAll<HTMLImageElement>("img.template-generated-object").forEach((image) => {
     const sourceKey = image.dataset.templateObjectSource || "candidate.examNo";
-    const value = String(values[sourceKey] ?? "");
-    image.removeAttribute("src");
-    image.alt = `${value || sourceKey} ${image.dataset.templateObjectType === "qrcode" ? "QR코드" : "바코드"}`;
-    image.dataset.renderPending = "true";
+    const value = String(resolveTemplateDataTagValue(sourceKey, values));
+    const objectType = image.dataset.templateObjectType || "barcode";
+    const source = createTemplateGeneratedObjectDataUrl(objectType, value);
+
+    if (source) image.src = source;
+    else image.removeAttribute("src");
+    image.alt = `${value || sourceKey} ${objectType === "qrcode" ? "QR코드" : "Code128 바코드"}`;
+    image.removeAttribute("data-render-pending");
   });
   return sanitizeTemplateHtml(root.innerHTML);
+}
+
+function replaceTemplateTextTokens(root: HTMLElement, values: Record<string, unknown>) {
+  const textNodes: Text[] = [];
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) {
+    const textNode = walker.currentNode as Text;
+    if (!textNode.parentElement?.closest("[data-template-tag-value]")) textNodes.push(textNode);
+  }
+  textNodes.forEach((textNode) => {
+    textNode.textContent = String(textNode.textContent || "").replace(
+      /(?:{{\s*([\w.]+)\s*}}|@\{\s*([\w.]+)\s*\})/g,
+      (_match, mustacheKey: string | undefined, atKey: string | undefined) =>
+        String(resolveTemplateDataTagValue(mustacheKey || atKey || "", values) ?? ""),
+    );
+  });
 }
 
 export function openTemplatePrintWindow(title: string, bodyHtml: string) {

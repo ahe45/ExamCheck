@@ -9,15 +9,17 @@ export type ShadowProjectionValue =
   | readonly ShadowProjectionValue[]
   | { readonly [key: string]: ShadowProjectionValue };
 
+export type ShadowEntityId = number | string;
+
 export interface ShadowProjectionRow {
-  entityId: number;
+  entityId: ShadowEntityId;
   projection: Readonly<Record<string, ShadowProjectionValue>>;
 }
 
 export type ShadowComparisonStatus = "MATCH" | "MISMATCH" | "OLD_ONLY" | "NEW_ONLY" | "AMBIGUOUS";
 
 export interface ShadowComparisonEntry {
-  entityId: number;
+  entityId: ShadowEntityId;
   status: ShadowComparisonStatus;
   oldRowCount: number;
   newRowCount: number;
@@ -51,7 +53,7 @@ export function compareIdentityProjections(
 
   const oldById = groupRowsByEntityId(oldRows);
   const newById = groupRowsByEntityId(newRows);
-  const entityIds = [...new Set([...oldById.keys(), ...newById.keys()])].sort((left, right) => left - right);
+  const entityIds = [...new Set([...oldById.keys(), ...newById.keys()])].sort(compareEntityIds);
   const entries = entityIds.map((entityId) =>
     compareEntity(entityId, oldById.get(entityId) ?? [], newById.get(entityId) ?? [], salt),
   );
@@ -74,24 +76,22 @@ export function compareIdentityProjections(
 }
 
 export function createProjectionDigest(
-  entityId: number,
+  entityId: ShadowEntityId,
   projection: Readonly<Record<string, ShadowProjectionValue>>,
   salt: string,
 ): string {
   assertSalt(salt);
-  if (!Number.isSafeInteger(entityId) || entityId <= 0) {
-    throw new TypeError("Shadow projection entity IDs must be positive safe integers.");
-  }
+  assertEntityId(entityId);
   return createHmac("sha256", salt)
     .update("identity-transition-shadow:v1\u0000")
-    .update(String(entityId))
+    .update(typeof entityId === "number" ? String(entityId) : `string:${entityId}`)
     .update("\u0000")
     .update(stableSerialize(projection))
     .digest("hex");
 }
 
 function compareEntity(
-  entityId: number,
+  entityId: ShadowEntityId,
   oldRows: readonly ShadowProjectionRow[],
   newRows: readonly ShadowProjectionRow[],
   salt: string,
@@ -137,8 +137,8 @@ function compareEntity(
   };
 }
 
-function groupRowsByEntityId(rows: readonly ShadowProjectionRow[]): Map<number, ShadowProjectionRow[]> {
-  const result = new Map<number, ShadowProjectionRow[]>();
+function groupRowsByEntityId(rows: readonly ShadowProjectionRow[]): Map<ShadowEntityId, ShadowProjectionRow[]> {
+  const result = new Map<ShadowEntityId, ShadowProjectionRow[]>();
   for (const row of rows) {
     const values = result.get(row.entityId) ?? [];
     values.push(row);
@@ -165,7 +165,20 @@ function assertSalt(salt: string): void {
 }
 
 function assertEntityIds(rows: readonly ShadowProjectionRow[]): void {
-  if (rows.some((row) => !Number.isSafeInteger(row.entityId) || row.entityId <= 0)) {
-    throw new TypeError("Shadow projection entity IDs must be positive safe integers.");
+  for (const row of rows) assertEntityId(row.entityId);
+}
+
+function assertEntityId(entityId: ShadowEntityId): void {
+  const validNumber = typeof entityId === "number" && Number.isSafeInteger(entityId) && entityId > 0;
+  const validString = typeof entityId === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(entityId);
+  if (!validNumber && !validString) {
+    throw new TypeError("Shadow projection entity IDs must be positive safe integers or safe bridge strings.");
   }
+}
+
+function compareEntityIds(left: ShadowEntityId, right: ShadowEntityId): number {
+  if (typeof left === "number" && typeof right === "number") return left - right;
+  const leftKey = `${typeof left}:${left}`;
+  const rightKey = `${typeof right}:${right}`;
+  return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
 }

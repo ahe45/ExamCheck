@@ -8,6 +8,8 @@ import {
   isDuplicateEntryError,
 } from "../common/database/mysql-errors.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
+import { IdentityBackfillProjectionRepository } from "../database/identity-backfill-projection.repository.js";
+import { IdentityTransitionCoordinator } from "../identity-transition/identity-transition-coordinator.js";
 import { pseudonymUniquenessScopeKey } from "../uniqueness/number-uniqueness.js";
 import {
   assignmentModeForSetting,
@@ -51,6 +53,10 @@ export class UpdatePseudonymSettingUseCase {
     @Inject(PseudonymsRepository) private readonly repository: PseudonymsRepository,
     @Inject(MutationAuditRepository)
     private readonly audit: MutationAuditRepository = new MutationAuditRepository(),
+    @Inject(IdentityTransitionCoordinator)
+    private readonly identityTransition: IdentityTransitionCoordinator = legacyIdentityTransitionCoordinator(),
+    @Inject(IdentityBackfillProjectionRepository)
+    private readonly identityProjection: IdentityBackfillProjectionRepository = new IdentityBackfillProjectionRepository(),
   ) {}
 
   async execute(input: UpdatePseudonymSettingInput, user: AuthenticatedUser) {
@@ -80,6 +86,8 @@ export class UpdatePseudonymSettingUseCase {
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
+      const identityDecision = await this.identityTransition.decideWrite(connection);
+      assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym settings");
       await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
       const existingSetting = await this.repository.findExactSettingForUpdate(
         connection,
@@ -144,6 +152,9 @@ export class UpdatePseudonymSettingUseCase {
           await this.repository.deleteTimeRange(connection, existingRange.id);
         }
       }
+      if (identityDecision.writeTarget) {
+        await this.identityProjection.syncSettingTree(connection, settingId, input.examName);
+      }
       await this.audit.record(connection, {
         eventType: "PSEUDONYM_SETTING_UPDATED",
         actorUserId: user.id,
@@ -187,6 +198,10 @@ export class AssignPseudonymUseCase {
     @Inject(PseudonymsRepository) private readonly repository: PseudonymsRepository,
     @Inject(MutationAuditRepository)
     private readonly audit: MutationAuditRepository = new MutationAuditRepository(),
+    @Inject(IdentityTransitionCoordinator)
+    private readonly identityTransition: IdentityTransitionCoordinator = legacyIdentityTransitionCoordinator(),
+    @Inject(IdentityBackfillProjectionRepository)
+    private readonly identityProjection: IdentityBackfillProjectionRepository = new IdentityBackfillProjectionRepository(),
   ) {}
 
   async execute(input: AssignPseudonymInput, user: AuthenticatedUser) {
@@ -197,6 +212,8 @@ export class AssignPseudonymUseCase {
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
+      const identityDecision = await this.identityTransition.decideWrite(connection);
+      assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym assignment");
       const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
       const identifiedCandidate = await this.repository.findCandidateInScope(connection, input, { forUpdate: false });
       if (!identifiedCandidate) throw new NotFoundException("선택한 전형·교시에 해당하는 수험생을 찾을 수 없습니다.");
@@ -226,6 +243,13 @@ export class AssignPseudonymUseCase {
 
       const existingAssignment = await this.repository.findAssignmentForUpdate(connection, candidate.candidateRecordId);
       if (existingAssignment) {
+        if (identityDecision.writeTarget) {
+          await this.identityProjection.syncAssignmentTree(
+            connection,
+            existingAssignment.id,
+            identifiedCandidate.examName,
+          );
+        }
         await connection.commit();
         return assignmentResponse(candidate, existingAssignment, true);
       }
@@ -307,14 +331,16 @@ export class AssignPseudonymUseCase {
         input.mode,
         user.id,
       );
+      if (identityDecision.writeTarget) {
+        await this.identityProjection.syncSettingTree(connection, setting.id, candidate.examName);
+        await this.identityProjection.syncAssignmentTree(connection, assignmentId, candidate.examName);
+      }
       await this.audit.record(connection, {
         eventType: "PSEUDONYM_ASSIGNED",
         actorUserId: user.id,
         details: {
           assignmentId,
           candidateRecordId: candidate.candidateRecordId,
-          examineeNo: candidate.examineeNo,
-          pseudonymNo: String(number),
           mode: input.mode,
         },
       });
@@ -347,6 +373,10 @@ export class ChangePseudonymOperationStatusUseCase {
     @Inject(PseudonymsRepository) private readonly repository: PseudonymsRepository,
     @Inject(MutationAuditRepository)
     private readonly audit: MutationAuditRepository = new MutationAuditRepository(),
+    @Inject(IdentityTransitionCoordinator)
+    private readonly identityTransition: IdentityTransitionCoordinator = legacyIdentityTransitionCoordinator(),
+    @Inject(IdentityBackfillProjectionRepository)
+    private readonly identityProjection: IdentityBackfillProjectionRepository = new IdentityBackfillProjectionRepository(),
   ) {}
 
   async close(input: PseudonymOperationScopeInput, user: AuthenticatedUser) {
@@ -357,9 +387,14 @@ export class ChangePseudonymOperationStatusUseCase {
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
+      const identityDecision = await this.identityTransition.decideWrite(connection);
+      assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym operation");
       const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
       const operation = await lockOperationForUpdate(this.repository, connection, input);
       if (operation.closed) {
+        if (identityDecision.writeTarget) {
+          await this.identityProjection.syncOperationTree(connection, operation.id, input.examName);
+        }
         await connection.commit();
         return this.getOperationStatus(input);
       }
@@ -424,7 +459,7 @@ export class ChangePseudonymOperationStatusUseCase {
             );
           }
           reserved.add(number);
-          await this.repository.insertAbsenteeAssignment(
+          const assignmentId = await this.repository.insertAbsenteeAssignment(
             connection,
             candidate,
             input.admissionName,
@@ -433,11 +468,19 @@ export class ChangePseudonymOperationStatusUseCase {
             assignmentModeForSetting(setting.assignmentMethod),
             user.id,
           );
+          if (identityDecision.writeTarget) {
+            await this.identityProjection.syncAssignmentTree(connection, assignmentId, input.examName);
+          }
           autoAssignedAbsenteeCount += 1;
         }
       }
 
       await this.repository.closeOperation(connection, operation.id, user.id);
+      if (identityDecision.writeTarget) {
+        await this.identityProjection.syncOperationTree(connection, operation.id, input.examName, {
+          autoAssignedAbsenteeCount,
+        });
+      }
       await this.audit.record(connection, {
         eventType: "PSEUDONYM_OPERATION_CLOSED",
         actorUserId: user.id,
@@ -468,18 +511,32 @@ export class ChangePseudonymOperationStatusUseCase {
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
+      const identityDecision = await this.identityTransition.decideWrite(connection);
+      assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym operation");
       await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
       const operation = await this.repository.findOperationForUpdate(connection, input);
       if (!operation || !operation.closed) {
+        if (operation && identityDecision.writeTarget) {
+          await this.identityProjection.syncOperationTree(connection, operation.id, input.examName);
+        }
         await connection.commit();
         return this.getOperationStatus(input);
       }
       const setting = await loadSettingForUpdate(this.repository, connection, input.examName, input.admissionName);
       let deletedAbsenteeCount = 0;
       if (setting.deleteAbsenteeInfoOnReopen) {
+        if (identityDecision.writeTarget) {
+          const assignmentIds = await this.repository.listAutoAssignedAbsenteeIdsForUpdate(connection, input);
+          await this.identityProjection.removeCurrentAssignments(connection, assignmentIds, user.id);
+        }
         deletedAbsenteeCount = await this.repository.deleteAutoAssignedAbsentees(connection, input);
       }
       await this.repository.reopenOperation(connection, operation.id, user.id);
+      if (identityDecision.writeTarget) {
+        await this.identityProjection.syncOperationTree(connection, operation.id, input.examName, {
+          removedCurrentAbsenteeCount: deletedAbsenteeCount,
+        });
+      }
       await this.audit.record(connection, {
         eventType: "PSEUDONYM_OPERATION_REOPENED",
         actorUserId: user.id,
@@ -545,4 +602,28 @@ async function lockOperationForUpdate(
 
 function operationParams(input: PseudonymOperationScopeInput) {
   return [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName];
+}
+
+function legacyIdentityTransitionCoordinator(): IdentityTransitionCoordinator {
+  return {
+    decideWrite: async () => ({
+      state: {
+        enabled: false,
+        writeMode: "LEGACY",
+        readMode: "LEGACY",
+        phase: "EXPANDED",
+        version: 0,
+        shadowHmacSecret: null,
+      },
+      writeLegacy: true,
+      writeTarget: false,
+      authority: "LEGACY",
+    }),
+  } as unknown as IdentityTransitionCoordinator;
+}
+
+function assertLegacyCompatibilityWrite(writeLegacy: boolean, domain: string): void {
+  if (!writeLegacy) {
+    throw new Error(`${domain} canonical writes are blocked until the target HTTP contract is activated.`);
+  }
 }

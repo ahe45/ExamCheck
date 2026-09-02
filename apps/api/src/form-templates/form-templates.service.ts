@@ -11,7 +11,11 @@ import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { isDuplicateEntryError as isDuplicateEntry } from "../common/database/mysql-errors.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
-import type { SaveFormTemplateDto, UpdateFormTemplateMetadataDto } from "./form-templates.dto.js";
+import type {
+  SaveFormTemplateDto,
+  UpdateFormTemplateActiveDto,
+  UpdateFormTemplateMetadataDto,
+} from "./form-templates.dto.js";
 import { scanFormTemplateSecurityRisks, summarizeFormTemplateSecurityRisks } from "./form-template-security.js";
 import { formTemplateDataTags } from "./form-template-tags.js";
 import { FormTemplatesRepository } from "./form-templates.repository.js";
@@ -33,8 +37,8 @@ export class FormTemplatesService {
     return formTemplateDataTags;
   }
 
-  async listLatest(activeOnly: boolean) {
-    return this.repository.listLatest(activeOnly);
+  async list(activeOnly: boolean) {
+    return this.repository.list(activeOnly);
   }
 
   async findActive(code: string) {
@@ -54,33 +58,32 @@ export class FormTemplatesService {
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
-      const nextVersion = await this.repository.nextVersionForUpdate(connection, code);
-      if (nextVersion > 1) {
-        await this.repository.deactivateActiveVersions(connection, code);
+      const existing = await this.repository.findForUpdate(connection, code);
+      if (existing?.deleted) await this.repository.restoreDeletedCode(connection, code);
+
+      let templateId: number;
+      if (existing) {
+        await this.repository.update(connection, existing.id, input);
+        templateId = existing.id;
+      } else {
+        templateId = await this.repository.insert(connection, input, code, user.id);
       }
-      await this.repository.insert(connection, input, code, nextVersion, user.id);
+
       await this.audit.record(connection, {
         eventType: "FORM_TEMPLATE_SAVED",
         actorUserId: user.id,
         details: {
           code,
-          version: nextVersion,
+          templateId,
           active: input.active !== false,
           riskCount: securityRiskSummary.riskCount,
         },
       });
       await connection.commit();
-      return this.findActive(code).catch(async (error) => {
-        if (input.active === false) {
-          const templates = await this.listLatest(false);
-          const saved = templates.find((template) => template.code === code);
-          if (saved) return saved;
-        }
-        throw error;
-      });
+      return await this.loadSavedTemplate(code);
     } catch (error) {
       await connection.rollback();
-      if (isDuplicateEntry(error)) throw new ConflictException("동일한 양식 버전이 이미 존재합니다.");
+      if (isDuplicateEntry(error)) throw new ConflictException("동일한 양식 코드가 이미 존재합니다.");
       throw error;
     } finally {
       connection.release();
@@ -92,25 +95,75 @@ export class FormTemplatesService {
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
-      const templateId = await this.repository.findLatestIdForUpdate(connection, code);
-      if (!templateId) throw new NotFoundException("수정할 양식을 찾을 수 없습니다.");
+      const template = await this.repository.findForUpdate(connection, code);
+      if (!template || template.deleted) throw new NotFoundException("수정할 양식을 찾을 수 없습니다.");
 
-      await this.repository.updateMetadata(connection, templateId, input);
+      await this.repository.updateMetadata(connection, template.id, input);
       await this.audit.record(connection, {
         eventType: "FORM_TEMPLATE_METADATA_UPDATED",
         actorUserId: user.id,
-        details: { code, templateId },
+        details: { code, templateId: template.id },
       });
       await connection.commit();
-      const templates = await this.listLatest(false);
-      const updated = templates.find((template) => template.code === code);
-      if (!updated) throw new NotFoundException("수정한 양식을 불러오지 못했습니다.");
-      return updated;
+      return await this.loadSavedTemplate(code);
     } catch (error) {
       await connection.rollback();
       throw error;
     } finally {
       connection.release();
     }
+  }
+
+  async updateActive(codeValue: string, input: UpdateFormTemplateActiveDto, user: AuthenticatedUser) {
+    const code = codeValue.trim().toUpperCase();
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const template = await this.repository.findForUpdate(connection, code);
+      if (!template || template.deleted) throw new NotFoundException("사용 상태를 변경할 양식을 찾을 수 없습니다.");
+
+      await this.repository.updateActive(connection, template.id, input.active);
+      await this.audit.record(connection, {
+        eventType: "FORM_TEMPLATE_AVAILABILITY_UPDATED",
+        actorUserId: user.id,
+        details: { code, templateId: template.id, active: input.active },
+      });
+      await connection.commit();
+      return await this.loadSavedTemplate(code);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async remove(codeValue: string, user: AuthenticatedUser): Promise<void> {
+    const code = codeValue.trim().toUpperCase();
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const template = await this.repository.findForUpdate(connection, code);
+      if (!template || template.deleted) throw new NotFoundException("삭제할 양식을 찾을 수 없습니다.");
+      await this.repository.markDeleted(connection, code, user.id);
+      await this.audit.record(connection, {
+        eventType: "FORM_TEMPLATE_DELETED",
+        actorUserId: user.id,
+        details: { code, templateId: template.id },
+      });
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  private async loadSavedTemplate(code: string) {
+    const templates = await this.list(false);
+    const saved = templates.find((template) => template.code === code);
+    if (!saved) throw new NotFoundException("저장한 양식을 불러오지 못했습니다.");
+    return saved;
   }
 }

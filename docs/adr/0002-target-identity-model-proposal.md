@@ -1,10 +1,13 @@
-# ADR 0002: 목표 수험생·일정·가번호 identity 모델 제안
+# ADR 0002: 목표 수험생·일정·가번호 identity 모델
 
-- 상태: **제안됨(업무·운영 승인 대기)**
+- 상태: **Accepted**
 - 작성일: 2026-08-28
-- 기준 스키마: migration `001`~`025`
+- 승인자·승인일: 사용자 / 2026-08-28
+- 적용 범위: 목표 identity 모델(`027+`)
+- 기준 스키마: migration `001`~`026`
 - 관련 결정: [ADR 0001](./0001-pseudonym-unique-scope.md)
-- 변경 범위: 문서와 읽기 전용 진단만 수행. 이 ADR 작성 과정에서는 스키마와 데이터를 변경하지 않았다.
+- 결정 기록: [목표 데이터 모델 외부 결정 기록부](../data-model-decision-register.md) revision 2
+- 변경 범위: 목표 모델 설계와 schema expand 작성 승인. 운영 적용·backfill·cutover는 별도 게이트 대상이다.
 
 ## 1. 목적
 
@@ -25,7 +28,11 @@
 5. 구 모델을 즉시 삭제하지 않고 dual-write, backfill, shadow read, reconciliation을 거쳐 전환한다.
 6. 정확히 매핑할 수 없는 레거시 데이터는 추정하거나 삭제하지 않는다.
 
-이 문서는 목표와 전환 방법을 제안하지만 아직 스키마 구현을 승인하지 않는다. 외부 결정과 운영 게이트는 [데이터 모델 컷오버 게이트](../data-model-cutover-gates.md)에 별도로 정의한다.
+이 문서의 목표 모델과 D-01~D-22 권장안은 2026-08-28 승인됐다. schema expand와 비운영
+검증은 진행할 수 있지만, 개인정보 backup/restore, 운영 backfill과 read/write cutover는
+[데이터 모델 컷오버 게이트](../data-model-cutover-gates.md)를 별도로 통과해야 한다. 보존 기간,
+expiry, 관찰 기간·처리량·성능 임계치처럼 숫자가 정해지지 않은 항목은 원칙 승인 상태이며 운영
+전환 전에 별도 확정한다.
 
 ## 2. 확인한 현재 상태
 
@@ -37,7 +44,7 @@
 | ----------- | --------------------------------------------------------------------------------------------- |
 | `001`~`003` | `app_user`, `examinee`, 문자열 `exam_name`, `pseudonym_setting`, `pseudonym_assignment` 생성  |
 | `004`~`006` | 초기 호환 수험생·계정 sample 추가                                                             |
-| `007`       | 버전형 `form_template` 추가                                                                   |
+| `007`       | `form_template` 추가                                                                          |
 | `008`~`009` | 일정과 인적 정보를 한 행에 가진 `candidate_record`, 행 단위 `candidate_photo` 추가            |
 | `010`~`012` | 일정별 가번호 범위와 운영 정책 추가. 범위 identity가 날짜·시간에서 전체 segment 문자열로 확장 |
 | `013`       | 전형명을 문자열로 저장하는 사용자 접근 배정 추가                                              |
@@ -141,7 +148,7 @@ candidate
 pseudonym_operation_event
 pseudonym_assignment_event
 print_job ── immutable print_projection_snapshot
-form_template_version ── template_data_projection
+form_template ── template_data_projection
 audit_log
 ```
 
@@ -149,7 +156,9 @@ audit_log
 
 ## 5. 테이블별 목표 계약
 
-아래 컬럼명과 타입은 설계 제안이다. 실제 DDL은 이 ADR 승인, 익명화 fixture 검증, 백업·복원 리허설 이후 별도 migration으로 작성한다.
+아래 컬럼명과 타입은 승인된 목표 계약이다. 실제 DDL은 기존 migration을 수정하지 않고 `027+`
+schema expand로 작성한다. 운영 DB 적용과 backfill은 익명화 fixture 검증과 backup/restore 게이트를
+통과한 뒤 별도 승인한다.
 
 ### 5.1 `exam_cycle`
 
@@ -166,9 +175,11 @@ audit_log
 권장 제약:
 
 - `UNIQUE(system_profile_id, cycle_code)`
-- 같은 profile에서 `ACTIVE`를 한 개만 허용할지는 외부 결정 후 별도 current-pointer 또는 claim으로 보장한다.
+- 같은 profile에서 `ACTIVE`를 한 개만 허용하는 세부 전환 절차는 별도 current-pointer 또는 claim으로 보장한다.
 
-현재 데이터의 후보 mapping은 한 건이다. 학년도, 연결 시험명, `DEFAULT_EXAM_NAME`이 현재는 일치하지만, 세 값 중 어느 것을 불변 코드와 표시 이름의 원본으로 삼을지는 승인 전까지 확정하지 않는다.
+현재 데이터의 후보 mapping은 한 건이다. 학년도, 연결 시험명, `DEFAULT_EXAM_NAME`이 현재는 일치한다.
+불변 `cycle_code` 생성 원본, 표시명, 시작·종료일과 active 전환 절차는 운영값으로 별도 확정하며
+그 전에는 현재 문자열을 임의의 불변 코드로 간주하지 않는다.
 
 ### 5.2 `admission`
 
@@ -245,7 +256,8 @@ audit_log
 
 한 시험 주기 안에서 같은 수험번호는 하나의 인적 identity다. `SCHEDULE` 정책은 같은 candidate가 여러 slot에 등록되는 것을 허용하는 것이지, 일정마다 서로 다른 candidate를 만드는 의미가 아니다. 같은 수험번호의 이름·생년월일이 서로 다르면 마지막 행으로 덮지 않고 identity 충돌로 격리한다.
 
-현재 `SYSTEM`이 DB 전체 수명 범위인지 활성 시험 주기 범위인지 확정되지 않았으므로, 위 candidate unique만으로 정책을 완전히 표현하지 않는다. 실제 등록 허용 범위는 `candidate_number_claim`이 담당한다.
+목표 모델의 `SYSTEM`은 `exam_cycle` 범위다. 실제 등록 허용 범위는
+`candidate_number_claim`이 담당하며 cycle별 claim scope로 DB에서 최종 보호한다.
 
 ### 5.6 `candidate_registration`
 
@@ -270,9 +282,11 @@ audit_log
 
 ### 5.7 `candidate_photo`
 
-권장 기본안은 `candidate_id`당 현재 사진 한 건이다. 사진은 사람 속성이며 같은 수험생이 여러 교시에 등록되어도 중복 BLOB을 만들 필요가 없기 때문이다.
+승인된 기본안은 `candidate_id`당 현재 사진 한 건이다. 사진은 사람 속성이며 같은 수험생이 여러 교시에 등록되어도 중복 BLOB을 만들 필요가 없기 때문이다.
 
-다만 학교가 교시별 서로 다른 사진을 제공할 수 있다면 registration override가 필요하다. 현재 로컬 DB에는 사진이 0건이므로 어느 모델이 실제 요구사항인지 데이터로 검증할 수 없다. 운영 sample을 확인하기 전에는 현재 `candidate_record_id` 사진을 자동 병합하지 않는다.
+현재 로컬 DB에는 사진이 0건이다. candidate 기준으로 이관하되 hash가 충돌하는 사진은 자동
+병합하지 않고 격리한다. 접근권한, 보존·파기 기간과 registration override 필요 여부는 개인정보
+정책과 운영 sample을 확인해 별도 운영값으로 확정한다.
 
 ### 5.8 `number_uniqueness_policy`와 `candidate_number_claim`
 
@@ -280,12 +294,13 @@ audit_log
 
 권장 정책 행:
 
-- `system_profile_id` 또는 승인된 `exam_cycle_id` PK/FK
+- `exam_cycle_id` PK/FK
 - `examinee_scope ENUM('SYSTEM','SCHEDULE')`
 - `pseudonym_scope ENUM('ADMISSION','SCHEDULE')`
 - `version`, `updated_by`, `updated_at`
 
-현재 전역 설정 의미를 보존하려면 최초에는 profile 단위로 둔다. 시험 주기별 정책이 필요하다는 승인이 나면 cycle 단위 override를 명시적으로 추가하고 fallback 순서를 문서화한다.
+목표 모델 정책은 exam cycle 단위로 저장한다. 현 profile 단위 값은 각 cycle의 초기값으로
+명시적으로 이관하고 compatibility adapter 외에는 암묵 fallback을 두지 않는다.
 
 수험번호 DB 제약은 `candidate_number_claim`으로 표현한다.
 
@@ -297,7 +312,7 @@ audit_log
 
 scope key 정의:
 
-- `SYSTEM`: versioned 상수 scope. 현재 의미를 그대로 보존하면 모든 시험 주기에 공통이다.
+- `SYSTEM`: `exam_cycle_id`의 versioned encoding.
 - `SCHEDULE`: `operation_slot_id`의 versioned encoding.
 
 정책 변경은 profile/policy 행을 잠근 같은 transaction에서 모든 claim을 재계산한다. `SCHEDULE → SYSTEM` 변환 시 unique 충돌이 하나라도 있으면 원문 번호 없이 충돌 그룹 수만 반환하고 전체 rollback한다. 업로드와 정책 변경은 같은 정책 행 잠금 순서를 사용한다.
@@ -329,9 +344,13 @@ scope key 정의:
 
 가번호는 문자열이 아니라 양의 canonical 숫자와 표시 자릿수를 분리한다. 예를 들어 표시 `001`은 값 `1`, 자릿수 `3`이다. 비교·범위·유일성은 값으로 처리하고 출력에서 자릿수를 적용한다.
 
-`ADMISSION` 정책에서는 segment 범위의 합집합이 전형 전체 등록 인원 이상이어야 한다. 겹침을 허용할지, 모든 범위를 서로 겹치지 않게 강제할지는 업무 결정이 필요하다. 현재 합집합 39개로 138명을 수용할 수 없으므로 이 결정을 해결하기 전 canonical cutover는 금지한다.
+`ADMISSION` 정책에서는 전형 안의 모든 segment 범위 중복을 금지하고 합집합이 전체 등록 인원
+이상이어야 한다. `SCHEDULE`은 서로 다른 slot 간 번호 재사용을 허용하지만 같은 slot 안의 segment
+범위는 겹칠 수 없다. 현재 합집합 39개로 138명을 수용할 수 없으므로 범위를 수정하기 전 canonical
+cutover는 금지한다.
 
-빈 `admission_name` 설정은 자동으로 첫 전형에 붙이지 않는다. 전역 기본 정책으로 유지할지, 전형별로 복제할지, sample이면 제거할지 승인된 mapping이 필요하다.
+빈 `admission_name` 설정은 특정 전형에 붙이지 않고 명시적 global default로 보존한다. 전형별
+override가 있으면 이를 우선하고, 없을 때만 global default를 적용한다.
 
 ### 5.10 `pseudonym_operation`과 event history
 
@@ -369,9 +388,13 @@ scope key 정의:
 - `ADMISSION`: `admission_id`
 - `SCHEDULE`: `operation_slot_id`
 
-정책 변경은 assignment와 claim을 같은 transaction에서 다시 계산한다. 레거시 미매핑 5건은 canonical assignment로 만들 수 없으므로 old unique 제약과 호환 조회에서 계속 예약한다. 보존·이관·삭제 결정 전에는 claim에서 제외했다는 이유로 번호를 재사용하면 안 된다.
+정책 변경은 assignment와 claim을 같은 transaction에서 다시 계산한다. 레거시 미매핑 5건은
+canonical assignment로 만들지 않고 immutable legacy reservation/history로 보존한다. claim에서
+제외했다는 이유로 번호를 재사용하면 안 된다.
 
-재개 시 “결시자 정보 삭제”의 의미는 외부 결정이 필요하다. 권장안은 현재 assignment projection만 제거하고 `pseudonym_assignment_event`, audit, 이미 생성된 print snapshot은 보존하는 것이다. 법적·개인정보 보존 정책 없이 이력을 hard delete하지 않는다.
+재개 시 현재 assignment/absence projection만 해제하고 `pseudonym_assignment_event`, audit, 이미
+생성된 print snapshot은 보존한다. 부여·해제·재부여는 append-only event로 기록하며 법적·개인정보
+보존 정책 없이 이력을 hard delete하지 않는다.
 
 ### 5.12 사용자 전형 접근 scope
 
@@ -384,7 +407,8 @@ scope key 정의:
 - 사용자 `ASSIGNED`: 한 개 이상의 `admission_id`만 접근
 - `ASSIGNED`인데 배정 행이 0개인 상태는 저장 차단
 
-현재 “배정 행 0개면 전체”라는 암묵 규칙을 제거한다. 현재 한 사용자는 현재 전체 전형과 같은 한 건을 배정받았다. 새 전형 추가 때도 전체 접근해야 하는지 판별할 수 없으므로 mode를 자동 추정하지 않는다.
+현재 “배정 행 0개면 전체”라는 암묵 규칙을 제거한다. 현 무배정 계정은 `ALL`, 배정 계정은 exact
+admission ID의 `ASSIGNED`로 이관한다. `ASSIGNED`인데 배정 행이 0개인 상태는 저장하지 않는다.
 
 ### 5.13 출력과 양식 projection
 
@@ -395,12 +419,16 @@ scope key 정의:
 - `candidate.*` 인적 필드는 candidate에서 읽는다.
 - 전형·교시·공간 필드는 registration → segment → slot → admission에서 읽는다.
 - 가번호는 assignment의 canonical 값과 display width로 렌더링한다.
-- 기존 tag 이름은 compatibility alias로 유지하고 신규 필드가 없으면 승인된 빈 값 또는 명시적 오류를 사용한다.
+- 기존 tag 이름은 compatibility alias로 유지하고 필수 신규 필드가 없으면 빈 값 대신 명시적 오류로 중단한다.
 - 출력 시점의 이름, 일정, 가번호, template code/version을 immutable snapshot으로 저장한다.
+- template draft는 수정할 수 있지만 published version은 immutable이며 정정은 새 version으로 만든다.
+- 인쇄 실패·재시도를 구분하고 재출력 사유, actor와 시각을 append-only audit로 남긴다.
 
 `print_job.business_ref`의 수험번호 문자열을 FK처럼 사용하지 않는다. 신규 작업은 `candidate_registration_id`, `pseudonym_assignment_id`, `operation_slot_id`를 참조하고, 기존 `print_job_payload`와 snapshot은 변경하지 않는다.
 
-현재 출력 작업 3건은 registration에 매핑되지 않는다. 과거 출력 이력으로 보존하고 신규 FK를 임의로 채우지 않는다. `SENT`는 물리 출력 완료가 아니라 Browser Print로 전송 성공이라는 현재 의미를 유지한다.
+현재 출력 작업 3건은 registration에 매핑되지 않는다. immutable legacy 출력 이력으로 보존하고
+신규 FK를 임의로 채우지 않는다. `SENT`는 물리 출력 완료가 아니라 Browser Print로 전송 성공이라는
+현재 의미를 유지한다. expiry, 최대 재시도, 사진·출력 보존 기간은 별도 운영값으로 확정한다.
 
 ## 6. 자연키와 대체키 원칙
 
@@ -429,7 +457,7 @@ scope key 정의:
 1. 문자열 타입 검증
 2. Unicode NFKC
 3. Unicode 앞뒤 공백 제거
-4. 업무상 이름 필드는 연속 내부 공백을 한 칸으로 축약할지 외부 승인
+4. 업무상 이름 필드의 연속 내부 공백 축약 여부는 별도 운영값으로 확정
 5. 빈 문자열은 optional 필드에서 `NULL`, 필수 필드에서는 오류
 6. 표시값은 별도로 보존
 
@@ -459,25 +487,25 @@ canonical 비교 컬럼은 `utf8mb4_bin` 계열로 저장해 DB collation의 대
 
 ## 8. 현재 → 목표 필드 mapping
 
-| 현재 원본                                 | 목표                                 | 처리                                                    |
-| ----------------------------------------- | ------------------------------------ | ------------------------------------------------------- |
-| `system_profile.academic_year`            | `exam_cycle.academic_year`           | 후보값. 시험일자의 연도와 현재 138행 모두 일치          |
-| `DEFAULT_EXAM_NAME`, `examinee.exam_name` | `exam_cycle.cycle_code/display_name` | 현재는 불일치 0. 원본 우선순위 승인 필요                |
-| `candidate_record.admission(_code)`       | `admission`                          | 코드는 모두 빈 값. normalized-name alias 필요           |
-| 날짜·시작시간·교시                        | `operation_slot`                     | 현재 6개 후보                                           |
-| 모집단위·전공·건물·고사실                 | `schedule_segment`                   | 현재 6개 후보, 코드 전체 공란                           |
-| 수험번호·이름·생년월일                    | `candidate`                          | `candidate_record`를 우선 후보로 하고 `examinee`와 비교 |
-| `candidate_record` 한 행                  | `candidate_registration`             | source ID bridge로 1:1 backfill 후보                    |
-| `candidate_photo.candidate_record_id`     | `candidate_photo.candidate_id`       | 동일 candidate 사진 hash 충돌 진단 후 전환. 현재 0건    |
-| `candidate_record.temporary_no`           | registration 사전 가번호 값/자릿수   | 현재 채워진 행 0                                        |
-| exact `pseudonym_setting`                 | `pseudonym_policy`                   | 전형 ID로 연결, version 유지                            |
-| 빈 전형 `pseudonym_setting`               | 미결정                               | 전역 기본/복제/보존 중 승인 필요                        |
-| `pseudonym_time_range`                    | `pseudonym_range`                    | 현재 6개 모두 exact segment 후보에 매핑                 |
-| mapped `pseudonym_assignment` 6건         | canonical assignment                 | registration FK로 backfill 가능                         |
-| unmapped assignment 5건                   | legacy reservation                   | 자동 추정·삭제 금지                                     |
-| `pseudonym_operation`                     | slot 상태 + event                    | 현재 1건은 exact slot 후보에 매핑 가능                  |
-| `user_admission_assignment`               | admission ID assignment              | 이름 exact mapping 가능, mode는 승인 필요               |
-| `print_job` 3건                           | immutable legacy print history       | 현재 registration 매핑 불가, FK 채움 금지               |
+| 현재 원본                                 | 목표                                 | 처리                                                      |
+| ----------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
+| `system_profile.academic_year`            | `exam_cycle.academic_year`           | 후보값. 시험일자의 연도와 현재 138행 모두 일치            |
+| `DEFAULT_EXAM_NAME`, `examinee.exam_name` | `exam_cycle.cycle_code/display_name` | 현재 불일치 0. code 원본·기간은 별도 운영값 확정          |
+| `candidate_record.admission(_code)`       | `admission`                          | 코드는 모두 빈 값. normalized-name alias 필요             |
+| 날짜·시작시간·교시                        | `operation_slot`                     | 현재 6개 후보                                             |
+| 모집단위·전공·건물·고사실                 | `schedule_segment`                   | 현재 6개 후보, 코드 전체 공란                             |
+| 수험번호·이름·생년월일                    | `candidate`                          | `candidate_record`를 우선 후보로 하고 `examinee`와 비교   |
+| `candidate_record` 한 행                  | `candidate_registration`             | source ID bridge로 1:1 backfill 후보                      |
+| `candidate_photo.candidate_record_id`     | `candidate_photo.candidate_id`       | 동일 candidate 사진 hash 충돌 진단 후 전환. 현재 0건      |
+| `candidate_record.temporary_no`           | registration 사전 가번호 값/자릿수   | 현재 채워진 행 0                                          |
+| exact `pseudonym_setting`                 | `pseudonym_policy`                   | 전형 ID로 연결, version 유지                              |
+| 빈 전형 `pseudonym_setting`               | global default                       | 특정 전형에 추정 연결하지 않고 override fallback으로 보존 |
+| `pseudonym_time_range`                    | `pseudonym_range`                    | 현재 6개 모두 exact segment 후보에 매핑                   |
+| mapped `pseudonym_assignment` 6건         | canonical assignment                 | registration FK로 backfill 가능                           |
+| unmapped assignment 5건                   | legacy reservation                   | 자동 추정·삭제 금지                                       |
+| `pseudonym_operation`                     | slot 상태 + event                    | 현재 1건은 exact slot 후보에 매핑 가능                    |
+| `user_admission_assignment`               | admission ID assignment              | 무배정은 `ALL`, exact 배정은 `ASSIGNED`로 이관            |
+| `print_job` 3건                           | immutable legacy print history       | 현재 registration 매핑 불가, FK 채움 금지                 |
 
 ## 9. 무중단 compatibility 전환 순서
 
@@ -549,8 +577,8 @@ DDL 작성 전에 익명화 운영 복제 DB에서 다음 인덱스를 `EXPLAIN 
 - 신규 API는 `examCycleId`, `admissionId`, `operationSlotId`, `candidateRegistrationId`를 사용한다.
 - old Web/new API와 new Web/old API 조합을 contract test로 검증한다.
 - `DEFAULT_EXAM_NAME`은 mapping adapter 뒤로 옮긴 후 신규 코드에서 직접 참조하지 않는다.
-- 기존 template data tag와 출력 payload는 승인된 alias 기간 동안 유지한다.
-- 레거시 assignment 5건, 고립 examinee 8건, 매핑 불가 print job 3건은 승인 없이 삭제·연결·재번호 부여하지 않는다.
+- 기존 template data tag와 출력 payload는 compatibility alias로 유지한다. 종료 버전·기간은 사용량 0 증거 후 별도 확정한다.
+- 레거시 assignment 5건, 고립 examinee 8건, 매핑 불가 print job 3건은 추정·삭제하지 않고 immutable legacy history로 보존한다.
 
 ## 13. 거부한 접근
 
@@ -580,13 +608,15 @@ MariaDB DDL의 암묵적 commit, 현 데이터의 미결정 항목, 출력·권�
 
 ## 14. Phase 5 준비 상태
 
-| Phase            | 준비된 항목                                                                 | 아직 차단된 항목                                                            |
-| ---------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| 5A 공통 identity | 현재→목표 mapping, surrogate/natural key, 6 slot·6 segment 후보, exact 집계 | cycle 원본, 코드 없는 이름 identity 승인, NFKC 진단, 8개 고립 examinee 처리 |
-| 5B roster        | registration 기반 projection과 shadow digest 계약                           | 신규 schema/repository, 익명화 fixture, 운영 규모 실행계획                  |
-| 5C 권한          | 명시적 `ALL/ASSIGNED` 모델과 admission ID FK 제안                           | 현재 한 사용자의 mode 결정                                                  |
-| 5D 설정·범위     | admission policy, segment range, 숫자/자릿수 분리 제안                      | 빈 전형 fallback 처리, ADMISSION 범위 합집합 39/138 해소                    |
-| 5E 할당·마감     | registration/slot 참조, claim unique, event history 제안                    | 레거시 할당 5건, 재개 삭제의 이력 보존 정책                                 |
-| 5F 출력·양식     | registration 기반 projection과 immutable snapshot 제안                      | 매핑 불가 출력 3건, tag alias/fallback 승인                                 |
+| Phase            | 승인·준비된 항목                                                                     | 남은 실행 게이트                                           |
+| ---------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| 5A 공통 identity | 계층·ID·정규화 원칙, cycle 범위 SYSTEM, legacy 격리, 6 slot·6 segment 후보           | cycle 세부 운영값, NFKC 진단, schema expand·복원본 dry-run |
+| 5B roster        | candidate/registration 분리, projection과 shadow digest 계약                         | 신규 schema/repository, 익명화 fixture, 운영 규모 실행계획 |
+| 5C 권한          | 명시적 `ALL/ASSIGNED`와 이관 의미                                                    | 구현, 역할별 권한·compatibility 검증                       |
+| 5D 설정·범위     | global default, 숫자/자릿수 분리, ADMISSION/SCHEDULE 겹침·용량 규칙                  | 현재 ADMISSION 합집합 39/138 해소                          |
+| 5E 할당·마감     | legacy 5건 보존, current projection + append-only history, reopen 이력 보존          | 구현, transaction·경합·복원 검증                           |
+| 5F 출력·양식     | 기존 출력 3건 보존, candidate 기준 사진, immutable published template, tag 오류 계약 | 보존기간·expiry·alias 종료값 확정, 출력·양식 실검증        |
 
-현재 안전하게 완료된 것은 **설계·mapping 준비와 비식별 기준선**이다. schema expand, dual-write, backfill, shadow read, read cutover는 모두 외부 결정과 [컷오버 게이트](../data-model-cutover-gates.md)를 통과하기 전까지 차단한다.
+현재 **설계 승인과 schema expand 작성**은 진행할 수 있다. 운영 backfill, shadow read,
+read/canonical cutover는 backup/restore와 [컷오버 게이트](../data-model-cutover-gates.md)의 단계별
+증거를 충족하기 전까지 차단한다.

@@ -34,12 +34,16 @@ describe("AdminDashboard", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "전형 운영 대시보드" })).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { name: "전형 운영 대시보드" });
+    expect(heading).toBeInTheDocument();
+    expect(heading.closest("header")).toHaveClass("admin-view-heading");
     expect(screen.getByRole("heading", { name: "학생부교과" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "실기전형" })).toBeInTheDocument();
     expect(document.querySelectorAll(".admission-status-card")).toHaveLength(2);
     expect(document.querySelector(".admission-donut")).toHaveStyle({ "--assigned-angle": "240.12deg" });
-    fireEvent.click(screen.getByRole("button", { name: "새로고침" }));
+    const refreshButton = screen.getByRole("button", { name: "새로고침" });
+    expect(refreshButton).toHaveClass("exam-outline-button");
+    fireEvent.click(refreshButton);
     expect(onRefresh).toHaveBeenCalledOnce();
   });
 

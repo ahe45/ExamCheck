@@ -75,6 +75,7 @@ export interface TemplateEditorOverflowInfo {
 }
 
 export interface TemplateEditorRuntime {
+  insertTag?(tag: string): unknown;
   setHtml(html: string, options?: { notify?: boolean; resetHistory?: boolean }): unknown;
 }
 
@@ -82,8 +83,11 @@ export interface TemplateEditorInstance {
   destroy(): void;
   getHtml(): string;
   getRuntime(): TemplateEditorRuntime;
+  getSelectedPageId(): string;
+  getValue(): TemplateEditorValue;
   preview(context?: Record<string, unknown>): Promise<Record<string, unknown>>;
   save(context?: Record<string, unknown>): Promise<TemplateEditorValue | void>;
+  sync(): TemplateEditorValue;
 }
 
 export interface TemplateEditorTagDisplayContext {
@@ -120,8 +124,11 @@ export interface MountTemplateEditorOptions {
   dataTags: DataTagCatalog | DataTagDefinition[];
   layoutMode?: "desktop" | "responsive";
   permissions?: { canManageTemplates?: boolean; [key: string]: unknown };
+  generatedObjectSourceKey?: string;
+  previewData?: Record<string, unknown>;
   getTemplateEditorTagDisplay?(context: TemplateEditorTagDisplayContext): TemplateEditorTagDisplay | null | void;
   adapters?: {
+    buildApiUrl?(path: string): string;
     saveTemplate?(context: TemplateEditorSaveContext): Promise<TemplateEditorValue | void> | TemplateEditorValue | void;
     previewPdf?(context: TemplateEditorPreviewContext): Promise<Record<string, unknown>> | Record<string, unknown>;
   };

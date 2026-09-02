@@ -39,8 +39,10 @@ const pseudonymAssign = vi.fn(async () => ({ id: 11, pseudonymNumber: "1001" }))
 const pseudonymSettingUpdate = vi.fn(async () => ({ id: 9, version: 2 }));
 const pseudonymSettingsOverview = vi.fn(async () => []);
 const templateFindActive = vi.fn(async () => ({ code: "ROOM_LIST" }));
-const templateSave = vi.fn(async () => ({ id: 21, code: "ROOM_LIST", version: 2 }));
+const templateSave = vi.fn(async () => ({ id: 21, code: "ROOM_LIST" }));
+const templateUpdateActive = vi.fn(async () => ({ id: 21, code: "ROOM_LIST", active: false }));
 const printJobCreate = vi.fn(async () => ({ id: "11111111-1111-4111-8111-111111111111", status: "READY" }));
+const printJobReissue = vi.fn(async () => ({ id: "22222222-2222-4222-8222-222222222222", status: "READY" }));
 
 const candidatesServiceStub = { dashboardSummary: candidateDashboardSummary, import: candidateImport };
 const pseudonymsServiceStub = {
@@ -48,8 +50,12 @@ const pseudonymsServiceStub = {
   getSettingsOverview: pseudonymSettingsOverview,
   updateSetting: pseudonymSettingUpdate,
 };
-const formTemplatesServiceStub = { findActive: templateFindActive, save: templateSave };
-const printJobsServiceStub = { create: printJobCreate };
+const formTemplatesServiceStub = {
+  findActive: templateFindActive,
+  save: templateSave,
+  updateActive: templateUpdateActive,
+};
+const printJobsServiceStub = { create: printJobCreate, reissue: printJobReissue };
 
 @Module({
   controllers: [CandidatesController, PseudonymsController, FormTemplatesController, PrintJobsController],
@@ -91,7 +97,9 @@ describe("business controller HTTP boundaries", () => {
     pseudonymSettingUpdate.mockClear();
     templateFindActive.mockClear();
     templateSave.mockClear();
+    templateUpdateActive.mockClear();
     printJobCreate.mockClear();
+    printJobReissue.mockClear();
   });
 
   afterAll(async () => {
@@ -111,16 +119,32 @@ describe("business controller HTTP boundaries", () => {
     expect(pseudonymAssign).not.toHaveBeenCalled();
   });
 
-  it("allows an operator to assign a pseudonym and create a print job", async () => {
+  it("allows an operator to assign a pseudonym, create a print job and request a safe-code retry", async () => {
     const operator = requireUser(2);
     const token = tokenFor(operator);
     const assignment = await jsonRequest("/pseudonyms/assignments", "POST", assignmentInput(), token);
     const printJob = await jsonRequest("/print-jobs", "POST", printJobInput(), token);
+    const reissueInput = {
+      idempotencyKey: "22222222-2222-4222-8222-222222222222",
+      reasonCode: "CLIENT_SEND_RETRY",
+    };
+    const reissue = await jsonRequest(
+      "/print-jobs/11111111-1111-4111-8111-111111111111/reissue",
+      "POST",
+      reissueInput,
+      token,
+    );
 
     expect(assignment.status).toBe(201);
     expect(printJob.status).toBe(201);
+    expect(reissue.status).toBe(201);
     expect(pseudonymAssign).toHaveBeenCalledWith(expect.objectContaining(assignmentInput()), operator);
     expect(printJobCreate).toHaveBeenCalledWith(expect.objectContaining(printJobInput()), operator);
+    expect(printJobReissue).toHaveBeenCalledWith(
+      "11111111-1111-4111-8111-111111111111",
+      expect.objectContaining(reissueInput),
+      operator,
+    );
   });
 
   it("allows an administrator to update settings, save a template and import candidates", async () => {
@@ -128,13 +152,21 @@ describe("business controller HTTP boundaries", () => {
     const token = tokenFor(administrator);
     const setting = await jsonRequest("/pseudonyms/setting", "PUT", settingInput(), token);
     const template = await jsonRequest("/form-templates/ROOM_LIST", "PUT", templateInput(), token);
+    const templateAvailability = await jsonRequest(
+      "/form-templates/ROOM_LIST/active",
+      "PATCH",
+      { active: false },
+      token,
+    );
     const candidates = await multipartImport("all", token);
 
     expect(setting.status).toBe(200);
     expect(template.status).toBe(200);
+    expect(templateAvailability.status).toBe(200);
     expect(candidates.status).toBe(201);
     expect(pseudonymSettingUpdate).toHaveBeenCalledWith(expect.objectContaining(settingInput()), administrator);
     expect(templateSave).toHaveBeenCalledWith(expect.objectContaining(templateInput()), administrator);
+    expect(templateUpdateActive).toHaveBeenCalledWith("ROOM_LIST", { active: false }, administrator);
     expect(candidateImport).toHaveBeenCalledWith(expect.any(Buffer), "all", "signed-preview-ticket", administrator.id);
   });
 
@@ -190,16 +222,30 @@ describe("business controller HTTP boundaries", () => {
 
     const operatorSetting = await jsonRequest("/pseudonyms/setting", "PUT", settingInput(), operatorToken);
     const operatorTemplate = await jsonRequest("/form-templates/ROOM_LIST", "PUT", templateInput(), operatorToken);
+    const operatorTemplateAvailability = await jsonRequest(
+      "/form-templates/ROOM_LIST/active",
+      "PATCH",
+      { active: false },
+      operatorToken,
+    );
     const operatorImport = await multipartImport("all", operatorToken);
     const viewerAssignment = await jsonRequest("/pseudonyms/assignments", "POST", assignmentInput(), viewerToken);
     const viewerPrint = await jsonRequest("/print-jobs", "POST", printJobInput(), viewerToken);
 
-    for (const response of [operatorSetting, operatorTemplate, operatorImport, viewerAssignment, viewerPrint]) {
+    for (const response of [
+      operatorSetting,
+      operatorTemplate,
+      operatorTemplateAvailability,
+      operatorImport,
+      viewerAssignment,
+      viewerPrint,
+    ]) {
       expect(response.status).toBe(403);
       expect(await response.json()).toMatchObject({ statusCode: 403, code: "FORBIDDEN" });
     }
     expect(pseudonymSettingUpdate).not.toHaveBeenCalled();
     expect(templateSave).not.toHaveBeenCalled();
+    expect(templateUpdateActive).not.toHaveBeenCalled();
     expect(candidateImport).not.toHaveBeenCalled();
     expect(pseudonymAssign).not.toHaveBeenCalled();
     expect(printJobCreate).not.toHaveBeenCalled();
@@ -221,6 +267,13 @@ describe("business controller HTTP boundaries", () => {
       operatorToken,
       "invalid-body",
     );
+    const invalidReissue = await jsonRequest(
+      "/print-jobs/11111111-1111-4111-8111-111111111111/reissue",
+      "POST",
+      { idempotencyKey: "22222222-2222-4222-8222-222222222222", reasonCode: "contains candidate name" },
+      operatorToken,
+      "invalid-reissue",
+    );
 
     await expectValidationEnvelope(invalidPath, "/form-templates/lower-case", "invalid-path", "code must match");
     await expectValidationEnvelope(invalidQuery, "/candidates/import", "invalid-query", "policy must be one of");
@@ -237,9 +290,16 @@ describe("business controller HTTP boundaries", () => {
       "수험생 데이터 미리보기 토큰을 확인해 주세요.",
     );
     await expectValidationEnvelope(invalidBody, "/pseudonyms/assignments", "invalid-body", "mode must be one of");
+    await expectValidationEnvelope(
+      invalidReissue,
+      "/print-jobs/11111111-1111-4111-8111-111111111111/reissue",
+      "invalid-reissue",
+      "reasonCode must be one of",
+    );
     expect(templateFindActive).not.toHaveBeenCalled();
     expect(candidateImport).not.toHaveBeenCalled();
     expect(pseudonymAssign).not.toHaveBeenCalled();
+    expect(printJobReissue).not.toHaveBeenCalled();
   });
 
   it("rejects malformed aggregate read query DTOs before calling services", async () => {
@@ -275,7 +335,13 @@ describe("business controller HTTP boundaries", () => {
     return fetch(`${baseUrl}${path}`, { headers: authenticatedHeaders(token, requestId) });
   }
 
-  function jsonRequest(path: string, method: "POST" | "PUT", body: unknown, token?: string, requestId?: string) {
+  function jsonRequest(
+    path: string,
+    method: "PATCH" | "POST" | "PUT",
+    body: unknown,
+    token?: string,
+    requestId?: string,
+  ) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
     if (requestId) headers[REQUEST_ID_HEADER] = requestId;

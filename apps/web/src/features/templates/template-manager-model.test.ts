@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { FormTemplate } from "../../shared/api/form-templates";
 import {
   buildCardMetadataUpdate,
+  buildTemplateActiveUpdate,
+  buildTemplateCopyInput,
   createBlankDraft,
   createCardMetadataEdit,
   createDraftMetadataSnapshot,
@@ -12,7 +14,6 @@ import {
 const template: FormTemplate = {
   id: 7,
   code: "LABEL",
-  version: 3,
   name: "가번호 라벨",
   description: "기본 설명",
   category: "라벨",
@@ -72,5 +73,27 @@ describe("template manager model", () => {
       layout: { ...draft.layout, name: "편집기 내부 변경" },
     };
     expect(isDraftMetadataDirty(layoutOnly, snapshot)).toBe(false);
+  });
+
+  it("사용 상태 변경은 양식 전체 내용을 유지한다", () => {
+    expect(buildTemplateActiveUpdate(template, false)).toEqual({
+      code: "LABEL",
+      name: "가번호 라벨",
+      description: "기본 설명",
+      category: "라벨",
+      usageScope: "CANDIDATE",
+      layout: { layout: { pages: [] } },
+      active: false,
+    });
+  });
+
+  it("복사본은 겹치지 않는 코드와 제목을 사용하고 미사용 상태로 만든다", () => {
+    const firstCopy = { ...template, id: 8, code: "LABEL_COPY", name: "가번호 라벨 복사본" };
+    expect(buildTemplateCopyInput(template, [template, firstCopy])).toMatchObject({
+      code: "LABEL_COPY_2",
+      name: "가번호 라벨 복사본 2",
+      active: false,
+      layout: template.layout,
+    });
   });
 });

@@ -28,8 +28,11 @@ interface ExternalMountedEditor {
   destroy(): void;
   getHtml(): string;
   getRuntime(): TemplateEditorInstance["getRuntime"] extends () => infer Runtime ? Runtime : never;
+  getSelectedPageId(): string;
+  getValue(): TemplateEditorValue;
   preview(context?: Record<string, unknown>): Promise<Record<string, unknown>>;
   save(context?: Record<string, unknown>): Promise<TemplateEditorValue | void>;
+  sync(): TemplateEditorValue;
 }
 
 export interface TemplateEditorCompatibilityResult {
@@ -115,8 +118,11 @@ export function createExamlistTemplateEditorAdapter(
         },
         getHtml: () => external.getHtml(),
         getRuntime: () => external.getRuntime(),
+        getSelectedPageId: () => external.getSelectedPageId(),
+        getValue: () => external.getValue(),
         preview: (context) => external.preview(context),
         save: (context) => external.save(context),
+        sync: () => external.sync(),
       };
     },
     normalizeViewOptions(options) {
@@ -158,9 +164,16 @@ function assertMountedEditorCompatibility(
     );
   }
   const api = mounted as Record<string, unknown>;
-  const missing = ["destroy", "getHtml", "getRuntime", "preview", "save"].filter(
-    (name) => typeof api[name] !== "function",
-  );
+  const missing = [
+    "destroy",
+    "getHtml",
+    "getRuntime",
+    "getSelectedPageId",
+    "getValue",
+    "preview",
+    "save",
+    "sync",
+  ].filter((name) => typeof api[name] !== "function");
   if (missing.length > 0) {
     throw new Error(
       `양식 편집기 패키지(${packageVersion})가 현재 시스템과 호환되지 않습니다. 편집기 필수 기능 누락: ${missing.join(", ")}. 관리자에게 패키지 설치 상태를 확인해 달라고 요청해 주세요.`,
