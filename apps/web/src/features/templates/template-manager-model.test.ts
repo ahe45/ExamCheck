@@ -75,6 +75,17 @@ describe("template manager model", () => {
     expect(isDraftMetadataDirty(layoutOnly, snapshot)).toBe(false);
   });
 
+  it("새 양식 코드를 자동 생성하고 같은 코드가 있으면 순번을 붙인다", () => {
+    const first = createBlankDraft(100);
+    const second = createBlankDraft(100, [first.code]);
+
+    expect(first.code).toBe("FORM_2S");
+    expect(second.code).toBe("FORM_2S_2");
+    expect(first.name).toBe("");
+    expect(first.category).toBe("기타");
+    expect(first.usageScope).toBe("CANDIDATE");
+  });
+
   it("사용 상태 변경은 양식 전체 내용을 유지한다", () => {
     expect(buildTemplateActiveUpdate(template, false)).toEqual({
       code: "LABEL",

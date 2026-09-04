@@ -464,6 +464,20 @@
   .admission-progress-panel {
     grid-column: auto;
   }
+  .admission-status-section > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .dashboard-breakdown-control {
+    align-self: stretch;
+  }
+  .dashboard-breakdown-switch {
+    flex: 1 1 auto;
+  }
+  .dashboard-breakdown-switch button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
   .admission-ratio-body {
     grid-template-columns: 190px minmax(0, 1fr);
   }

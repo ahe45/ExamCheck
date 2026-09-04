@@ -53,6 +53,8 @@ export function App() {
           section={resolvedRoute.route.section}
           onNavigate={navigate}
           systemProfile={systemProfile}
+          printerService={printer.service}
+          printerDiagnostic={printer.diagnostic}
           onSystemProfileChange={setSystemProfile}
           onLogout={appSession.logout}
         />
@@ -75,8 +77,11 @@ export function App() {
           mode={printer.mode}
           service={printer.service}
           diagnostic={printer.diagnostic}
+          printers={printer.printers}
+          selectedPrinterId={printer.selectedPrinterId}
           diagnosticBusy={printer.busy}
           onDiagnose={printer.diagnose}
+          onSelectPrinter={printer.selectPrinter}
           onChangeSchedule={appSession.clearOperationSchedule}
           onLogout={appSession.logout}
         />

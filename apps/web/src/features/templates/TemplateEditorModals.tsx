@@ -5,7 +5,6 @@ import {
   ResetButtonIcon,
   SaveButtonIcon,
 } from "../../shared/components/ActionIcons";
-import type { FormTemplateScope } from "../../shared/api/form-templates";
 import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
 import type { DataTagCatalog } from "../../shared/templates/template-editor-contracts";
@@ -47,44 +46,23 @@ export function TemplateInformationModal({ draft, onChange, onClose }: TemplateI
           </button>
         </header>
         <div className="template-information-fields">
-          <label>
-            양식 코드
-            <input
-              value={draft.code}
-              disabled={!draft.isNew}
-              onChange={(event) => onChange("code", event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
-            />
-          </label>
-          <label>
+          <label className="wide-field">
             양식명
-            <input value={draft.name} onChange={(event) => onChange("name", event.target.value)} />
-          </label>
-          <label>
-            분류
-            <input value={draft.category} onChange={(event) => onChange("category", event.target.value)} />
-          </label>
-          <label>
-            제공 범위
-            <select
-              value={draft.usageScope}
-              onChange={(event) => onChange("usageScope", event.target.value as FormTemplateScope)}
-            >
-              <option value="CANDIDATE">수험생별</option>
-              <option value="ROOM">고사실별</option>
-              <option value="EXAM">시험 전체</option>
-            </select>
+            <input
+              maxLength={200}
+              placeholder="양식명을 입력하세요."
+              value={draft.name}
+              onChange={(event) => onChange("name", event.target.value)}
+            />
           </label>
           <label className="wide-field">
             설명
-            <input value={draft.description} onChange={(event) => onChange("description", event.target.value)} />
-          </label>
-          <label className="modal-checkbox">
             <input
-              type="checkbox"
-              checked={draft.active}
-              onChange={(event) => onChange("active", event.target.checked)}
+              maxLength={500}
+              placeholder="양식 설명을 입력하세요."
+              value={draft.description}
+              onChange={(event) => onChange("description", event.target.value)}
             />
-            사용자 화면에 제공
           </label>
         </div>
         <footer>

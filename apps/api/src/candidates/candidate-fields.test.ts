@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { candidateFieldKeys, candidateFields } from "./candidate-fields.js";
+import { candidateFieldKeys, candidateFields, candidateKey, type CandidateInput } from "./candidate-fields.js";
 
 describe("candidate field definitions", () => {
   it("keeps the workbook keys and database columns in one complete, ordered mapping", () => {
@@ -12,6 +12,7 @@ describe("candidate field definitions", () => {
       ["unit", "unit_name", "모집단위명"],
       ["major", "major", "전공명"],
       ["building", "building_name", "고사건물명"],
+      ["waitingRoom", "waiting_room", "대기실명"],
       ["room", "room_name", "고사실명"],
       ["examineeNo", "examinee_no", "수험번호"],
       ["temporaryNo", "temporary_no", "가번호"],
@@ -33,8 +34,52 @@ describe("candidate field definitions", () => {
       "unit",
       "major",
       "building",
+      "waitingRoom",
       "room",
       "temporaryNo",
     ]);
   });
+
+  it("requires the waiting room and keeps the exam room optional", () => {
+    expect(candidateFields.find((field) => field.key === "waitingRoom")?.optional).not.toBe(true);
+    expect(candidateFields.find((field) => field.key === "room")?.optional).toBe(true);
+  });
+
+  it("identifies an uploaded candidate row by number, date, start time, period, and building", () => {
+    const base = candidate();
+    const reassigned: CandidateInput = {
+      ...base,
+      admission: "다른 전형",
+      waitingRoom: "별관 대기실",
+      room: "",
+    };
+
+    expect(candidateKey(reassigned)).toBe(candidateKey(base));
+    expect(candidateKey({ ...base, building: "별관" })).not.toBe(candidateKey(base));
+    expect(candidateKey({ ...base, time: "13:00" })).not.toBe(candidateKey(base));
+    expect(candidateKey({ ...base, period: "2교시" })).not.toBe(candidateKey(base));
+  });
 });
+
+function candidate(): CandidateInput {
+  return {
+    designatedSort: "",
+    date: "2026-09-01",
+    time: "09:00",
+    period: "1교시",
+    admission: "일반전형",
+    unit: "디자인학부",
+    major: "",
+    building: "본관",
+    waitingRoom: "본관 대기실",
+    room: "101호",
+    examineeNo: "10001",
+    temporaryNo: "",
+    name: "홍길동",
+    birth: "2000-01-01",
+    group: "",
+    opt1: "",
+    opt2: "",
+    opt3: "",
+  };
+}

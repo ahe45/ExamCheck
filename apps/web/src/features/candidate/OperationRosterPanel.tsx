@@ -3,11 +3,13 @@ import { RefreshButtonIcon } from "../../shared/components/ActionIcons";
 import { ClientGridHeaderCell } from "../../shared/components/ClientGridHeaderCell";
 import type { GridFilters, GridSort } from "../../shared/hooks/useClientDataGrid";
 import type { PseudonymAssignment } from "../../shared/api/pseudonyms";
+import type { PrinterDiagnostic } from "../printer/printer.types";
 import {
-  operationColumns,
   operationRosterStats,
   operationRowValue,
+  type OperationColumn,
   type OperationFieldKey,
+  type OperationGridContext,
   type OperationRow,
 } from "./operation-view-model";
 
@@ -25,6 +27,8 @@ interface RosterState {
   rosterRefreshing: boolean;
   exportingExcel: boolean;
   labelPrintingEnabled: boolean;
+  printerDiagnostic: PrinterDiagnostic;
+  printerDiagnosticBusy: boolean;
   assignment: PseudonymAssignment | null;
   printing: boolean;
 }
@@ -42,13 +46,25 @@ interface Props {
   rows: OperationRow[];
   allRows: OperationRow[];
   selectedExamineeNo?: string;
+  columns: OperationColumn[];
+  context: OperationGridContext;
   grid: RosterGridProps;
   state: RosterState;
   actions: RosterActions;
 }
 
-export function OperationRosterPanel({ rows, allRows, selectedExamineeNo, grid, state, actions }: Props) {
-  const stats = operationRosterStats(allRows);
+export function OperationRosterPanel({
+  rows,
+  allRows,
+  selectedExamineeNo,
+  columns,
+  context,
+  grid,
+  state,
+  actions,
+}: Props) {
+  const stats = operationRosterStats(allRows, context);
+  const printerReady = state.printerDiagnostic.status === "READY" && Boolean(state.printerDiagnostic.printer);
 
   return (
     <section className="operator-roster-panel">
@@ -68,15 +84,32 @@ export function OperationRosterPanel({ rows, allRows, selectedExamineeNo, grid, 
           </div>
         </div>
         <div>
-          <button
-            className="operator-refresh-button"
-            onClick={actions.refresh}
-            disabled={state.rosterRefreshing}
-            title="가번호 등록 현황 새로고침"
-          >
-            <RefreshButtonIcon />
-            {state.rosterRefreshing ? "갱신 중…" : "새로고침"}
-          </button>
+          {state.labelPrintingEnabled && (
+            <>
+              <span
+                className={`operator-printer-status ${state.printerDiagnosticBusy ? "checking" : printerReady ? "ready" : "error"}`}
+                role="status"
+                aria-live="polite"
+                title={state.printerDiagnostic.message}
+              >
+                <i aria-hidden="true" />
+                {state.printerDiagnosticBusy
+                  ? "프린터 확인 중"
+                  : printerReady
+                    ? "프린터 연결 정상"
+                    : "프린터 연결 확인 필요"}
+              </span>
+              <button
+                className="operator-roster-label-button"
+                onClick={actions.printLabel}
+                disabled={!state.assignment || state.printing || !printerReady}
+                title={printerReady ? "선택한 수험생의 라벨 출력" : state.printerDiagnostic.message}
+              >
+                <OperatorPrintIcon />
+                {state.printing ? "전송 중…" : "라벨 출력"}
+              </button>
+            </>
+          )}
           <button
             className={`operator-operation-close-button ${state.operationClosed ? "closed" : ""}`}
             onClick={actions.openCloseConfirm}
@@ -95,6 +128,15 @@ export function OperationRosterPanel({ rows, allRows, selectedExamineeNo, grid, 
             인쇄
           </button>
           <button
+            className="operator-refresh-button"
+            onClick={actions.refresh}
+            disabled={state.rosterRefreshing}
+            title="가번호 등록 현황 새로고침"
+          >
+            <RefreshButtonIcon />
+            {state.rosterRefreshing ? "갱신 중…" : "새로고침"}
+          </button>
+          <button
             className="operator-download-button"
             onClick={actions.download}
             disabled={state.exportingExcel}
@@ -103,16 +145,6 @@ export function OperationRosterPanel({ rows, allRows, selectedExamineeNo, grid, 
             <OperatorDownloadIcon />
             {state.exportingExcel ? "생성 중…" : "다운로드"}
           </button>
-          {state.labelPrintingEnabled && (
-            <button
-              className="operator-roster-label-button"
-              onClick={actions.printLabel}
-              disabled={!state.assignment || state.printing}
-            >
-              <OperatorPrintIcon />
-              {state.printing ? "전송 중…" : "라벨 출력"}
-            </button>
-          )}
         </div>
       </header>
       <div className="operator-roster-table-wrap">
@@ -120,7 +152,7 @@ export function OperationRosterPanel({ rows, allRows, selectedExamineeNo, grid, 
           <thead>
             <tr>
               <th className="candidate-row-number">순번</th>
-              {operationColumns.map((column) => (
+              {columns.map((column) => (
                 <ClientGridHeaderCell
                   key={column.key}
                   columnKey={column.key}
@@ -151,31 +183,28 @@ export function OperationRosterPanel({ rows, allRows, selectedExamineeNo, grid, 
                   }}
                 >
                   <td className="candidate-row-number">{index + 1}</td>
-                  {operationColumns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={`${column.wide ? "candidate-wide-column" : "candidate-compact-column"} operator-roster-column-${column.key} ${column.key === "pseudonymNumber" || column.key === "examineeNo" ? "emphasis" : ""}`}
-                    >
-                      <span
-                        className={
-                          column.key === "status"
-                            ? row.candidate.absent
-                              ? "absent"
-                              : !row.assignment
-                                ? "waiting"
-                                : ""
-                            : ""
-                        }
+                  {columns.map((column) => {
+                    const value = operationRowValue(row, column.key, context);
+                    const valueClass =
+                      column.key === "status"
+                        ? `status-${value === "대기" ? "waiting" : value === "진행" ? "progress" : "closed"}`
+                        : column.key === "attendance"
+                          ? `attendance-${value === "응시" ? "present" : value === "결시" ? "absent" : "pending"}`
+                          : "";
+                    return (
+                      <td
+                        key={column.key}
+                        className={`${column.wide ? "candidate-wide-column" : "candidate-compact-column"} operator-roster-column-${column.key} ${column.key === "pseudonymNumber" || column.key === "examineeNo" ? "emphasis" : ""}`}
                       >
-                        {operationRowValue(row, column.key)}
-                      </span>
-                    </td>
-                  ))}
+                        <span className={valueClass}>{value}</span>
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             ) : (
               <tr className="operator-roster-empty">
-                <td className="candidate-grid-empty-cell" colSpan={operationColumns.length + 1}>
+                <td className="candidate-grid-empty-cell" colSpan={columns.length + 1}>
                   <strong>
                     {allRows.length ? "필터 조건에 맞는 수험생이 없습니다." : "등록된 수험생이 없습니다."}
                   </strong>

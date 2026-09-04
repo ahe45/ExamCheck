@@ -6,6 +6,7 @@ import {
   buildScheduleRanges,
   configuredRangeBounds,
   createSettingsSnapshot,
+  formatRangeNumber,
   hasInvalidRange,
   toSettingRanges,
   updateRangeStart,
@@ -268,6 +269,27 @@ describe("system setting schedule ranges", () => {
     expect(result[0]).toEqual({ ...ranges[0], rangeStart: 3001, rangeEnd: 3003 });
     expect(result[1]).toBe(ranges[1]);
     expect(ranges[0]).toEqual(expect.objectContaining({ rangeStart: 1001, rangeEnd: 1003 }));
+  });
+
+  it("keeps the start number width when calculating the end number", () => {
+    const range = {
+      date: "2026-08-11",
+      time: "09:00",
+      period: "1교시",
+      admission: "일반",
+      unit: "A",
+      major: "",
+      building: "본관",
+      room: "101호",
+      candidateCount: 30,
+      rangeStart: 1,
+      rangeEnd: 30,
+    };
+
+    const [result] = updateRangeStart([range], 0, 1, 4);
+
+    expect(formatRangeNumber(result!.rangeStart, result!.displayWidth)).toBe("0001");
+    expect(formatRangeNumber(result!.rangeEnd, result!.displayWidth)).toBe("0030");
   });
 
   it("rejects a non-positive start or a range whose capacity differs from the candidate count", () => {

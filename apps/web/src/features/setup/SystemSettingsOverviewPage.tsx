@@ -2,9 +2,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { fetchPseudonymSettingsOverview, type PseudonymSetting } from "../../shared/api/pseudonyms";
 import { RefreshButtonIcon } from "../../shared/components/ActionIcons";
-import { ToastNotice } from "../../shared/components/ToastNotice";
+import { ToastNotice, type ToastNoticeValue } from "../../shared/components/ToastNotice";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
 import { AdmissionSettingsCard } from "./AdmissionSettingsCard";
+import { AdmissionDeleteModal, AdmissionOperationsResetModal } from "./AdmissionDataActionModals";
 import { AdmissionSettingsEditorModal } from "./AdmissionSettingsEditorModal";
 import type { AdmissionCardData } from "./system-settings-overview-model";
 import type { SystemSettingsPageHandle } from "./SystemSettingsPage";
@@ -22,11 +23,13 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
     const queryClient = useQueryClient();
     const editorRef = useRef<SystemSettingsPageHandle>(null);
     const [selectedAdmission, setSelectedAdmission] = useState<string | null>(null);
+    const [resetAdmissionName, setResetAdmissionName] = useState<string | null>(null);
+    const [deleteAdmissionName, setDeleteAdmissionName] = useState<string | null>(null);
     const [dirty, setDirty] = useState(false);
     const [savingBeforeClose, setSavingBeforeClose] = useState(false);
     const [editorSaveState, setEditorSaveState] = useState({ canSave: false, saving: false });
     const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
-    const [notice, setNotice] = useState<string | null>(null);
+    const [notice, setNotice] = useState<ToastNoticeValue | null>(null);
     const overviewQuery = useQuery<AdmissionCardData[]>({
       queryKey: SETTINGS_OVERVIEW_QUERY_KEY,
       queryFn: () => fetchPseudonymSettingsOverview(token, DEFAULT_EXAM_NAME),
@@ -53,11 +56,13 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
 
     useEffect(() => {
       if (!overviewQuery.error) return;
-      setNotice(
-        overviewQuery.error instanceof Error
-          ? overviewQuery.error.message
-          : "전형별 시스템 설정을 불러오지 못했습니다.",
-      );
+      setNotice({
+        kind: "error",
+        text:
+          overviewQuery.error instanceof Error
+            ? overviewQuery.error.message
+            : "전형별 시스템 설정을 불러오지 못했습니다.",
+      });
     }, [overviewQuery.error]);
     useEffect(() => {
       onDirtyChange?.(dirty);
@@ -97,6 +102,27 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
       );
     }
 
+    function completeOperationReset(scheduleCount: number, assignmentCount: number) {
+      setResetAdmissionName(null);
+      setNotice({
+        kind: "success",
+        text: `선택한 교시 ${scheduleCount.toLocaleString()}개의 운영 이력을 초기화했습니다. 가번호 배정 ${assignmentCount.toLocaleString()}건을 삭제했습니다.`,
+      });
+      void refetch();
+    }
+
+    function completeAdmissionDelete(admissionName: string, candidateCount: number) {
+      setDeleteAdmissionName(null);
+      queryClient.setQueryData<AdmissionCardData[]>(SETTINGS_OVERVIEW_QUERY_KEY, (current = []) =>
+        current.filter((card) => card.name !== admissionName),
+      );
+      setNotice({
+        kind: "success",
+        text: `${admissionName} 전형과 연관된 수험생 ${candidateCount.toLocaleString()}명의 데이터를 삭제했습니다.`,
+      });
+      void refetch();
+    }
+
     return (
       <section className="admin-standard-view admission-settings-overview">
         <header className="admin-view-heading admission-settings-overview-heading">
@@ -110,13 +136,19 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
           </button>
         </header>
 
-        {notice && <ToastNotice notice={{ kind: "error", text: notice }} onClose={() => setNotice(null)} />}
+        {notice && <ToastNotice notice={notice} onClose={() => setNotice(null)} />}
         {loading ? (
           <div className="admin-view-loading">등록된 전형과 설정 정보를 불러오고 있습니다.</div>
         ) : cards.length ? (
           <div className="admission-settings-card-grid">
             {cards.map((card) => (
-              <AdmissionSettingsCard card={card} key={card.name} onOpen={openAdmission} />
+              <AdmissionSettingsCard
+                card={card}
+                key={card.name}
+                onOpen={openAdmission}
+                onReset={setResetAdmissionName}
+                onDelete={setDeleteAdmissionName}
+              />
             ))}
           </div>
         ) : (
@@ -143,6 +175,23 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
             onDiscard={closeEditor}
             onSave={() => void saveCurrentSettings()}
             onSaveAndClose={() => void saveAndClose()}
+          />
+        )}
+        {resetAdmissionName && (
+          <AdmissionOperationsResetModal
+            token={token}
+            examName={DEFAULT_EXAM_NAME}
+            admissionName={resetAdmissionName}
+            onClose={() => setResetAdmissionName(null)}
+            onCompleted={completeOperationReset}
+          />
+        )}
+        {deleteAdmissionName && (
+          <AdmissionDeleteModal
+            token={token}
+            admissionName={deleteAdmissionName}
+            onClose={() => setDeleteAdmissionName(null)}
+            onCompleted={(candidateCount) => completeAdmissionDelete(deleteAdmissionName, candidateCount)}
           />
         )}
       </section>

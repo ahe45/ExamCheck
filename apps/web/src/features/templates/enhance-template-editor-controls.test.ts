@@ -74,9 +74,9 @@ describe("enhanceTemplateEditorControls", () => {
     const pageOptions = controlsMock.pageNumber.mock.calls[0]?.[0];
     expect(pageOptions.appState.templateEditor.selectedPageId).toBe("content-page");
     expect(pageOptions.appState.templateEditor.template).toEqual({ layout: { pages: [page] } });
-    expect(root.querySelector(".examlist-candidate-block-grid-field")?.nextElementSibling).toHaveClass(
-      "examlist-page-number-field",
-    );
+    const signatureSection = root.querySelector(".examcheck-signature-name-field");
+    expect(root.querySelector(".examlist-candidate-block-grid-field")?.nextElementSibling).toBe(signatureSection);
+    expect(signatureSection?.nextElementSibling).toHaveClass("examlist-page-number-field");
     pageOptions.onDirty();
     await Promise.resolve();
     expect(sync).toHaveBeenCalledOnce();

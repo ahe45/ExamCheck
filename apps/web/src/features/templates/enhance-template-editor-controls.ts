@@ -83,8 +83,8 @@ export function enhanceTemplateEditorControls(
   const dataBlockSection = pagePropertiesHost.querySelector(".examlist-candidate-block-grid-field");
   const pageNumberSection = pagePropertiesHost.querySelector(".examlist-page-number-field");
   const signatureSection = pagePropertiesHost.querySelector(".examcheck-signature-name-field");
-  if (dataBlockSection && pageNumberSection) dataBlockSection.after(pageNumberSection);
-  if (pageNumberSection && signatureSection) pageNumberSection.after(signatureSection);
+  if (dataBlockSection && signatureSection) dataBlockSection.after(signatureSection);
+  if (signatureSection && pageNumberSection) signatureSection.after(pageNumberSection);
 
   return () => {
     [...disposers].reverse().forEach((dispose) => dispose?.());

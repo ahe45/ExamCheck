@@ -15,6 +15,7 @@ export const candidateColumns: CandidateColumn[] = [
   ["unit", "모집단위명"],
   ["major", "전공명"],
   ["building", "고사건물명"],
+  ["waitingRoom", "대기실명"],
   ["room", "고사실명"],
   ["examineeNo", "수험번호"],
   ["temporaryNo", "가번호"],

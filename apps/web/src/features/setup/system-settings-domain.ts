@@ -16,6 +16,7 @@ export interface RangeDraft {
   room: string;
   rangeStart: number;
   rangeEnd: number;
+  displayWidth?: number;
   candidateCount: number;
 }
 
@@ -28,6 +29,7 @@ export interface SettingsSnapshotInput {
   autoDrawEnabled: boolean;
   autoDrawDelaySeconds: number;
   printPreassignedLabel: boolean;
+  labelTemplateId?: number | null;
   autoAssignAbsenteesOnClose: boolean;
   deleteAbsenteeInfoOnReopen: boolean;
   useCandidatePhotos: boolean;
@@ -62,7 +64,8 @@ export function buildScheduleRanges(candidates: CandidateRecord[], setting: Pseu
     .map((schedule) => {
       const saved = setting.ranges.find((range) => scheduleIdentity(range) === scheduleIdentity(schedule));
       const rangeStart = saved?.rangeStart ?? setting.rangeStart;
-      return withForcedCapacity(schedule, rangeStart);
+      const displayWidth = saved?.displayWidth ?? setting.displayWidth;
+      return withForcedCapacity(schedule, rangeStart, displayWidth);
     });
 }
 
@@ -81,8 +84,15 @@ export function scheduleIdentity(
   ].join("|");
 }
 
-export function updateRangeStart(ranges: RangeDraft[], index: number, rangeStart: number): RangeDraft[] {
-  return ranges.map((range, rangeIndex) => (rangeIndex === index ? withForcedCapacity(range, rangeStart) : range));
+export function updateRangeStart(
+  ranges: RangeDraft[],
+  index: number,
+  rangeStart: number,
+  displayWidth?: number,
+): RangeDraft[] {
+  return ranges.map((range, rangeIndex) =>
+    rangeIndex === index ? withForcedCapacity(range, rangeStart, displayWidth) : range,
+  );
 }
 
 export function applyBulkRangeSettings(
@@ -90,9 +100,10 @@ export function applyBulkRangeSettings(
   start: number,
   mode: BulkRangeMode,
   criteria: BulkRangeCriterion[] = [],
+  displayWidth?: number,
 ): RangeDraft[] {
   if (mode === "SAME_START") {
-    return ranges.map((range) => withForcedCapacity(range, start));
+    return ranges.map((range) => withForcedCapacity(range, start, displayWidth));
   }
 
   let nextStart = start;
@@ -108,7 +119,7 @@ export function applyBulkRangeSettings(
     });
 
   for (const { range, index } of orderedRanges) {
-    const assigned = withForcedCapacity(range, nextStart);
+    const assigned = withForcedCapacity(range, nextStart, displayWidth);
     nextStart = assigned.rangeEnd + 1;
     assignedRanges.set(index, assigned);
   }
@@ -133,7 +144,7 @@ export function configuredRangeBounds(ranges: RangeDraft[], fallbackRange: { sta
 }
 
 export function toSettingRanges(ranges: RangeDraft[]): UpdatePseudonymSettingInput["ranges"] {
-  return ranges.map(({ date, time, period, admission, unit, major, building, room, rangeStart, rangeEnd }) => ({
+  return ranges.map(({ date, time, period, admission, unit, major, building, room, rangeStart, rangeEnd, displayWidth }) => ({
     date,
     time,
     period,
@@ -144,7 +155,21 @@ export function toSettingRanges(ranges: RangeDraft[]): UpdatePseudonymSettingInp
     room,
     rangeStart,
     rangeEnd,
+    displayWidth,
   }));
+}
+
+export function parseRangeNumberInput(raw: string) {
+  const digits = raw.replace(/\D/g, "").slice(0, 9);
+  return {
+    value: digits ? Number(digits) : 0,
+    displayWidth: Math.max(1, digits.length),
+  };
+}
+
+export function formatRangeNumber(value: number, displayWidth?: number) {
+  const text = String(Math.max(0, value));
+  return text.padStart(Math.max(displayWidth ?? text.length, text.length), "0");
 }
 
 export function createSettingsSnapshot(value: SettingsSnapshotInput) {
@@ -154,6 +179,7 @@ export function createSettingsSnapshot(value: SettingsSnapshotInput) {
     autoDrawEnabled: value.autoDrawEnabled,
     autoDrawDelaySeconds: value.autoDrawDelaySeconds,
     printPreassignedLabel: value.printPreassignedLabel,
+    labelTemplateId: value.labelTemplateId,
     autoAssignAbsenteesOnClose: value.autoAssignAbsenteesOnClose,
     deleteAbsenteeInfoOnReopen: value.deleteAbsenteeInfoOnReopen,
     useCandidatePhotos: value.useCandidatePhotos,
@@ -164,13 +190,20 @@ export function createSettingsSnapshot(value: SettingsSnapshotInput) {
 function withForcedCapacity<T extends { candidateCount: number }>(
   range: T,
   rangeStart: number,
+  displayWidth?: number,
 ): T & {
   rangeStart: number;
   rangeEnd: number;
+  displayWidth?: number;
 } {
-  return {
+  const rangeEnd = rangeStart + range.candidateCount - 1;
+  const requestedWidth = displayWidth ?? ("displayWidth" in range ? Number(range.displayWidth) : undefined);
+  const result = {
     ...range,
     rangeStart,
-    rangeEnd: rangeStart + range.candidateCount - 1,
+    rangeEnd,
   };
+  return requestedWidth
+    ? { ...result, displayWidth: Math.max(requestedWidth, String(rangeEnd).length) }
+    : result;
 }

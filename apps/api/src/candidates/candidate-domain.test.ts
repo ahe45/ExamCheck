@@ -27,6 +27,10 @@ describe("candidate domain", () => {
     expect(() => normalizeAndValidateCandidate(candidate({ time: "24:00" }), 8)).toThrow(
       "시험시간 형식은 hh:mm이어야 합니다. (8행)",
     );
+    expect(() => normalizeAndValidateCandidate(candidate({ waitingRoom: "" }), 9)).toThrow(
+      "대기실명 값을 입력하세요. (9행)",
+    );
+    expect(() => normalizeAndValidateCandidate(candidate({ room: "" }), 10)).not.toThrow();
   });
 
   it("rejects unknown workbook and photo policies with their existing messages", () => {
@@ -75,6 +79,7 @@ describe("candidate domain", () => {
     const current = candidate();
     expect(hasCandidateOperationalChanges(current, candidate({ name: "변경 이름", birth: "2001-01-01" }))).toBe(false);
     expect(hasCandidateOperationalChanges(current, candidate({ admission: "특별전형" }))).toBe(true);
+    expect(hasCandidateOperationalChanges(current, candidate({ waitingRoom: "별관 대기실" }))).toBe(true);
     expect(hasCandidateOperationalChanges(current, candidate({ room: "102호" }))).toBe(true);
     expect(hasCandidateOperationalChanges(current, candidate({ temporaryNo: "0099" }))).toBe(true);
   });
@@ -172,6 +177,7 @@ function candidate(overrides: Partial<CandidateInput> = {}): CandidateInput {
     unit: "디자인학부",
     major: "",
     building: "본관",
+    waitingRoom: "본관 대기실",
     room: "101호",
     examineeNo: "10001",
     temporaryNo: "",

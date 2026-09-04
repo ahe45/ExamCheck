@@ -24,6 +24,11 @@ export interface PrinterDiagnostic {
   message: string;
 }
 
+export interface PrinterDiscovery {
+  diagnostic: PrinterDiagnostic;
+  printers: PrinterDevice[];
+}
+
 export interface BrowserPrintDevice {
   uid?: string;
   name?: string;

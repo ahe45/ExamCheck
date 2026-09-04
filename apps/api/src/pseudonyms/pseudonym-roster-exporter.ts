@@ -4,12 +4,16 @@ import type { PseudonymRosterExportRow } from "./pseudonym-roster-query.js";
 
 @Injectable()
 export class PseudonymRosterExporter {
-  async build(rows: PseudonymRosterExportRow[]): Promise<Buffer> {
-    const workbook = this.createWorkbook(rows);
+  async build(rows: PseudonymRosterExportRow[], options: { labelPrintingEnabled: boolean }): Promise<Buffer> {
+    const workbook = this.createWorkbook(rows, options);
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
-  createWorkbook(rows: PseudonymRosterExportRow[], createdAt = new Date()): ExcelJS.Workbook {
+  createWorkbook(
+    rows: PseudonymRosterExportRow[],
+    options: { labelPrintingEnabled: boolean },
+    createdAt = new Date(),
+  ): ExcelJS.Workbook {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "가번호 관리 시스템";
     workbook.created = createdAt;
@@ -21,7 +25,12 @@ export class PseudonymRosterExporter {
       { header: "성명", key: "name", width: 16 },
       { header: "모집단위", key: "unitName", width: 28 },
       { header: "전공", key: "majorName", width: 28 },
-      { header: "등록일시", key: "assignedAt", width: 24 },
+      {
+        header: options.labelPrintingEnabled ? "출력일시" : "등록일시",
+        key: options.labelPrintingEnabled ? "printedAt" : "assignedAt",
+        width: 24,
+      },
+      { header: "응시 여부", key: "attendance", width: 12 },
       { header: "상태", key: "status", width: 12 },
     ];
     worksheet.addRows(rows);
@@ -37,7 +46,7 @@ export class PseudonymRosterExporter {
         cell.border = { bottom: { style: "thin", color: { argb: "FFE1E6ED" } } };
       });
     });
-    worksheet.autoFilter = { from: "A1", to: "H1" };
+    worksheet.autoFilter = { from: "A1", to: "I1" };
     return workbook;
   }
 }

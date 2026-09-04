@@ -102,6 +102,12 @@
   padding: 9px 12px;
   font-size: 12px;
 }
+.exam-admin-app .dashboard-breakdown-switch button {
+  font-size: 12px;
+}
+.exam-admin-app .dashboard-breakdown-label {
+  font-size: 12px;
+}
 .exam-admin-app .admission-card-state,
 .exam-admin-app .admission-status-card > p,
 .exam-admin-app .admission-status-card dt,

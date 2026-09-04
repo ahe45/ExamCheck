@@ -4,15 +4,24 @@ import {
   rangeSummary,
   type AdmissionCardData,
 } from "./system-settings-overview-model";
+import { DeleteButtonIcon, ResetButtonIcon } from "../../shared/components/ActionIcons";
 
 interface Props {
   card: AdmissionCardData;
   onOpen(admissionName: string): void;
+  onReset(admissionName: string): void;
+  onDelete(admissionName: string): void;
 }
 
-export function AdmissionSettingsCard({ card, onOpen }: Props) {
+export function AdmissionSettingsCard({ card, onOpen, onReset, onDelete }: Props) {
   return (
-    <button type="button" className="admission-settings-card" onClick={() => onOpen(card.name)}>
+    <article className="admission-settings-card">
+      <button
+        type="button"
+        className="admission-settings-card-open"
+        aria-label={`${card.name} 설정 열기`}
+        onClick={() => onOpen(card.name)}
+      />
       <header>
         <span>{card.name.trim().slice(0, 1) || "전"}</span>
         <div>
@@ -41,10 +50,22 @@ export function AdmissionSettingsCard({ card, onOpen }: Props) {
         {card.setting ? <AdmissionSettingOverview setting={card.setting} /> : <UnavailableSetting />}
       </div>
       <footer>
-        <span>고사건물</span>
-        <strong>{card.buildings.length ? card.buildings.join(" · ") : "-"}</strong>
+        <div className="admission-settings-card-building">
+          <span>고사건물</span>
+          <strong>{card.buildings.length ? card.buildings.join(" · ") : "-"}</strong>
+        </div>
+        <div className="admission-settings-card-actions">
+          <button type="button" onClick={() => onReset(card.name)}>
+            <ResetButtonIcon />
+            <span>초기화</span>
+          </button>
+          <button type="button" className="danger" onClick={() => onDelete(card.name)}>
+            <DeleteButtonIcon />
+            <span>삭제</span>
+          </button>
+        </div>
       </footer>
-    </button>
+    </article>
   );
 }
 

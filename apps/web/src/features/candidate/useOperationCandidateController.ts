@@ -203,7 +203,10 @@ export function useOperationCandidateController(options: Options) {
 
         const currentAssignment = assignmentFromExaminee(found);
         const notice = currentAssignment
-          ? { kind: "success" as const, text: `이미 부여된 가번호 ${found.assignedNumber}을 확인했습니다.` }
+          ? {
+              kind: "success" as const,
+              text: `이미 부여된 가번호 ${currentAssignment.pseudonymNumber}을 확인했습니다.`,
+            }
           : config.selectedMode === "PREASSIGNED" && !found.preassignedAvailable
             ? { kind: "error" as const, text: "사전 등록된 가번호가 없습니다." }
             : null;

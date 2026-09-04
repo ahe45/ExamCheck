@@ -116,7 +116,7 @@ export function buildInstallationReport(
       "Zebra GT800 USB",
       "VERIFIED",
       "연결됨",
-      `${diagnostic.printer?.name || "Zebra GT800"} 프린터가 검색되었습니다.`,
+      `${diagnostic.printer?.name || "Zebra GT800"} 장치가 검색되었습니다.`,
     );
   } else if (["BROWSER_PRINT_SDK_MISSING", "BROWSER_PRINT_NOT_RUNNING", "ERROR"].includes(diagnostic.status)) {
     usbPrinter = check(

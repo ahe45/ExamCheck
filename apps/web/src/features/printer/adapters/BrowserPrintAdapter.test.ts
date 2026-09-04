@@ -18,6 +18,7 @@ beforeEach(async () => {
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   Reflect.deleteProperty(window, "BrowserPrint");
   removeBrowserPrintScripts();
 });
@@ -60,27 +61,64 @@ describe("BrowserPrintAdapter", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("times out an SDK script load, removes the stale script and permits a clean retry", async () => {
+  it("uses the installed Browser Print local service when no vendor script is bundled", async () => {
+    const requests: Array<{ method: string; url: string; body?: string }> = [];
+    class FakeXMLHttpRequest {
+      readyState = 0;
+      status = 0;
+      responseText = "";
+      onreadystatechange: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      private method = "";
+      private url = "";
+
+      open(method: string, url: string) {
+        this.method = method;
+        this.url = url;
+      }
+
+      send(body?: string) {
+        requests.push({ method: this.method, url: this.url, body });
+        this.status = 200;
+        this.readyState = 4;
+        this.responseText = this.url.endsWith("/default?type=printer")
+          ? "{}"
+          : this.url.endsWith("/available")
+            ? JSON.stringify({
+                printer: [
+                  {
+                    uid: "GT800-USB",
+                    name: "ZDesigner GT800",
+                    connection: "usb",
+                    deviceType: "printer",
+                    version: 5,
+                    provider: "zebra",
+                    manufacturer: "Zebra Technologies",
+                  },
+                ],
+              })
+            : "";
+        this.onreadystatechange?.();
+      }
+    }
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
     const adapter = new adapterModule.BrowserPrintAdapter();
-    const firstAttempt = adapter.initialize();
-    const firstScript = browserPrintScripts()[0];
-    expect(firstScript).toBeInstanceOf(HTMLScriptElement);
-    const firstAssertion = expect(firstAttempt).rejects.toThrow("BROWSER_PRINT_SDK_MISSING");
 
-    await vi.advanceTimersByTimeAsync(adapterModule.BROWSER_PRINT_TIMEOUTS.scriptLoad);
-    await firstAssertion;
-    expect(firstScript?.isConnected).toBe(false);
-    expect(vi.getTimerCount()).toBe(0);
-
-    const retry = adapter.initialize();
-    const secondScript = browserPrintScripts()[0];
-    expect(secondScript).toBeInstanceOf(HTMLScriptElement);
-    expect(secondScript).not.toBe(firstScript);
-    window.BrowserPrint = successfulSdk(device());
-    secondScript?.dispatchEvent(new Event("load"));
-
-    await expect(retry).resolves.toBeUndefined();
-    expect(() => firstScript?.dispatchEvent(new Event("load"))).not.toThrow();
+    await expect(adapter.initialize()).resolves.toBeUndefined();
+    const printers = await adapter.listPrinters();
+    expect(printers).toEqual([
+      expect.objectContaining({ id: "GT800-USB", name: "ZDesigner GT800", connection: "USB" }),
+    ]);
+    await expect(adapter.send(printers[0]!, "^XA^XZ")).resolves.toBeUndefined();
+    expect(requests.map(({ method, url }) => ({ method, url }))).toEqual([
+      { method: "GET", url: "http://127.0.0.1:9100/default?type=printer" },
+      { method: "GET", url: "http://127.0.0.1:9100/available" },
+      { method: "POST", url: "http://127.0.0.1:9100/write" },
+    ]);
+    expect(JSON.parse(requests[2]!.body!)).toMatchObject({
+      device: { uid: "GT800-USB", connection: "usb" },
+      data: "^XA^XZ",
+    });
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -158,17 +196,6 @@ function device(send?: BrowserPrintDevice["send"]): BrowserPrintDevice {
     name: "ZDesigner GT800",
     connection: "usb",
     send: vi.fn(send ?? ((_data, onSuccess) => onSuccess())),
-  };
-}
-
-function successfulSdk(defaultDevice: BrowserPrintDevice): NonNullable<Window["BrowserPrint"]> {
-  return {
-    getDefaultDevice(_type, onSuccess) {
-      onSuccess(defaultDevice);
-    },
-    getLocalDevices(onSuccess) {
-      onSuccess([defaultDevice]);
-    },
   };
 }
 

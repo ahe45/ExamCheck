@@ -3,6 +3,8 @@ import type { AuthUser } from "../../shared/api/auth";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import type { AdminSection } from "../../shared/navigation/admin-navigation";
 import type { BrowserNavigate } from "../../shared/navigation/use-browser-path";
+import type { PrinterService } from "../printer/PrinterService";
+import type { PrinterDiagnostic } from "../printer/printer.types";
 import { AdminDashboard } from "./AdminDashboard";
 import { AdminHeader } from "./AdminHeader";
 import { UnsavedAdminChangesDialog } from "./UnsavedAdminChangesDialog";
@@ -31,11 +33,23 @@ interface Props {
   section: AdminSection;
   onNavigate: BrowserNavigate;
   systemProfile: DeveloperSettings;
+  printerService?: PrinterService;
+  printerDiagnostic?: PrinterDiagnostic;
   onSystemProfileChange(profile: DeveloperSettings): void;
   onLogout(): void;
 }
 
-export function SetupPage({ token, user, section, onNavigate, systemProfile, onSystemProfileChange, onLogout }: Props) {
+export function SetupPage({
+  token,
+  user,
+  section,
+  onNavigate,
+  systemProfile,
+  printerService,
+  printerDiagnostic,
+  onSystemProfileChange,
+  onLogout,
+}: Props) {
   const dashboard = useAdminDashboard(token, section === "dashboard");
   const navigation = useAdminSectionNavigation({
     section,
@@ -85,6 +99,8 @@ export function SetupPage({ token, user, section, onNavigate, systemProfile, onS
                 ref={navigation.templatePageRef}
                 token={token}
                 resetKey={navigation.templateResetKey}
+                printerService={printerService}
+                printerDiagnostic={printerDiagnostic}
                 onDirtyChange={navigation.updateTemplateDirty}
               />
             )}

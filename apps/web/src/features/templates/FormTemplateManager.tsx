@@ -1,6 +1,9 @@
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { fetchAdminFormTemplates, fetchFormTemplateDataTags, type FormTemplate } from "../../shared/api/form-templates";
 import type { DataTagCatalog } from "../../shared/templates/template-editor-contracts";
+import type { PrinterService } from "../printer/PrinterService";
+import type { PrinterDiagnostic } from "../printer/printer.types";
+import { LabelTemplateManager, type LabelTemplateManagerHandle } from "./LabelTemplateManager";
 import type { TemplateEditorWorkspaceHandle } from "./TemplateEditorWorkspace";
 import { TemplateLibrary } from "./TemplateLibrary";
 import { createBlankDraft, toDraft, type DraftTemplate } from "./template-manager-model";
@@ -74,12 +77,15 @@ export interface FormTemplateManagerHandle {
 interface FormTemplateManagerProps {
   token: string;
   resetKey?: number;
+  printerService?: PrinterService;
+  printerDiagnostic?: PrinterDiagnostic;
   onDirtyChange?(dirty: boolean): void;
 }
 
 export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTemplateManagerProps>(
-  function FormTemplateManager({ token, resetKey = 0, onDirtyChange }, ref) {
+  function FormTemplateManager({ token, resetKey = 0, printerService, printerDiagnostic, onDirtyChange }, ref) {
     const workspaceRef = useRef<TemplateEditorWorkspaceHandle>(null);
+    const labelManagerRef = useRef<LabelTemplateManagerHandle>(null);
     const restoredSessionRef = useRef<FormTemplateEditorSession | null>(readEditorSession());
     const editorSourceIdRef = useRef("");
     const [templates, setTemplates] = useState<FormTemplate[]>([]);
@@ -89,10 +95,27 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [notice, setNotice] = useState<TemplateNoticeValue | null>(null);
+    const [templateKind, setTemplateKind] = useState<"document" | "label">("document");
+    const [sectionDirty, setSectionDirty] = useState(false);
 
-    useImperativeHandle(ref, () => ({
-      save: () => workspaceRef.current?.save() ?? Promise.resolve(true),
-    }));
+    useImperativeHandle(
+      ref,
+      () => ({
+        save: () =>
+          templateKind === "label"
+            ? (labelManagerRef.current?.save() ?? Promise.resolve(true))
+            : (workspaceRef.current?.save() ?? Promise.resolve(true)),
+      }),
+      [templateKind],
+    );
+
+    const handleDirtyChange = useCallback(
+      (dirty: boolean) => {
+        setSectionDirty(dirty);
+        onDirtyChange?.(dirty);
+      },
+      [onDirtyChange],
+    );
 
     useEffect(() => {
       let active = true;
@@ -145,8 +168,10 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
         editorSourceIdRef.current = "";
         setEditorSourceId("");
         setDraft(null);
+        setTemplateKind("document");
+        handleDirtyChange(false);
       }
-    }, [resetKey]);
+    }, [handleDirtyChange, resetKey]);
 
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
@@ -164,13 +189,16 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     const createTemplate = useCallback(() => {
       const now = Date.now();
       setNotice(null);
-      const nextDraft = createBlankDraft(now);
+      const nextDraft = createBlankDraft(
+        now,
+        templates.map((template) => template.code),
+      );
       const sourceId = `new-${now}`;
       setDraft(nextDraft);
       editorSourceIdRef.current = sourceId;
       setEditorSourceId(sourceId);
       persistEditorSession(sourceId, nextDraft);
-    }, []);
+    }, [templates]);
 
     const refreshTemplates = useCallback(async () => {
       if (refreshing) return;
@@ -242,18 +270,47 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
 
     if (!draft) {
       return (
-        <TemplateLibrary
-          token={token}
-          templates={templates}
-          refreshing={refreshing}
-          notice={notice}
-          onNoticeChange={setNotice}
-          onCreate={createTemplate}
-          onEdit={editTemplate}
-          onRefresh={refreshTemplates}
-          onTemplateDeleted={handleTemplateDeleted}
-          onTemplateUpdated={handleTemplateUpdated}
-        />
+        <div className="template-management-shell">
+          <nav className="template-kind-tabs" aria-label="양식 종류">
+            <button
+              className={templateKind === "document" ? "active" : ""}
+              onClick={() => setTemplateKind("document")}
+              disabled={sectionDirty && templateKind !== "document"}
+            >
+              문서 양식
+            </button>
+            <button
+              className={templateKind === "label" ? "active" : ""}
+              onClick={() => setTemplateKind("label")}
+              disabled={sectionDirty && templateKind !== "label"}
+            >
+              라벨 양식
+            </button>
+          </nav>
+          {templateKind === "document" ? (
+            <TemplateLibrary
+              token={token}
+              templates={templates}
+              refreshing={refreshing}
+              notice={notice}
+              onNoticeChange={setNotice}
+              onCreate={createTemplate}
+              onEdit={editTemplate}
+              onRefresh={refreshTemplates}
+              onTemplateDeleted={handleTemplateDeleted}
+              onTemplateUpdated={handleTemplateUpdated}
+            />
+          ) : (
+            <LabelTemplateManager
+              ref={labelManagerRef}
+              token={token}
+              service={printerService}
+              diagnostic={printerDiagnostic}
+              dataTags={dataTags}
+              onDirtyChange={handleDirtyChange}
+            />
+          )}
+        </div>
       );
     }
 
@@ -270,7 +327,7 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
           notice={notice}
           onClose={closeEditor}
           onDraftChange={updateDraft}
-          onDirtyChange={onDirtyChange}
+          onDirtyChange={handleDirtyChange}
           onNoticeChange={setNotice}
           onTemplateSaved={handleTemplateSaved}
         />

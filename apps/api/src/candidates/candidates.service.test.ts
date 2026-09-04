@@ -8,11 +8,37 @@ import type { CandidatesRepository } from "./candidates.repository.js";
 import { CandidatesService } from "./candidates.service.js";
 
 describe("CandidatesService compatibility facade", () => {
+  it("builds a workbook with required waiting-room and optional exam-room columns in order", async () => {
+    const fixture = createFixture();
+    const buffer = await fixture.service.buildTemplate();
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as never);
+    const worksheet = workbook.worksheets[0]!;
+    const headers = worksheet.getRow(1).values as string[];
+    const waitingRoomColumn = candidateFields.findIndex((field) => field.key === "waitingRoom") + 1;
+    const roomColumn = candidateFields.findIndex((field) => field.key === "room") + 1;
+
+    expect(headers.slice(1)).toEqual(candidateFields.map((field) => field.label));
+    expect(waitingRoomColumn).toBe(candidateFields.findIndex((field) => field.key === "building") + 2);
+    expect(roomColumn).toBe(waitingRoomColumn + 1);
+    expect(worksheet.getRow(1).getCell(waitingRoomColumn).fill).toMatchObject({
+      fgColor: { argb: "FFFFFF00" },
+    });
+    expect(worksheet.getRow(1).getCell(roomColumn).fill).toMatchObject({
+      fgColor: { argb: "FFE2F0D9" },
+    });
+    expect(worksheet.getRow(2).getCell(waitingRoomColumn).text).toBe("101호 대기실");
+    expect(worksheet.getRow(2).getCell(roomColumn).text).toBe("");
+  });
+
   it("builds dashboard statistics from scoped repository aggregates", async () => {
     const fixture = createFixture();
-    fixture.repository.listDashboardAdmissionCounts.mockResolvedValue([
-      { name: "일반전형", total: 3, assigned: 1 },
-      { name: "특별전형", total: 2, assigned: 2 },
+    fixture.repository.listDashboardBreakdownCounts.mockResolvedValue([
+      { groupType: "admission", name: "일반전형", total: 3, assigned: 1 },
+      { groupType: "admission", name: "특별전형", total: 2, assigned: 2 },
+      { groupType: "building", name: "본관", total: 5, assigned: 3 },
+      { groupType: "period", name: "1교시 · 2026.09.01 09:00", total: 5, assigned: 3 },
+      { groupType: "waitingRoom", name: "본관 · 101호 대기실", total: 5, assigned: 3 },
     ]);
 
     await expect(
@@ -46,8 +72,49 @@ describe("CandidatesService compatibility facade", () => {
         },
       ],
       admissionCounts: { waiting: 0, progress: 1, complete: 1 },
+      breakdowns: {
+        admission: [
+          {
+            name: "일반전형",
+            total: 3,
+            assigned: 1,
+            unassigned: 2,
+            assignmentRate: 33.3,
+            status: "progress",
+          },
+          {
+            name: "특별전형",
+            total: 2,
+            assigned: 2,
+            unassigned: 0,
+            assignmentRate: 100,
+            status: "complete",
+          },
+        ],
+        building: [{ name: "본관", total: 5, assigned: 3, unassigned: 2, assignmentRate: 60, status: "progress" }],
+        period: [
+          {
+            name: "1교시 · 2026.09.01 09:00",
+            total: 5,
+            assigned: 3,
+            unassigned: 2,
+            assignmentRate: 60,
+            status: "progress",
+          },
+        ],
+        waitingRoom: [
+          {
+            name: "본관 · 101호 대기실",
+            total: 5,
+            assigned: 3,
+            unassigned: 2,
+            assignmentRate: 60,
+            status: "progress",
+          },
+        ],
+      },
     });
-    expect(fixture.repository.listDashboardAdmissionCounts).toHaveBeenCalledWith(
+    expect(fixture.repository.listDashboardBreakdownCounts).toHaveBeenCalledWith(
       fixture.pool,
       {
         sql: "cr.admission IN (?, ?)",
@@ -66,7 +133,7 @@ describe("CandidatesService compatibility facade", () => {
         "다른 전형",
       ),
     ).rejects.toThrow("배정되지 않은 전형의 대시보드는 조회할 수 없습니다.");
-    expect(fixture.repository.listDashboardAdmissionCounts).not.toHaveBeenCalled();
+    expect(fixture.repository.listDashboardBreakdownCounts).not.toHaveBeenCalled();
   });
 
   it("parses the existing workbook format and delegates a checksum and actor to the application layer", async () => {
@@ -133,7 +200,7 @@ function createFixture() {
   const pool = {} as Pool;
   const repository = {
     list: vi.fn(),
-    listDashboardAdmissionCounts: vi.fn(),
+    listDashboardBreakdownCounts: vi.fn(),
     loadExisting: vi.fn().mockResolvedValue(new Map()),
     loadExamineeNumberUniqueness: vi.fn().mockResolvedValue("SYSTEM"),
     listCandidatePhotos: vi.fn().mockResolvedValue([]),
@@ -169,6 +236,7 @@ function candidate(overrides: Partial<CandidateInput> = {}): CandidateInput {
     unit: "디자인학부",
     major: "",
     building: "본관",
+    waitingRoom: "본관 대기실",
     room: "101호",
     examineeNo: "10001",
     temporaryNo: "",

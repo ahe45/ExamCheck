@@ -32,8 +32,8 @@ describe("signature name controls", () => {
 
     expect(page.settings.signatureNames).toEqual({ enabled: true });
     expect(onDirty).toHaveBeenCalledOnce();
-    expect(panel.querySelector(".examlist-page-number-field")?.nextElementSibling).toHaveClass(
-      "examcheck-signature-name-field",
+    expect(panel.querySelector(".examcheck-signature-name-field")?.nextElementSibling).toHaveClass(
+      "examlist-page-number-field",
     );
     expect(panel.querySelector(".examcheck-signature-name-summary")).toBeNull();
     expect(panel.querySelector(".examcheck-signature-name-header")).toHaveClass("examlist-page-number-header");

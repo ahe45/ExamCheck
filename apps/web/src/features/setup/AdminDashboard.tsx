@@ -1,6 +1,11 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { ConfirmButtonIcon, RefreshButtonIcon } from "../../shared/components/ActionIcons";
-import { type AdmissionStatistic, type AdmissionStatus, type DashboardStatistics } from "./dashboard-statistics";
+import {
+  type AdmissionStatistic,
+  type AdmissionStatus,
+  type DashboardBreakdown,
+  type DashboardStatistics,
+} from "./dashboard-statistics";
 
 interface DashboardProps {
   statistics: DashboardStatistics;
@@ -48,7 +53,7 @@ export function AdminDashboard({
           <AssignmentProgressPanel statistics={statistics} />
         </section>
         <AdmissionStatusSection
-          admissions={statistics.admissions}
+          breakdowns={statistics.breakdowns}
           loading={loading}
           onOpenCandidates={onOpenCandidates}
         />
@@ -151,34 +156,54 @@ function AssignmentProgressPanel({ statistics }: { statistics: DashboardStatisti
 }
 
 function AdmissionStatusSection({
-  admissions,
+  breakdowns,
   loading,
   onOpenCandidates,
 }: {
-  admissions: AdmissionStatistic[];
+  breakdowns: DashboardStatistics["breakdowns"];
   loading: boolean;
   onOpenCandidates(): void;
 }) {
+  const [selectedBreakdown, setSelectedBreakdown] = useState<DashboardBreakdown>("admission");
+  const groups = breakdowns[selectedBreakdown];
+  const selectedLabel =
+    DASHBOARD_BREAKDOWN_OPTIONS.find((option) => option.value === selectedBreakdown)?.label ?? "전형";
+
   return (
     <section className="admission-status-section">
       <header>
         <div>
-          <h3>전형 운영 현황</h3>
-          <p>등록된 전형별 수험생과 가번호 부여 현황을 표시합니다.</p>
+          <h3>운영 현황</h3>
+          <p>{selectedLabel}별 수험생과 가번호 부여 현황을 표시합니다.</p>
         </div>
-        <span>등록 전형 총 {admissions.length.toLocaleString()}건</span>
+        <div className="dashboard-breakdown-control">
+          <span className="dashboard-breakdown-label">분류 기준</span>
+          <div className="dashboard-breakdown-switch" role="group" aria-label="운영 현황 기준">
+            {DASHBOARD_BREAKDOWN_OPTIONS.map((option) => (
+              <button
+                type="button"
+                className={selectedBreakdown === option.value ? "active" : ""}
+                aria-pressed={selectedBreakdown === option.value}
+                onClick={() => setSelectedBreakdown(option.value)}
+                key={option.value}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </header>
-      {loading && !admissions.length ? (
-        <div className="admission-dashboard-empty">전형 통계를 불러오고 있습니다.</div>
-      ) : admissions.length ? (
+      {loading && !groups.length ? (
+        <div className="admission-dashboard-empty">운영 현황을 불러오고 있습니다.</div>
+      ) : groups.length ? (
         <div className="admission-card-grid">
-          {admissions.map((admission) => (
-            <AdmissionStatusCard admission={admission} key={admission.name} />
+          {groups.map((group) => (
+            <AdmissionStatusCard statistic={group} breakdownLabel={`${selectedLabel}별`} key={group.name} />
           ))}
         </div>
       ) : (
         <div className="admission-dashboard-empty">
-          <strong>등록된 전형이 없습니다.</strong>
+          <strong>등록된 수험생 데이터가 없습니다.</strong>
           <span>수험생 데이터 메뉴에서 업로드 양식으로 수험생을 등록해 주세요.</span>
           <button className="exam-primary-button" onClick={onOpenCandidates}>
             <ConfirmButtonIcon />
@@ -190,31 +215,31 @@ function AdmissionStatusSection({
   );
 }
 
-function AdmissionStatusCard({ admission }: { admission: AdmissionStatistic }) {
+function AdmissionStatusCard({ statistic, breakdownLabel }: { statistic: AdmissionStatistic; breakdownLabel: string }) {
   return (
     <article className="admission-status-card">
       <div className="admission-card-state">
-        <span className={`summary-dot ${admission.status}`} />
-        {admissionStatusLabel(admission.status)}
+        <span className={`summary-dot ${statistic.status}`} />
+        {admissionStatusLabel(statistic.status)}
       </div>
-      <h4>{admission.name}</h4>
-      <p>수험생 데이터 기준</p>
+      <h4 title={statistic.name}>{statistic.name}</h4>
+      <p>{breakdownLabel} 수험생 데이터 기준</p>
       <dl>
         <div>
           <dt>전체 대상자</dt>
-          <dd>{admission.total.toLocaleString()}명</dd>
+          <dd>{statistic.total.toLocaleString()}명</dd>
         </div>
         <div>
           <dt>부여 완료</dt>
-          <dd>{admission.assigned.toLocaleString()}명</dd>
+          <dd>{statistic.assigned.toLocaleString()}명</dd>
         </div>
         <div>
           <dt>부여 대기</dt>
-          <dd>{admission.unassigned.toLocaleString()}명</dd>
+          <dd>{statistic.unassigned.toLocaleString()}명</dd>
         </div>
       </dl>
-      <DashboardCardProgress label="부여율" rate={admission.assignmentRate} tone="complete" />
-      <DashboardCardProgress label="대기율" rate={100 - admission.assignmentRate} tone="waiting" />
+      <DashboardCardProgress label="부여율" rate={statistic.assignmentRate} tone="complete" />
+      <DashboardCardProgress label="대기율" rate={100 - statistic.assignmentRate} tone="waiting" />
     </article>
   );
 }
@@ -260,10 +285,17 @@ function DashboardCardProgress({ label, rate, tone }: { label: string; rate: num
 }
 
 function admissionStatusLabel(status: AdmissionStatus) {
-  if (status === "complete") return "전형 완료";
-  if (status === "progress") return "전형 진행";
-  return "전형 대기";
+  if (status === "complete") return "부여 완료";
+  if (status === "progress") return "부여 진행";
+  return "부여 대기";
 }
+
+const DASHBOARD_BREAKDOWN_OPTIONS: ReadonlyArray<{ value: DashboardBreakdown; label: string }> = [
+  { value: "admission", label: "전형" },
+  { value: "period", label: "교시" },
+  { value: "building", label: "건물" },
+  { value: "waitingRoom", label: "대기실" },
+];
 
 function formatDashboardTime(date: Date) {
   return new Intl.DateTimeFormat("ko-KR", {

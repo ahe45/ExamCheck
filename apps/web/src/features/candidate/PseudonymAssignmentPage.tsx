@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEve
 import type { AuthUser } from "../../shared/api/auth";
 import type { OperationSchedule } from "../../shared/api/examinees";
 import type { PrinterService } from "../printer/PrinterService";
-import type { PrinterDiagnostic, PrinterMode } from "../printer/printer.types";
+import type { PrinterDevice, PrinterDiagnostic, PrinterMode } from "../printer/printer.types";
 import { PrinterSetupPage } from "../setup/PrinterSetupPage";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
@@ -16,7 +16,7 @@ import { OperationFinishModal, OperationPrintModal, OperationScheduleMismatchMod
 import { OperationControlPanel } from "./OperationControlPanel";
 import { OperationRosterPanel } from "./OperationRosterPanel";
 import {
-  operationColumns,
+  operationColumnsFor,
   operationRowValue,
   toRosterExportQuery,
   type OperationFieldKey,
@@ -24,6 +24,7 @@ import {
 } from "./operation-view-model";
 import { useOperationCandidateController } from "./useOperationCandidateController";
 import { useOperationLabelPrint } from "./useOperationLabelPrint";
+import { usePrinterConnectionCheck } from "./usePrinterConnectionCheck";
 import { useOperationPrint } from "./useOperationPrint";
 import { useOperationRoster } from "./useOperationRoster";
 import { useOperationSettings } from "./useOperationSettings";
@@ -36,8 +37,11 @@ interface Props {
   mode: PrinterMode;
   service: PrinterService;
   diagnostic: PrinterDiagnostic;
+  printers: PrinterDevice[];
+  selectedPrinterId: string | null;
   diagnosticBusy: boolean;
   onDiagnose(): Promise<void>;
+  onSelectPrinter(printerId: string): void;
   onChangeSchedule(): void;
   onLogout(): void;
 }
@@ -66,6 +70,8 @@ export function PseudonymAssignmentPage(props: Props) {
     settingLoaded,
     setRange,
   } = operationSettings;
+  const labelPrintingEnabled = settingLoaded && selectedMode === "PREASSIGNED" && printPreassignedLabel;
+  usePrinterConnectionCheck(labelPrintingEnabled, currentScheduleKey, props.onDiagnose);
   const operationRoster = useOperationRoster({
     token: props.token,
     examName: DEFAULT_EXAM_NAME,
@@ -82,11 +88,20 @@ export function PseudonymAssignmentPage(props: Props) {
     exporting: exportingExcel,
   } = operationRoster;
   const isCurrentSchedule = operationRoster.isCurrentSchedule;
+  const rosterColumns = operationColumnsFor(labelPrintingEnabled);
+  const rosterValueOf = useCallback(
+    (row: OperationRow, key: OperationFieldKey) =>
+      operationRowValue(row, key, {
+        operationClosed: operationStatus.closed,
+        labelPrintingEnabled,
+      }),
+    [labelPrintingEnabled, operationStatus.closed],
+  );
   const rosterGrid = useClientDataGrid<OperationRow, OperationFieldKey>({
     rows: operationRows,
-    valueOf: operationRowValue,
+    valueOf: rosterValueOf,
     initialPageSize: 0,
-    resetKey: currentScheduleKey,
+    resetKey: `${currentScheduleKey}:${labelPrintingEnabled}`,
   });
   const candidateController = useOperationCandidateController({
     token: props.token,
@@ -241,15 +256,16 @@ export function PseudonymAssignmentPage(props: Props) {
         user={props.user}
         service={props.service}
         diagnostic={props.diagnostic}
+        printers={props.printers}
+        selectedPrinterId={props.selectedPrinterId}
         busy={props.diagnosticBusy}
         onDiagnose={props.onDiagnose}
+        onSelectPrinter={props.onSelectPrinter}
         onBack={() => setPrinterPageOpen(false)}
         onLogout={props.onLogout}
       />
     );
   }
-
-  const labelPrintingEnabled = settingLoaded && selectedMode === "PREASSIGNED" && printPreassignedLabel;
 
   return (
     <div className="operator-console">
@@ -305,6 +321,8 @@ export function PseudonymAssignmentPage(props: Props) {
           rows={rosterGrid.filteredRows}
           allRows={operationRows}
           selectedExamineeNo={candidate?.examineeNo}
+          columns={rosterColumns}
+          context={{ operationClosed: operationStatus.closed, labelPrintingEnabled }}
           grid={{
             sort: rosterGrid.sort,
             filters: rosterGrid.filters,
@@ -318,6 +336,8 @@ export function PseudonymAssignmentPage(props: Props) {
             rosterRefreshing,
             exportingExcel,
             labelPrintingEnabled,
+            printerDiagnostic: props.diagnostic,
+            printerDiagnosticBusy: props.diagnosticBusy,
             assignment,
             printing,
           }}
@@ -325,14 +345,18 @@ export function PseudonymAssignmentPage(props: Props) {
             refresh: () => void operationRoster.refresh(),
             openCloseConfirm: () => setCloseConfirmOpen(true),
             openPrint: () => void operationPrint.show(),
-            download: () => void operationRoster.download(toRosterExportQuery(rosterGrid.filters, rosterGrid.sort)),
-            printLabel: () => void operationLabelPrint.print(),
+            download: () =>
+              void operationRoster.download(toRosterExportQuery(rosterGrid.filters, rosterGrid.sort, rosterColumns)),
+            printLabel: () =>
+              void operationLabelPrint.print().then(() => {
+                if (isCurrentSchedule(currentScheduleKey)) void operationRoster.refresh();
+              }),
             select: selectOperationRow,
           }}
         />
       </div>
       <ClientGridFilterLayer
-        columns={operationColumns}
+        columns={rosterColumns}
         menu={rosterGrid.filterMenu}
         search={rosterGrid.filterSearch}
         draft={rosterGrid.filterDraft}
@@ -351,6 +375,7 @@ export function PseudonymAssignmentPage(props: Props) {
         <OperationFinishModal
           schedule={props.schedule}
           rows={operationRows}
+          labelPrintingEnabled={labelPrintingEnabled}
           autoAssignAbsenteesOnClose={autoAssignAbsenteesOnClose}
           closing={closingOperation}
           onClose={() => setCloseConfirmOpen(false)}

@@ -1,5 +1,7 @@
 import type { Pool } from "mysql2/promise";
 import { describe, expect, it, vi } from "vitest";
+import { hashPassword } from "../auth/password.js";
+import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { PseudonymRosterExporter } from "./pseudonym-roster-exporter.js";
 import {
   AssignPseudonymUseCase,
@@ -176,6 +178,114 @@ describe("PseudonymsService settings overview", () => {
   });
 });
 
+describe("PseudonymsService admission data actions", () => {
+  const admin = { id: 1, loginId: "admin", role: "ADMIN" as const, admissionNames: [] };
+
+  it("resets assignments, closure state, and range cursors only for selected schedules", async () => {
+    const connection = transactionConnection();
+    const repository = {
+      listAdmissionOperationSchedules: vi.fn().mockResolvedValue([
+        {
+          examDate: "2026-09-01",
+          examTime: "09:00",
+          periodName: "1교시",
+          buildingNames: ["본관"],
+          candidateCount: 10,
+          assignedCount: 7,
+          closed: true,
+        },
+      ]),
+      deleteScheduleAssignments: vi.fn().mockResolvedValue(7),
+      deleteScheduleOperations: vi.fn().mockResolvedValue(1),
+      resetScheduleRangeSequences: vi.fn().mockResolvedValue(2),
+    };
+    const audit = { record: vi.fn().mockResolvedValue(undefined) };
+    const service = admissionActionService(connection, repository, audit);
+    const schedules = [{ examDate: "2026-09-01", examTime: "09:00", periodName: "1교시" }];
+
+    await expect(
+      service.resetAdmissionOperations(
+        { examName: "2026년도 자격시험", admissionName: "학생부교과", schedules },
+        admin,
+      ),
+    ).resolves.toEqual({
+      resetScheduleCount: 1,
+      deletedAssignmentCount: 7,
+      deletedOperationCount: 1,
+      resetRangeCount: 2,
+    });
+
+    expect(repository.deleteScheduleAssignments).toHaveBeenCalledWith(
+      connection,
+      "2026년도 자격시험",
+      "학생부교과",
+      schedules,
+    );
+    expect(repository.resetScheduleRangeSequences).toHaveBeenCalledWith(
+      connection,
+      "2026년도 자격시험",
+      "학생부교과",
+      schedules,
+      1,
+    );
+    expect(audit.record).toHaveBeenCalledWith(
+      connection,
+      expect.objectContaining({ eventType: "PSEUDONYM_OPERATIONS_RESET", actorUserId: 1 }),
+    );
+    expect(connection.commit).toHaveBeenCalledOnce();
+  });
+
+  it("verifies the current account password before deleting every admission-owned data set", async () => {
+    const connection = transactionConnection();
+    const repository = {
+      findUserPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("1234")),
+      lockAdmissionCandidateIds: vi.fn().mockResolvedValue([11, 12]),
+      deleteAdmissionAssignments: vi.fn().mockResolvedValue(2),
+      deleteAdmissionOperations: vi.fn().mockResolvedValue(1),
+      deleteAdmissionTimeRanges: vi.fn().mockResolvedValue(2),
+      deleteAdmissionSettings: vi.fn().mockResolvedValue(1),
+      deleteUserAdmissionAssignments: vi.fn().mockResolvedValue(1),
+      deleteAdmissionCandidates: vi.fn().mockResolvedValue(2),
+    };
+    const audit = { record: vi.fn().mockResolvedValue(undefined) };
+    const service = admissionActionService(connection, repository, audit);
+
+    await expect(
+      service.deleteAdmission({ admissionName: "학생부교과", currentPassword: "1234" }, admin),
+    ).resolves.toMatchObject({
+      deleted: true,
+      admissionName: "학생부교과",
+      deletedCandidateCount: 2,
+      deletedAssignmentCount: 2,
+    });
+
+    expect(repository.deleteAdmissionAssignments).toHaveBeenCalledBefore(repository.deleteAdmissionCandidates);
+    expect(audit.record).toHaveBeenCalledWith(
+      connection,
+      expect.objectContaining({ eventType: "ADMISSION_DELETED", actorUserId: 1 }),
+    );
+    expect(connection.commit).toHaveBeenCalledOnce();
+  });
+
+  it("rolls back without deleting data when the current password is incorrect", async () => {
+    const connection = transactionConnection();
+    const repository = {
+      findUserPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("correct-password")),
+      lockAdmissionCandidateIds: vi.fn(),
+    };
+    const audit = { record: vi.fn() };
+    const service = admissionActionService(connection, repository, audit);
+
+    await expect(
+      service.deleteAdmission({ admissionName: "학생부교과", currentPassword: "wrong-password" }, admin),
+    ).rejects.toThrow("현재 비밀번호가 올바르지 않습니다.");
+
+    expect(repository.lockAdmissionCandidateIds).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    expect(connection.rollback).toHaveBeenCalledOnce();
+  });
+});
+
 describe("PseudonymsService roster export", () => {
   const scope = {
     examName: "2026 실기",
@@ -192,7 +302,9 @@ describe("PseudonymsService roster export", () => {
     unitName: "디자인",
     majorName: "시각디자인",
     assignedAt: "26.08.11. 09:01:00",
-    status: "등록" as const,
+    printedAt: "-",
+    attendance: "응시" as const,
+    status: "진행" as const,
   };
   const waitingRow = {
     pseudonymNumber: "-",
@@ -201,6 +313,8 @@ describe("PseudonymsService roster export", () => {
     unitName: "디자인",
     majorName: "산업디자인",
     assignedAt: "-",
+    printedAt: "-",
+    attendance: "-" as const,
     status: "대기" as const,
   };
 
@@ -216,7 +330,7 @@ describe("PseudonymsService roster export", () => {
         {
           ...scope,
           query: {
-            filters: [{ field: "status", mode: "include", values: ["등록"] }],
+            filters: [{ field: "status", mode: "include", values: ["진행"] }],
             sort: { field: "pseudonymNumber", direction: "desc" },
           },
         },
@@ -224,16 +338,16 @@ describe("PseudonymsService roster export", () => {
       ),
     ).resolves.toEqual(Buffer.from("xlsx"));
 
-    expect(String(execute.mock.calls[0]?.[0])).toContain("e.exam_name = ?");
+    expect(String(execute.mock.calls[0]?.[0])).toContain("cr.exam_name = ?");
     expect(execute.mock.calls[0]?.[1]).toEqual([
       scope.examName,
       scope.examDate,
       scope.examTime,
       scope.periodName,
       scope.admissionName,
-      "등록",
+      "진행",
     ]);
-    expect(build).toHaveBeenCalledWith([{ sequence: 1, ...registeredRow }]);
+    expect(build).toHaveBeenCalledWith([{ sequence: 1, ...registeredRow }], { labelPrintingEnabled: false });
   });
 
   it("rejects a canonical filtered result above the server-side row limit", async () => {
@@ -343,7 +457,7 @@ describe("pseudonym P0 transaction invariants", () => {
       release: () => undefined,
       execute: async (sql: string) => {
         executed.push(sql);
-        if (sql.includes("FROM examinee e") && sql.includes("INNER JOIN candidate_record")) return [[candidate], []];
+        if (sql.includes("FROM candidate_record cr") && sql.includes("cr.examinee_no = ?")) return [[candidate], []];
         if (sql.includes("INSERT IGNORE INTO pseudonym_operation")) return [{ affectedRows: 1 }, []];
         if (sql.includes("SELECT id, closed FROM pseudonym_operation")) return [[{ id: 3, closed: false }], []];
         if (sql.includes("FROM pseudonym_setting"))
@@ -404,13 +518,13 @@ describe("pseudonym P0 transaction invariants", () => {
     expect(executed).toHaveLength(7);
     expect(executed[0]).toContain("FROM system_profile");
     expect(executed[0]).toContain("FOR UPDATE");
-    expect(executed[1]).toContain("FROM examinee e");
+    expect(executed[1]).toContain("FROM candidate_record cr");
     expect(executed[1]).not.toContain("FOR UPDATE");
     expect(executed[2]).toContain("INSERT IGNORE INTO pseudonym_operation");
     expect(executed[3]).toContain("FROM pseudonym_operation");
     expect(executed[3]).toContain("FOR UPDATE");
     expect(executed[4]).toContain("FROM pseudonym_setting");
-    expect(executed[5]).toContain("FROM examinee e");
+    expect(executed[5]).toContain("FROM candidate_record cr");
     expect(executed[5]).toContain("FOR UPDATE");
     expect(executed[6]).toContain("FROM pseudonym_assignment");
   });
@@ -510,9 +624,9 @@ describe("pseudonym P0 transaction invariants", () => {
       { id: 1, loginId: "admin", role: "ADMIN", admissionNames: [] },
     );
 
-    expect(capacitySql).toContain("INNER JOIN examinee e");
-    expect(capacitySql).toContain("e.exam_name = ?");
-    expect(capacitySql).toContain("e.status = 'ACTIVE'");
+    expect(capacitySql).not.toContain("JOIN examinee");
+    expect(capacitySql).toContain("cr.exam_name = ?");
+    expect(capacitySql).toContain("cr.status = 'ACTIVE'");
     expect(capacityParams).toEqual(["2026 실기", "일반"]);
   });
 
@@ -566,7 +680,7 @@ describe("pseudonym P0 transaction invariants", () => {
       admissionNames: [],
     });
 
-    expect(candidateSql).toContain("e.exam_name = ?");
+    expect(candidateSql).toContain("cr.exam_name = ?");
     expect(candidateParams).toEqual(["2026 실기", "2026-08-11", "09:00", "1교시", "일반"]);
     expect(countSql).toContain("pa.exam_name = ? AND pa.admission_name = ?");
     expect(countParams).toEqual(["2026 실기", "일반", "2026-08-11", "09:00", "1교시", "일반"]);
@@ -666,4 +780,29 @@ function overviewRange(settingId: number, admission: string, rangeStart: number)
     rangeEnd: rangeStart + 9,
     nextSequence: rangeStart,
   };
+}
+
+function transactionConnection() {
+  return {
+    beginTransaction: vi.fn().mockResolvedValue(undefined),
+    commit: vi.fn().mockResolvedValue(undefined),
+    rollback: vi.fn().mockResolvedValue(undefined),
+    release: vi.fn(),
+  };
+}
+
+function admissionActionService(
+  connection: ReturnType<typeof transactionConnection>,
+  repository: Record<string, unknown>,
+  audit: Record<string, unknown>,
+) {
+  return new PseudonymsService(
+    { getConnection: vi.fn().mockResolvedValue(connection) } as unknown as Pool,
+    repository as unknown as PseudonymsRepository,
+    new PseudonymRosterExporter(),
+    {} as AssignPseudonymUseCase,
+    {} as ChangePseudonymOperationStatusUseCase,
+    {} as UpdatePseudonymSettingUseCase,
+    audit as unknown as MutationAuditRepository,
+  );
 }

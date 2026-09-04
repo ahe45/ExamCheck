@@ -3,8 +3,6 @@ import type { Pool, PoolConnection } from "mysql2/promise";
 import { describe, expect, it, vi } from "vitest";
 import type { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { resolveAppConfig } from "../config/app-config.js";
-import type { IdentityTransitionCoordinator } from "../identity-transition/identity-transition-coordinator.js";
-import type { CandidateIdentityRepository } from "./candidate-identity.repository.js";
 import type { CandidatePhotoArchiveFiles } from "./candidate-domain.js";
 import { candidateKey, type CandidateInput } from "./candidate-fields.js";
 import { CandidatesApplicationService } from "./candidates.application.js";
@@ -31,12 +29,7 @@ describe("CandidatesApplicationService", () => {
       "테스트 시험",
     );
     expect(fixture.repository.listImportScopeGuards).toHaveBeenCalledWith(fixture.connection, "테스트 시험");
-    expect(fixture.repository.insertCandidate).toHaveBeenCalledWith(fixture.connection, candidate());
-    expect(fixture.repository.syncOperationalExaminee).toHaveBeenCalledWith(
-      fixture.connection,
-      candidate(),
-      "테스트 시험",
-    );
+    expect(fixture.repository.insertCandidate).toHaveBeenCalledWith(fixture.connection, candidate(), "테스트 시험");
     expect(fixture.audit.record).toHaveBeenCalledWith(fixture.connection, {
       eventType: "CANDIDATE_WORKBOOK_IMPORTED",
       actorUserId: 7,
@@ -70,24 +63,6 @@ describe("CandidatesApplicationService", () => {
     expect(fixture.connection.rollback).toHaveBeenCalledOnce();
     expect(fixture.connection.commit).not.toHaveBeenCalled();
     expect(fixture.connection.release).toHaveBeenCalledOnce();
-  });
-
-  it("projects inserted candidates to the target model before audit in DUAL mode", async () => {
-    const fixture = createFixture();
-    fixture.identityTransition.decideWrite.mockResolvedValue({ writeLegacy: true, writeTarget: true });
-    fixture.repository.loadExamineeNumberUniqueness.mockResolvedValue("SYSTEM");
-    fixture.repository.loadExisting.mockResolvedValue(new Map());
-    fixture.repository.insertCandidate.mockResolvedValue(91);
-
-    await fixture.application.importCandidates([candidate()], "insert-update", "workbook-sha256", 7);
-
-    expect(fixture.identityRepository.syncCandidateRecord).toHaveBeenCalledWith(fixture.connection, 91, "테스트 시험");
-    expect(fixture.repository.syncOperationalExaminee.mock.invocationCallOrder[0]).toBeLessThan(
-      fixture.identityRepository.syncCandidateRecord.mock.invocationCallOrder[0]!,
-    );
-    expect(fixture.identityRepository.syncCandidateRecord.mock.invocationCallOrder[0]).toBeLessThan(
-      fixture.audit.record.mock.invocationCallOrder[0]!,
-    );
   });
 
   it("maps pure candidate validation errors back to the existing HTTP bad-request contract", async () => {
@@ -131,10 +106,9 @@ describe("CandidatesApplicationService", () => {
         "workbook-sha256",
         7,
       ),
-    ).rejects.toThrow("운영 이력이 있는 수험생 1명");
+    ).rejects.toThrow("가번호 배정 또는 마감 이력이 있는 수험생 1명");
 
     expect(fixture.repository.updateCandidate).not.toHaveBeenCalled();
-    expect(fixture.repository.syncOperationalExaminee).not.toHaveBeenCalled();
     expect(fixture.audit.record).not.toHaveBeenCalled();
     expect(fixture.connection.rollback).toHaveBeenCalledOnce();
   });
@@ -155,7 +129,7 @@ describe("CandidatesApplicationService", () => {
       [],
       "테스트 시험",
     );
-    expect(fixture.repository.updateCandidate).toHaveBeenCalledWith(fixture.connection, 11, corrected);
+    expect(fixture.repository.updateCandidate).toHaveBeenCalledWith(fixture.connection, 11, corrected, "테스트 시험");
     expect(fixture.repository.listImportScopeGuards).not.toHaveBeenCalled();
   });
 
@@ -173,7 +147,7 @@ describe("CandidatesApplicationService", () => {
     expect(fixture.connection.rollback).toHaveBeenCalledOnce();
   });
 
-  it("rejects inserts that would invalidate a configured range capacity", async () => {
+  it("clears configured ranges affected by newly uploaded candidate data", async () => {
     const fixture = createFixture();
     fixture.repository.loadExamineeNumberUniqueness.mockResolvedValue("SYSTEM");
     fixture.repository.loadExisting.mockResolvedValue(new Map());
@@ -181,10 +155,30 @@ describe("CandidatesApplicationService", () => {
 
     await expect(
       fixture.application.importCandidates([candidate()], "insert-update", "workbook-sha256", 7),
-    ).rejects.toThrow("가번호 범위가 설정된 일정 1곳");
+    ).resolves.toMatchObject({ inserted: 1 });
 
-    expect(fixture.repository.insertCandidate).not.toHaveBeenCalled();
-    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+    expect(fixture.repository.deleteTimeRangesByIds).toHaveBeenCalledWith(fixture.connection, [91]);
+    expect(fixture.repository.insertCandidate).toHaveBeenCalledOnce();
+    expect(fixture.connection.commit).toHaveBeenCalledOnce();
+  });
+
+  it("clears both previous and next range scopes when an upload moves a candidate", async () => {
+    const fixture = createFixture();
+    const current = { ...candidate(), id: 11 };
+    const moved = candidate({ admission: "특별전형", room: "202호" });
+    fixture.repository.loadExamineeNumberUniqueness.mockResolvedValue("SYSTEM");
+    fixture.repository.loadExisting.mockResolvedValue(new Map([[candidateKey(current), current]]));
+    fixture.repository.listImportScopeGuards.mockResolvedValue([
+      scopeGuard("RANGE"),
+      { ...scopeGuard("RANGE"), rangeId: 92, admission: "특별전형", room: "202호" },
+    ]);
+
+    await expect(
+      fixture.application.importCandidates([moved], "insert-update", "workbook-sha256", 7),
+    ).resolves.toMatchObject({ updated: 1 });
+
+    expect(fixture.repository.deleteTimeRangesByIds).toHaveBeenCalledWith(fixture.connection, [91, 92]);
+    expect(fixture.repository.updateCandidate).toHaveBeenCalledWith(fixture.connection, 11, moved, "테스트 시험");
   });
 
   it("locks photo state, writes with the same connection, and excludes PII and bytes from audit details", async () => {
@@ -299,34 +293,26 @@ function createFixture() {
     loadExamineeNumberUniqueness: vi.fn(),
     listOperationallyProtectedCandidateIds: vi.fn().mockResolvedValue(new Set()),
     listImportScopeGuards: vi.fn().mockResolvedValue([]),
+    deleteTimeRangesByIds: vi.fn().mockResolvedValue(0),
     insertCandidate: vi.fn(),
     updateCandidate: vi.fn(),
-    syncOperationalExaminee: vi.fn(),
     listCandidatePhotos: vi.fn(),
     upsertCandidatePhoto: vi.fn(),
   };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
-  const identityRepository = {
-    syncCandidateRecord: vi.fn().mockResolvedValue(undefined),
-    syncCandidatePhoto: vi.fn().mockResolvedValue(undefined),
-  };
-  const identityTransition = {
-    decideWrite: vi.fn().mockResolvedValue({ writeLegacy: true, writeTarget: false }),
-  };
   const config = resolveAppConfig({ DEFAULT_EXAM_NAME: "테스트 시험" });
   const application = new CandidatesApplicationService(
     pool,
     repository as unknown as CandidatesRepository,
-    identityRepository as unknown as CandidateIdentityRepository,
-    identityTransition as unknown as IdentityTransitionCoordinator,
     audit as unknown as MutationAuditRepository,
     config,
   );
-  return { application, audit, connection, identityRepository, identityTransition, pool, repository };
+  return { application, audit, connection, pool, repository };
 }
 
 function scopeGuard(guardType: "RANGE" | "CLOSED") {
   return {
+    rangeId: guardType === "RANGE" ? 91 : null,
     guardType,
     date: "2026-09-01",
     time: "09:00",
@@ -349,6 +335,7 @@ function candidate(overrides: Partial<CandidateInput> = {}): CandidateInput {
     unit: "디자인학부",
     major: "",
     building: "본관",
+    waitingRoom: "본관 대기실",
     room: "101호",
     examineeNo: "10001",
     temporaryNo: "",

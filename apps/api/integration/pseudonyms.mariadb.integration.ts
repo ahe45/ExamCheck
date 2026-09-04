@@ -356,24 +356,11 @@ describe("pseudonym MariaDB transaction integration", () => {
 async function seedSchedule(pool: Pool, examName: string, candidates: Array<{ examineeNo: string; name: string }>) {
   for (const [index, candidate] of candidates.entries()) {
     await pool.execute(
-      `INSERT INTO examinee
-        (examinee_no, name, exam_name, exam_date, room_name, seat_no, label_barcode, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE')`,
-      [
-        candidate.examineeNo,
-        candidate.name,
-        examName,
-        schedule.examDate,
-        schedule.roomName,
-        String(index + 1),
-        `BARCODE-${candidate.examineeNo}`,
-      ],
-    );
-    await pool.execute(
       `INSERT INTO candidate_record
         (designated_sort, admission, unit_name, major, exam_date, start_time,
-         period_name, building_name, room_name, examinee_no, name, birth_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '2000-01-01')`,
+         period_name, building_name, room_name, examinee_no, name, birth_date,
+         exam_name, label_barcode, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '2000-01-01', ?, ?, 'ACTIVE')`,
       [
         String(index + 1).padStart(3, "0"),
         schedule.admissionName,
@@ -386,6 +373,8 @@ async function seedSchedule(pool: Pool, examName: string, candidates: Array<{ ex
         schedule.roomName,
         candidate.examineeNo,
         candidate.name,
+        examName,
+        `BARCODE-${candidate.examineeNo}`,
       ],
     );
   }

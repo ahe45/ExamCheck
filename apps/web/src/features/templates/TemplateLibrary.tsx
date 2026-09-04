@@ -328,7 +328,11 @@ export function TemplateLibrary({
         </div>
       </section>
       {deleteTarget && (
-        <TemplateDeleteModal template={deleteTarget} onClose={() => setDeleteTarget(null)} onDelete={removeTemplate} />
+        <TemplateDeleteModal
+          template={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDelete={() => removeTemplate(deleteTarget)}
+        />
       )}
     </>
   );

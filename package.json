@@ -53,6 +53,6 @@
     "typescript-eslint": "^8.68.0"
   },
   "dependencies": {
-    "examlist-template-editor": "file:vendor/examlist-template-editor-1.1.2.tgz"
+    "examlist-template-editor": "file:vendor/examlist-template-editor-1.1.13.tgz"
   }
 }

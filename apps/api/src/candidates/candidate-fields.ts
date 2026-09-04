@@ -12,7 +12,7 @@ interface CandidateFieldDefinitionShape {
 const optional = true;
 const operationallyProtected = true;
 
-// 첨부 양식에서 제외 요청된 대기실명·성별을 뺀 열 + OPT1~OPT3.
+// 수험생 업로드·내보내기에서 사용하는 열 + OPT1~OPT3.
 const candidateFieldDefinitions = [
   { key: "designatedSort", dbColumn: "designated_sort", label: "지정정렬", sample: "1", width: 12, optional },
   { key: "date", dbColumn: "exam_date", label: "시험날짜", sample: "2026-10-30", width: 16, format: "date" },
@@ -52,11 +52,20 @@ const candidateFieldDefinitions = [
     operationallyProtected,
   },
   {
+    key: "waitingRoom",
+    dbColumn: "waiting_room",
+    label: "대기실명",
+    sample: "101호 대기실",
+    width: 18,
+    operationallyProtected,
+  },
+  {
     key: "room",
     dbColumn: "room_name",
     label: "고사실명",
-    sample: "면접고사실",
+    sample: "",
     width: 16,
+    optional,
     operationallyProtected,
   },
   { key: "examineeNo", dbColumn: "examinee_no", label: "수험번호", sample: "1162001", width: 18 },
@@ -100,6 +109,6 @@ export const candidateFieldKeys: readonly CandidateFieldKey[] = Object.freeze(
   candidateFields.map((field) => field.key),
 );
 
-export function candidateKey(candidate: Pick<CandidateInput, "examineeNo" | "date" | "time" | "period">) {
-  return `${candidate.examineeNo}\u0000${candidate.date}\u0000${candidate.time}\u0000${candidate.period}`;
+export function candidateKey(candidate: Pick<CandidateInput, "examineeNo" | "date" | "time" | "period" | "building">) {
+  return `${candidate.examineeNo}\u0000${candidate.date}\u0000${candidate.time}\u0000${candidate.period}\u0000${candidate.building}`;
 }

@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TemplateEditorInstance } from "../../shared/templates/template-editor-contracts";
 import {
+  bindTemplateEditorCanvasSelectionPersistence,
   bindTemplateEditorToolbarFocusPersistence,
   syncTemplateEditorPreservingCanvasSelection,
 } from "./template-editor-selection-sync";
@@ -126,5 +127,62 @@ describe("template editor selection synchronization", () => {
     expect(surface.querySelector("[data-candidate-block-grid]")).toHaveClass("is-selected-candidate-block-grid");
     expect(runtime.updateImageSelectionOverlay).toHaveBeenCalled();
     expect(runtime.updateTableObjectOverlay).toHaveBeenCalled();
+  });
+
+  it.each([
+    ["표 셀 내부", "td"],
+    ["캔버스 여백", "[data-template-editor-runtime-surface]"],
+  ])("선택된 표에서 %s 클릭 시 개체 선택 상태를 다시 복원하지 않는다", (_label, selector) => {
+    const surface = document.createElement("div");
+    surface.dataset.templateEditorRuntimeSurface = "true";
+    surface.innerHTML = `
+      <div class="template-doc">
+        <table class="is-selected-table-object"><tbody><tr><td>내용</td></tr></tbody></table>
+      </div>
+    `;
+    document.body.append(surface);
+    const table = surface.querySelector<HTMLTableElement>("table")!;
+    const runtime = {
+      state: {
+        templateEditor: {
+          selectedImageElement: null as HTMLImageElement | null,
+          selectedTableElement: table as HTMLTableElement | null,
+        },
+      },
+      updateImageSelectionOverlay: vi.fn(),
+      updateTableObjectOverlay: vi.fn(),
+    };
+    const editor = {
+      getRuntime: () => runtime,
+    } as unknown as TemplateEditorInstance;
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 1;
+      });
+    const dispose = bindTemplateEditorCanvasSelectionPersistence(editor, surface);
+
+    surface.addEventListener(
+      "pointerdown",
+      () => {
+        table.classList.remove("is-selected-table-object");
+        runtime.state.templateEditor.selectedTableElement = null;
+      },
+      { once: true },
+    );
+    const pointerTarget = selector === "[data-template-editor-runtime-surface]" ? surface : surface.querySelector(selector)!;
+    pointerTarget.dispatchEvent(
+      new MouseEvent("pointerdown", { bubbles: true, button: 0 }),
+    );
+    window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+
+    expect(table).not.toHaveClass("is-selected-table-object");
+    expect(runtime.state.templateEditor.selectedTableElement).toBeNull();
+    expect(runtime.updateTableObjectOverlay).not.toHaveBeenCalled();
+
+    dispose();
+    requestAnimationFrame.mockRestore();
+    surface.remove();
   });
 });

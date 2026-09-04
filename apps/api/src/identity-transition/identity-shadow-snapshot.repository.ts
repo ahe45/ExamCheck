@@ -145,8 +145,7 @@ interface LegacyPrintRow extends RowDataPacket {
   jobNo: string;
   labelType: string;
   businessRef: string | null;
-  templateId: number;
-  templateVersion: number;
+  templateId: number | null;
   copies: number;
   payloadFormat: string;
   payload: string;
@@ -302,6 +301,7 @@ export class IdentityShadowSnapshotRepository {
               range_row.unit_name AS unitName, range_row.major AS majorName,
               range_row.building_name AS buildingName, range_row.room_name AS roomName,
               range_row.range_start AS rangeStart, range_row.range_end AS rangeEnd,
+              range_row.display_width AS displayWidth,
               range_row.next_sequence AS nextValue
        FROM pseudonym_time_range range_row
        INNER JOIN pseudonym_setting setting ON setting.id = range_row.setting_id
@@ -329,8 +329,8 @@ export class IdentityShadowSnapshotRepository {
     );
     return pair(
       "identity-shadow.pseudonym-range.v1",
-      legacy.map((row) => mapRange(row, true)),
-      target.map((row) => mapRange(row, false)),
+      legacy.map(mapRange),
+      target.map(mapRange),
     );
   }
 
@@ -437,8 +437,7 @@ export class IdentityShadowSnapshotRepository {
   async loadPrintSnapshots(executor: SqlExecutor): Promise<IdentityShadowSnapshotPair> {
     const [legacy] = await executor.query<LegacyPrintRow[]>(
       `SELECT job.id AS entityId, job.job_no AS jobNo, job.label_type AS labelType,
-              job.business_ref AS businessRef, job.template_id AS templateId,
-              job.template_version AS templateVersion, job.copies,
+              job.business_ref AS businessRef, job.template_id AS templateId, job.copies,
               payload.format AS payloadFormat, payload.payload,
               DATE_FORMAT(job.created_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS createdAt
        FROM print_job job
@@ -521,7 +520,7 @@ function mapSetting(row: SettingRow): ShadowProjectionRow {
   });
 }
 
-function mapRange(row: RangeRow, legacy: boolean): ShadowProjectionRow {
+function mapRange(row: RangeRow): ShadowProjectionRow {
   const start = Number(row.rangeStart);
   const end = Number(row.rangeEnd);
   return projection(Number(row.entityId), {
@@ -537,7 +536,7 @@ function mapRange(row: RangeRow, legacy: boolean): ShadowProjectionRow {
     rangeStart: start,
     rangeEnd: end,
     nextValue: Number(row.nextValue),
-    displayWidth: legacy ? Math.max(String(start).length, String(end).length) : Number(row.displayWidth),
+    displayWidth: Number(row.displayWidth),
   });
 }
 
@@ -619,8 +618,7 @@ function mapLegacyPrint(row: LegacyPrintRow): ShadowProjectionRow {
     jobNo: row.jobNo,
     labelType: row.labelType,
     businessRef: row.businessRef,
-    templateId: Number(row.templateId),
-    templateVersion: Number(row.templateVersion),
+    templateId: row.templateId === null ? null : Number(row.templateId),
     copies: Number(row.copies),
     payloadFormat: row.payloadFormat,
     payload: row.payload,

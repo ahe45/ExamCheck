@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import { WORKSTATION_CODE } from "../config/workstation";
+import { getWorkstationCode } from "../config/workstation";
 
 export interface PrintJob {
   id: string;
@@ -21,7 +21,13 @@ export function createPrintJob(
     "/print-jobs",
     {
       method: "POST",
-      body: JSON.stringify({ idempotencyKey, examineeNo, copies, workstationCode: WORKSTATION_CODE, ...schedule }),
+      body: JSON.stringify({
+        idempotencyKey,
+        examineeNo,
+        copies,
+        workstationCode: getWorkstationCode(),
+        ...schedule,
+      }),
     },
     token,
   );

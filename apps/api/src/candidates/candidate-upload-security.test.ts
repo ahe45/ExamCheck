@@ -9,6 +9,7 @@ import {
   WORKBOOK_MAX_ENTRIES,
   assertWorkbookBuffer,
   hasZipMagic,
+  normalizeMultipartFileName,
   openValidatedPhotoArchive,
   readValidatedPhotoEntry,
   validatePhotoArchiveEntryMetadata,
@@ -27,6 +28,22 @@ beforeAll(async () => {
 });
 
 describe("candidate upload file validation", () => {
+  it("restores a UTF-8 Korean filename decoded as Latin-1 by multipart parsing", () => {
+    const expected = "수험생 업로드 양식.xlsx";
+    const multipartName = Buffer.from(expected, "utf8").toString("latin1");
+
+    expect(normalizeMultipartFileName(multipartName)).toBe(expected);
+    expect(validateWorkbookUploadFile(uploadFile(workbookBuffer, multipartName, workbookMimeType))).toMatchObject({
+      originalname: expected,
+    });
+  });
+
+  it("keeps ASCII, valid Unicode, and non-UTF-8 Latin-1 filenames unchanged", () => {
+    expect(normalizeMultipartFileName("upload.xlsx")).toBe("upload.xlsx");
+    expect(normalizeMultipartFileName("수험생.xlsx")).toBe("수험생.xlsx");
+    expect(normalizeMultipartFileName("résumé.xlsx")).toBe("résumé.xlsx");
+  });
+
   it("accepts a normal OOXML workbook with expected metadata", () => {
     expect(hasZipMagic(workbookBuffer)).toBe(true);
     expect(

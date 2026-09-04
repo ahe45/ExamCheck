@@ -15,9 +15,6 @@
     "check:integration": "npm run typecheck:integration && npm run test:integration",
     "db:setup": "tsx src/database/setup.ts",
     "db:migrate": "tsx src/database/migrate.ts",
-    "db:backfill:identity": "tsx src/database/identity-backfill-cli.ts",
-    "db:verify:identity-shadow": "tsx src/database/identity-shadow-verify-cli.ts",
-    "db:transition:identity": "tsx src/database/identity-transition-cli.ts",
     "db:bootstrap": "tsx src/database/bootstrap.ts"
   },
   "dependencies": {
@@ -31,7 +28,8 @@
     "exceljs": "^4.4.0",
     "mysql2": "^3.14.4",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "sharp": "^0.34.4"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",

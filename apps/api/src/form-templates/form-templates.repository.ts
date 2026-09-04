@@ -16,7 +16,6 @@ interface FormTemplateRow extends RowDataPacket {
   usageScope: FormTemplateUsageScope;
   layout: string | Record<string, unknown>;
   active: number | boolean;
-  deleted?: number | boolean;
   createdAt: Date;
   createdByLoginId: string;
 }
@@ -35,7 +34,6 @@ export interface LockedFormTemplate {
   usageScope: FormTemplateUsageScope;
   layout: Record<string, unknown>;
   active: boolean;
-  deleted: boolean;
 }
 
 const templateSelect = `SELECT ft.id, ft.code, ft.name, ft.description, ft.category,
@@ -51,8 +49,7 @@ export class FormTemplatesRepository {
       `${templateSelect}
        FROM form_template ft
        INNER JOIN app_user u ON u.id = ft.created_by
-       WHERE NOT EXISTS (SELECT 1 FROM form_template_deletion deletion WHERE deletion.code = ft.code)
-         ${activeOnly ? "AND ft.active = TRUE" : ""}
+       ${activeOnly ? "WHERE ft.active = TRUE" : ""}
        ORDER BY ft.category, ft.name`,
     );
     return rows.map(mapTemplate);
@@ -64,7 +61,6 @@ export class FormTemplatesRepository {
        FROM form_template ft
        INNER JOIN app_user u ON u.id = ft.created_by
        WHERE ft.code = ? AND ft.active = TRUE
-         AND NOT EXISTS (SELECT 1 FROM form_template_deletion deletion WHERE deletion.code = ft.code)
        LIMIT 1`,
       [code],
     );
@@ -98,8 +94,7 @@ export class FormTemplatesRepository {
   async findForUpdate(connection: PoolConnection, code: string): Promise<LockedFormTemplate | null> {
     const [rows] = await connection.execute<FormTemplateRow[]>(
       `SELECT id, code, name, description, category, usage_scope AS usageScope,
-              layout_json AS layout, active, created_at AS createdAt, '' AS createdByLoginId,
-              EXISTS (SELECT 1 FROM form_template_deletion deletion WHERE deletion.code = form_template.code) AS deleted
+              layout_json AS layout, active, created_at AS createdAt, '' AS createdByLoginId
        FROM form_template
        WHERE code = ? LIMIT 1 FOR UPDATE`,
       [code],
@@ -115,20 +110,15 @@ export class FormTemplatesRepository {
       usageScope: row.usageScope,
       layout: parseLayout(row.layout),
       active: Boolean(row.active),
-      deleted: Boolean(row.deleted),
     };
   }
 
-  async restoreDeletedCode(connection: PoolConnection, code: string): Promise<void> {
-    await connection.execute(`DELETE FROM form_template_deletion WHERE code = ?`, [code]);
-  }
-
-  async markDeleted(connection: PoolConnection, code: string, deletedBy: number): Promise<void> {
+  async delete(connection: PoolConnection, templateId: number): Promise<void> {
     const [result] = await connection.execute<ResultSetHeader>(
-      `INSERT INTO form_template_deletion (code, deleted_by) VALUES (?, ?)`,
-      [code, deletedBy],
+      `DELETE FROM form_template WHERE id = ?`,
+      [templateId],
     );
-    if (Number(result.affectedRows) !== 1) throw new Error("Form template deletion was not recorded.");
+    assertSingleUpdate(result);
   }
 
   async update(connection: PoolConnection, templateId: number, input: SaveFormTemplateInput): Promise<void> {

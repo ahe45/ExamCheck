@@ -6,7 +6,7 @@ import type { OperationScheduleMismatch } from "./operation-candidate-state";
 import { operationTemplateScopeLabel } from "./operation-template-pages";
 import type { OperationPrintProgress } from "./useOperationPrint";
 import type { TemplateSignatureKey, TemplateSignatureNames } from "../templates/template-signatures";
-import { formatScheduleDate, type OperationRow } from "./operation-view-model";
+import { formatScheduleDate, operationRosterStats, type OperationRow } from "./operation-view-model";
 import { OperatorFinishIcon } from "./OperationRosterPanel";
 
 interface ScheduleMismatchModalProps {
@@ -96,6 +96,7 @@ export function OperationScheduleMismatchModal({ mismatch, onClose }: ScheduleMi
 interface OperationFinishModalProps {
   schedule: OperationSchedule;
   rows: OperationRow[];
+  labelPrintingEnabled: boolean;
   autoAssignAbsenteesOnClose: boolean;
   closing: boolean;
   onClose(): void;
@@ -105,12 +106,17 @@ interface OperationFinishModalProps {
 export function OperationFinishModal({
   schedule,
   rows,
+  labelPrintingEnabled,
   autoAssignAbsenteesOnClose,
   closing,
   onClose,
   onConfirm,
 }: OperationFinishModalProps) {
   const dialogRef = useDialogFocus<HTMLElement>();
+  const processedCount = operationRosterStats(rows, {
+    operationClosed: false,
+    labelPrintingEnabled,
+  }).assignedCount;
   return (
     <div
       className="operator-modal-backdrop"
@@ -150,9 +156,9 @@ export function OperationFinishModal({
             <strong>{schedule.admissionName}</strong>
           </div>
           <div>
-            <span>현재 등록</span>
+            <span>{labelPrintingEnabled ? "현재 출력" : "현재 등록"}</span>
             <strong>
-              {rows.filter((row) => row.assignment).length} / {rows.length}명
+              {processedCount} / {rows.length}명
             </strong>
           </div>
           <div>

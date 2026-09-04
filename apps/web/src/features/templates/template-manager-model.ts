@@ -150,11 +150,11 @@ export function toDraft(template?: FormTemplate): DraftTemplate | null {
   };
 }
 
-export function createBlankDraft(now = Date.now()): DraftTemplate {
+export function createBlankDraft(now = Date.now(), existingCodes: Iterable<string> = []): DraftTemplate {
   const pageId = `page-${now}`;
   return {
-    code: "NEW_FORM",
-    name: "새 양식",
+    code: createUniqueTemplateCode(now, existingCodes),
+    name: "",
     description: "",
     category: "기타",
     usageScope: "CANDIDATE",
@@ -174,6 +174,20 @@ export function createBlankDraft(now = Date.now()): DraftTemplate {
       },
     },
   };
+}
+
+function createUniqueTemplateCode(now: number, existingCodes: Iterable<string>) {
+  const usedCodes = new Set(Array.from(existingCodes, (code) => code.trim().toUpperCase()));
+  const timestamp = Math.max(0, Math.trunc(now)).toString(36).toUpperCase();
+  const baseCode = `FORM_${timestamp}`;
+
+  if (!usedCodes.has(baseCode)) return baseCode;
+  for (let index = 2; index < 10_000; index += 1) {
+    const suffix = `_${index}`;
+    const code = `${baseCode.slice(0, 100 - suffix.length)}${suffix}`;
+    if (!usedCodes.has(code)) return code;
+  }
+  throw new Error("새 양식 코드를 자동으로 만들 수 없습니다.");
 }
 
 export function validateDraft(draft: DraftTemplate) {

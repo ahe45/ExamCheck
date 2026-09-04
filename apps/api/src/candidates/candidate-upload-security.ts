@@ -40,16 +40,34 @@ const archiveMimeTypes = new Set([
 
 export function validateWorkbookUploadFile(file: CandidateUploadFile | undefined): CandidateUploadFile {
   if (!file) throw new BadRequestException("업로드할 XLSX 파일을 선택해 주세요.");
-  validateUploadMetadata(file, ".xlsx", workbookMimeTypes, WORKBOOK_UPLOAD_MAX_BYTES, "XLSX");
-  assertZipMagic(file.buffer, "XLSX 파일 형식이 올바르지 않습니다. 올바른 업로드 양식을 선택해 주세요.");
-  return file;
+  const normalizedFile = normalizeUploadFileName(file);
+  validateUploadMetadata(normalizedFile, ".xlsx", workbookMimeTypes, WORKBOOK_UPLOAD_MAX_BYTES, "XLSX");
+  assertZipMagic(normalizedFile.buffer, "XLSX 파일 형식이 올바르지 않습니다. 올바른 업로드 양식을 선택해 주세요.");
+  return normalizedFile;
 }
 
 export function validatePhotoArchiveUploadFile(file: CandidateUploadFile | undefined): CandidateUploadFile {
   if (!file) throw new BadRequestException("업로드할 사진 ZIP 파일을 선택해 주세요.");
-  validateUploadMetadata(file, ".zip", archiveMimeTypes, PHOTO_ARCHIVE_UPLOAD_MAX_BYTES, "ZIP");
-  assertZipMagic(file.buffer, "ZIP 파일 형식이 올바르지 않습니다. 올바른 사진 압축 파일을 선택해 주세요.");
-  return file;
+  const normalizedFile = normalizeUploadFileName(file);
+  validateUploadMetadata(normalizedFile, ".zip", archiveMimeTypes, PHOTO_ARCHIVE_UPLOAD_MAX_BYTES, "ZIP");
+  assertZipMagic(normalizedFile.buffer, "ZIP 파일 형식이 올바르지 않습니다. 올바른 사진 압축 파일을 선택해 주세요.");
+  return normalizedFile;
+}
+
+export function normalizeMultipartFileName(fileName: string) {
+  if ([...fileName].some((character) => character.codePointAt(0)! > 0xff)) return fileName;
+
+  const multipartBytes = Buffer.from(fileName, "latin1");
+  const utf8FileName = multipartBytes.toString("utf8");
+  if (utf8FileName.includes("\uFFFD") || !Buffer.from(utf8FileName, "utf8").equals(multipartBytes)) {
+    return fileName;
+  }
+  return utf8FileName.normalize("NFC");
+}
+
+function normalizeUploadFileName(file: CandidateUploadFile): CandidateUploadFile {
+  const originalname = normalizeMultipartFileName(file.originalname);
+  return originalname === file.originalname ? file : { ...file, originalname };
 }
 
 export function assertWorkbookBuffer(buffer: Buffer) {

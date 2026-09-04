@@ -13,6 +13,7 @@ import { enhanceTemplatePageProperties } from "./enhance-template-page-propertie
 import { enhanceTemplateDataBlock } from "./enhance-template-data-block";
 import { buildTemplateEditorAssetUrl } from "./generated-object-assets";
 import { mountProjectTemplateEditor } from "./editor/examlist-template-editor-adapter";
+import { prepareTemplateEditorMount } from "./editor/template-editor-mount-compatibility";
 import { createTemplateEditorTransactionCoordinator } from "./editor/template-editor-transaction-coordinator";
 import { createTemplateEditorCommandDispatcher } from "./editor/template-editor-command-dispatcher";
 import { serializeTemplateEditorHtml, serializeTemplateEditorValue } from "./editor/template-editor-serialization";
@@ -105,9 +106,10 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       editorRef.current?.destroy();
       root.replaceChildren();
       const editorDataTags = updateTagExamples(decoratedDataTags, getTemplateSampleData(activeDraft.layout));
+      const preparedTemplate = prepareTemplateEditorMount(activeDraft.layout);
       const editor = mountProjectTemplateEditor({
         root,
-        template: activeDraft.layout,
+        template: preparedTemplate,
         dataTags: editorDataTags,
         layoutMode: "desktop",
         permissions: { canManageTemplates: true },

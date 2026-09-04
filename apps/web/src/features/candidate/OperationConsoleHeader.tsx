@@ -65,7 +65,10 @@ export function OperationConsoleHeader({
           <strong>{systemProfile.systemName}</strong>
         </div>
       </div>
-      <section className="operator-header-summary" aria-label="현재 고사 요약">
+      <section
+        className={`operator-header-summary ${selectedMode === "PREASSIGNED" ? "without-range" : ""}`}
+        aria-label="현재 고사 요약"
+      >
         <div>
           <span>전형명</span>
           <strong>{schedule.admissionName}</strong>
@@ -95,12 +98,14 @@ export function OperationConsoleHeader({
             {selectedMode === "RANDOM" && autoDrawEnabled ? `(자동 - ${autoDrawDelaySeconds}초)` : ""}
           </strong>
         </div>
-        <div>
-          <span>가번호 범위</span>
-          <strong>
-            {range.start.toLocaleString()} ~ {range.end.toLocaleString()}
-          </strong>
-        </div>
+        {selectedMode !== "PREASSIGNED" && (
+          <div>
+            <span>가번호 범위</span>
+            <strong>
+              {range.start.toLocaleString()} ~ {range.end.toLocaleString()}
+            </strong>
+          </div>
+        )}
       </section>
       <div className="operator-console-actions">
         <button className="operator-change-schedule-button" onClick={onChangeSchedule}>

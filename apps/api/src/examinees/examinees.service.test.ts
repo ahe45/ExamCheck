@@ -88,8 +88,8 @@ describe("ExamineesService admission authorization", () => {
           labelBarcode: "EX10001",
           preassignedNumber: "2201",
           preassignedAvailable: 1,
-          assignedNumber: null,
-          assignmentMode: null,
+          assignedNumber: "2201",
+          assignmentMode: "PREASSIGNED",
           assignedAt: null,
           absent: 0,
           status: "ACTIVE",
@@ -116,6 +116,7 @@ describe("ExamineesService admission authorization", () => {
     expect(sql).toContain("cr.room_name AS roomName");
     expect(sql).toContain("COALESCE(cr.designated_sort");
     expect(sql).toContain("NULLIF(cr.temporary_no");
+    expect(sql).toContain("COALESCE(pa.pseudonym_no, NULLIF(cr.temporary_no, '')) AS assignedNumber");
     expect(sql).not.toContain("e.name");
     expect(sql).not.toContain("e.exam_date");
     expect(sql).not.toContain("e.room_name");
@@ -128,6 +129,8 @@ describe("ExamineesService admission authorization", () => {
       seatNo: "22",
       preassignedNumber: "2201",
       preassignedAvailable: true,
+      assignedNumber: "2201",
+      assignmentMode: "PREASSIGNED",
     });
   });
 });

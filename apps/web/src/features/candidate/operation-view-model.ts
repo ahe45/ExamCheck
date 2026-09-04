@@ -12,7 +12,15 @@ export interface OperationRow {
 }
 
 export type OperationFieldKey =
-  "pseudonymNumber" | "examineeNo" | "name" | "unitName" | "majorName" | "assignedAt" | "status";
+  | "pseudonymNumber"
+  | "examineeNo"
+  | "name"
+  | "unitName"
+  | "majorName"
+  | "assignedAt"
+  | "printedAt"
+  | "attendance"
+  | "status";
 
 export interface OperationColumn {
   key: OperationFieldKey;
@@ -20,25 +28,39 @@ export interface OperationColumn {
   wide?: boolean;
 }
 
-export const operationColumns: OperationColumn[] = [
+const operationIdentityColumns: OperationColumn[] = [
   { key: "pseudonymNumber", label: "가번호" },
   { key: "examineeNo", label: "수험번호" },
   { key: "name", label: "성명" },
   { key: "unitName", label: "모집단위", wide: true },
   { key: "majorName", label: "전공", wide: true },
-  { key: "assignedAt", label: "등록일시" },
-  { key: "status", label: "상태" },
 ];
 
+export interface OperationGridContext {
+  operationClosed: boolean;
+  labelPrintingEnabled: boolean;
+}
+
+export function operationColumnsFor(labelPrintingEnabled: boolean): OperationColumn[] {
+  return [
+    ...operationIdentityColumns,
+    labelPrintingEnabled ? { key: "printedAt", label: "출력일시" } : { key: "assignedAt", label: "등록일시" },
+    { key: "attendance", label: "응시 여부" },
+    { key: "status", label: "상태" },
+  ];
+}
+
 export function assignmentFromExaminee(candidate: Examinee): PseudonymAssignment | null {
-  if (!candidate.assignedNumber || !candidate.assignmentMode) return null;
+  const pseudonymNumber = candidate.assignedNumber || candidate.preassignedNumber;
+  const mode = candidate.assignmentMode || (candidate.preassignedNumber ? "PREASSIGNED" : null);
+  if (!pseudonymNumber || !mode) return null;
   return {
     id: 0,
     examineeNo: candidate.examineeNo,
     examineeName: candidate.name,
     examName: candidate.examName,
-    pseudonymNumber: candidate.assignedNumber,
-    mode: candidate.assignmentMode,
+    pseudonymNumber,
+    mode,
     assignedAt: candidate.assignedAt || "",
     alreadyAssigned: true,
   };
@@ -48,19 +70,31 @@ export function toOperationRows(candidates: Examinee[]): OperationRow[] {
   return candidates.map((candidate) => ({ candidate, assignment: assignmentFromExaminee(candidate) }));
 }
 
-export function operationRowStatus(row: OperationRow): "등록" | "대기" | "결시" {
-  if (row.candidate.absent) return "결시";
-  return row.assignment ? "등록" : "대기";
+function operationRowProcessed(row: OperationRow, context: OperationGridContext): boolean {
+  return context.labelPrintingEnabled ? Boolean(row.candidate.lastPrintedAt) : Boolean(row.assignment);
 }
 
-export function operationRowValue(row: OperationRow, key: OperationFieldKey): string {
+export function operationRowStatus(row: OperationRow, context: OperationGridContext): "대기" | "진행" | "마감" {
+  if (context.operationClosed) return "마감";
+  return operationRowProcessed(row, context) ? "진행" : "대기";
+}
+
+export function operationRowAttendance(row: OperationRow, context: OperationGridContext): "-" | "응시" | "결시" {
+  if (context.operationClosed && row.candidate.absent) return "결시";
+  if (operationRowProcessed(row, context)) return "응시";
+  return context.operationClosed ? "결시" : "-";
+}
+
+export function operationRowValue(row: OperationRow, key: OperationFieldKey, context: OperationGridContext): string {
   if (key === "pseudonymNumber") return row.assignment?.pseudonymNumber || "-";
   if (key === "examineeNo") return row.candidate.examineeNo;
   if (key === "name") return row.candidate.name;
   if (key === "unitName") return row.candidate.unitName || "-";
   if (key === "majorName") return row.candidate.majorName || "-";
   if (key === "assignedAt") return formatRegistrationTimestamp(row.assignment?.assignedAt || "");
-  return operationRowStatus(row);
+  if (key === "printedAt") return formatRegistrationTimestamp(row.candidate.lastPrintedAt || "");
+  if (key === "attendance") return operationRowAttendance(row, context);
+  return operationRowStatus(row, context);
 }
 
 export function formatRegistrationTimestamp(value: string): string {
@@ -94,9 +128,9 @@ export function operationScope(schedule: OperationSchedule, examName: string): P
   };
 }
 
-export function operationRosterStats(rows: OperationRow[]) {
-  const assignedCount = rows.filter((row) => row.assignment).length;
-  const presentCount = rows.filter((row) => row.assignment && !row.candidate.absent).length;
+export function operationRosterStats(rows: OperationRow[], context: OperationGridContext) {
+  const assignedCount = rows.filter((row) => operationRowProcessed(row, context)).length;
+  const presentCount = rows.filter((row) => operationRowAttendance(row, context) === "응시").length;
   return {
     totalCount: rows.length,
     assignedCount,
@@ -109,9 +143,10 @@ export function operationRosterStats(rows: OperationRow[]) {
 export function toRosterExportQuery(
   filters: Partial<Record<OperationFieldKey, string[]>>,
   sort: { key: OperationFieldKey; direction: "asc" | "desc" } | null,
+  columns: OperationColumn[],
 ): PseudonymRosterExportQuery {
   return {
-    filters: operationColumns.flatMap((column) => {
+    filters: columns.flatMap((column) => {
       const values = filters[column.key] ?? [];
       return values.length ? [{ field: column.key, mode: "include" as const, values: [...new Set(values)] }] : [];
     }),

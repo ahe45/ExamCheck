@@ -58,10 +58,10 @@ describe("account writes on MariaDB", () => {
       `INSERT INTO candidate_record
         (track, admission, admission_code, series, unit_name, unit_code, exam_date, start_time,
          period_name, period_code, building_name, building_code, room_name, room_code,
-         examinee_no, name, birth_date)
+         examinee_no, name, birth_date, exam_name, label_barcode, status)
        VALUES ('Integration', ?, 'INT', 'Integration', 'Integration', 'INT', '2026-11-01', '10:00',
                '1교시', 'INT-1', 'Integration', 'INT', 'Integration', 'INT-101',
-               'INTEGRATION-001', 'Integration', '2000-01-01')`,
+               'INTEGRATION-001', 'Integration', '2000-01-01', 'Integration', 'EX-INTEGRATION-001', 'ACTIVE')`,
       [admissionName],
     );
 

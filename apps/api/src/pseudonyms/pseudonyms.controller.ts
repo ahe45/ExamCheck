@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Post, Put, Query, StreamableFile, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Post, Put, Query, StreamableFile, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { CurrentUser } from "../auth/current-user.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -6,10 +6,12 @@ import { RequirePermissions } from "../auth/permissions.js";
 import { RolesGuard } from "../auth/roles.js";
 import {
   AssignPseudonymDto,
+  DeleteAdmissionDto,
   ExportPseudonymRosterDto,
   PseudonymOperationScopeDto,
   PseudonymSettingQueryDto,
   PseudonymSettingsOverviewQueryDto,
+  ResetAdmissionOperationsDto,
   UpdatePseudonymSettingDto,
 } from "./pseudonyms.dto.js";
 import { PseudonymsService } from "./pseudonyms.service.js";
@@ -34,6 +36,24 @@ export class PseudonymsController {
   @RequirePermissions("settings.manage")
   updateSetting(@Body() input: UpdatePseudonymSettingDto, @CurrentUser() user: AuthenticatedUser) {
     return this.pseudonymsService.updateSetting(input, user);
+  }
+
+  @Get("admission-operation-schedules")
+  @RequirePermissions("settings.manage")
+  getAdmissionOperationSchedules(@Query() query: PseudonymSettingQueryDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pseudonymsService.getAdmissionOperationSchedules(query.examName, query.admissionName, user);
+  }
+
+  @Post("admission-operations/reset")
+  @RequirePermissions("settings.manage")
+  resetAdmissionOperations(@Body() input: ResetAdmissionOperationsDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pseudonymsService.resetAdmissionOperations(input, user);
+  }
+
+  @Delete("admission")
+  @RequirePermissions("settings.manage")
+  deleteAdmission(@Body() input: DeleteAdmissionDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pseudonymsService.deleteAdmission(input, user);
   }
 
   @Post("assignments")

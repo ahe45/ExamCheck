@@ -276,6 +276,25 @@ describe("useOperationCandidateController", () => {
     expect(result.current.assigning).toBe(false);
   });
 
+  it("사전 가번호는 조회 즉시 기존 배정으로 표시하고 별도 배정 요청을 보내지 않는다", async () => {
+    const candidate = examinee("1162001");
+    candidate.preassignedNumber = "0821";
+    candidate.preassignedAvailable = true;
+    const lookupExaminee = vi.fn(async () => ({ status: "CURRENT" as const, examinee: candidate }));
+    const assignPseudonym = vi.fn(async () => assignment);
+    const currentOptions = options({
+      selectedMode: "PREASSIGNED",
+      services: { ...options().services, lookupExaminee, assignPseudonym },
+    });
+    const { result } = renderHook(() => useOperationCandidateController(currentOptions));
+
+    await act(async () => result.current.lookupExaminee("1162001"));
+
+    expect(result.current.assignment).toMatchObject({ pseudonymNumber: "0821", mode: "PREASSIGNED" });
+    expect(result.current.notice).toEqual({ kind: "success", text: "이미 부여된 가번호 0821을 확인했습니다." });
+    expect(assignPseudonym).not.toHaveBeenCalled();
+  });
+
   it("언마운트할 때 진행 중인 사진 요청을 중단한다", async () => {
     const pendingPhoto = deferred<Blob | null>();
     let photoSignal: AbortSignal | undefined;

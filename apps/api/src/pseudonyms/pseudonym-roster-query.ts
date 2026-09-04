@@ -7,6 +7,8 @@ export const PSEUDONYM_ROSTER_EXPORT_FIELDS = [
   "unitName",
   "majorName",
   "assignedAt",
+  "printedAt",
+  "attendance",
   "status",
 ] as const;
 
@@ -39,21 +41,46 @@ export interface CanonicalPseudonymRosterRow {
   unitName: string;
   majorName: string;
   assignedAt: string;
-  status: "등록" | "대기" | "결시";
+  printedAt: string;
+  attendance: "-" | "응시" | "결시";
+  status: "대기" | "진행" | "마감";
 }
 
 export interface PseudonymRosterExportRow extends CanonicalPseudonymRosterRow {
   sequence: number;
 }
 
+const labelPrintingEnabledSql = `COALESCE((
+  SELECT ps.assignment_method = 'PREASSIGNED' AND ps.print_preassigned_label = TRUE
+  FROM pseudonym_setting ps
+  WHERE ps.exam_name = cr.exam_name AND ps.admission_name IN (cr.admission, '') AND ps.active = TRUE
+  ORDER BY CASE WHEN ps.admission_name = cr.admission THEN 0 ELSE 1 END
+  LIMIT 1
+), FALSE)`;
+const processedSql = `CASE WHEN ${labelPrintingEnabledSql}
+  THEN printed.last_printed_at IS NOT NULL
+  ELSE pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL
+END`;
+
 const valueSql: Record<PseudonymRosterExportField, string> = {
-  pseudonymNumber: "COALESCE(pa.pseudonym_no, '-')",
+  pseudonymNumber: "COALESCE(pa.pseudonym_no, NULLIF(cr.temporary_no, ''), '-')",
   examineeNo: "cr.examinee_no",
   name: "cr.name",
   unitName: "COALESCE(NULLIF(cr.unit_name, ''), '-')",
   majorName: "COALESCE(NULLIF(cr.major, ''), '-')",
   assignedAt: "COALESCE(DATE_FORMAT(pa.assigned_at, '%y.%m.%d. %H:%i:%s'), '-')",
-  status: "CASE WHEN COALESCE(pa.is_absentee, FALSE) THEN '결시' WHEN pa.id IS NOT NULL THEN '등록' ELSE '대기' END",
+  printedAt: "COALESCE(DATE_FORMAT(printed.last_printed_at, '%y.%m.%d. %H:%i:%s'), '-')",
+  attendance: `CASE
+    WHEN COALESCE(po.closed, FALSE) AND COALESCE(pa.is_absentee, FALSE) THEN '결시'
+    WHEN ${processedSql} THEN '응시'
+    WHEN COALESCE(po.closed, FALSE) THEN '결시'
+    ELSE '-'
+  END`,
+  status: `CASE
+      WHEN COALESCE(po.closed, FALSE) THEN '마감'
+      WHEN ${processedSql} THEN '진행'
+      ELSE '대기'
+    END`,
 };
 
 export function operationRosterSelectSql(): string {

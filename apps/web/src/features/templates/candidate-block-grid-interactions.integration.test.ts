@@ -100,6 +100,18 @@ describe("ExamList candidate block grid interactions", () => {
         toJSON() {},
       } as DOMRect;
     };
+    const sourceBlock = grid.querySelector<HTMLElement>("[data-candidate-block-instance]")!;
+
+    dispatchPointerEvent(sourceBlock, "pointerdown", {
+      button: 0,
+      clientX: 150,
+      clientY: 0,
+      pointerId: 2,
+    });
+
+    expect(grid).toHaveClass("is-selected-candidate-block-grid");
+    expect(document.querySelector("[data-candidate-block-focus-layer]")).toBeNull();
+
     const moveHandle = grid.querySelector<HTMLElement>("[data-candidate-block-grid-move-handle]")!;
 
     dispatchPointerEvent(moveHandle, "pointerdown", { button: 0, clientX: 10, clientY: 10, pointerId: 3 });
@@ -124,7 +136,6 @@ describe("ExamList candidate block grid interactions", () => {
 
     const portableRuntimePointerDown = vi.fn();
     surface.addEventListener("pointerdown", portableRuntimePointerDown, true);
-    const sourceBlock = grid.querySelector<HTMLElement>("[data-candidate-block-instance]")!;
     grid.getBoundingClientRect = () => {
       const left = (Number.parseFloat(grid.style.left) || 0) / 2;
       const top = (Number.parseFloat(grid.style.top) || 0) / 2;
@@ -148,23 +159,23 @@ describe("ExamList candidate block grid interactions", () => {
         left: gridRect.left,
         top: gridRect.top,
         right: gridRect.right,
-        bottom: gridRect.top + 10,
+        bottom: gridRect.top + 40,
         width: gridRect.width,
-        height: 10,
+        height: 40,
         x: gridRect.left,
         y: gridRect.top,
         toJSON() {},
       } as DOMRect;
     };
     Object.defineProperties(sourceBlock, {
-      offsetHeight: { configurable: true, value: 20 },
+      offsetHeight: { configurable: true, value: 40 },
       offsetWidth: { configurable: true, get: () => grid.offsetWidth },
     });
     const sourceRect = sourceBlock.getBoundingClientRect();
     dispatchPointerEvent(sourceBlock, "pointerdown", {
       button: 0,
       clientX: sourceRect.left + 40,
-      clientY: sourceRect.top + 5,
+      clientY: sourceRect.top + 20,
       pointerId: 5,
     });
 

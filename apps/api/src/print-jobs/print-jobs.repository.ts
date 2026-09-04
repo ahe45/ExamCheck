@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import type { UserRole } from "../auth/auth.types.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 
 export type PrintJobStatus = "CREATED" | "READY" | "DISPATCHING" | "SENT" | "FAILED" | "CANCELLED" | "EXPIRED";
@@ -16,22 +15,46 @@ export interface PrintJobScheduleKey {
 export interface PrintCandidateRecord {
   candidateRecordId: number;
   examineeNo: string;
+  candidateName: string;
+  birthDate: string;
+  examName: string;
   examDate: string;
+  examStartTime: string;
+  examEndTime: string;
+  periodName: string;
+  admissionName: string;
+  admissionCode: string;
+  unitName: string;
+  majorName: string;
+  buildingName: string;
   roomName: string;
   seatNo: string;
+  groupName: string;
+  opt1: string;
+  opt2: string;
+  opt3: string;
   labelBarcode: string;
+  preassignedNumber: string;
   pseudonymNumber: string;
+  absent: boolean;
+  schoolName: string;
+  academicYear: number;
+  systemName: string;
+  roomAssignedCount: number;
+  roomPresentCount: number;
+  roomAbsentCount: number;
 }
 
 export interface PrintPolicyRecord {
   assignmentMethod: string;
   printPreassignedLabel: number | boolean;
+  labelTemplateId: number | null;
 }
 
 export interface LabelTemplateRecord {
   id: number;
-  version: number;
   zplTemplate: string;
+  layout: unknown | null;
 }
 
 export interface PrintJobOwnerRecord {
@@ -39,24 +62,6 @@ export interface PrintJobOwnerRecord {
   workstationId: number | null;
   status: PrintJobStatus;
   isExpired: number;
-}
-
-export interface PrintJobReissueSourceRecord extends PrintJobOwnerRecord {
-  hasSnapshot: number;
-}
-
-export interface PrintJobReissueContext {
-  actorRole: UserRole;
-  actorAdmissionScopeMode: "ALL" | "ASSIGNED" | null;
-  examCycleId: number;
-  admissionId: number;
-  admissionName: string;
-  workstationEnabled: number;
-}
-
-export interface PrintJobReissuePolicy {
-  assignmentMethod: string;
-  printPreassignedLabel: number | boolean;
 }
 
 export interface StoredPrintJob {
@@ -75,28 +80,14 @@ export interface NewPrintJobRecord {
   id: string;
   jobNo: string;
   businessReference: string;
+  candidateRecordId: number;
   templateId: number;
-  templateVersion: number;
   workstationId: number;
   requestedBy: number;
   idempotencyKey: string;
   requestFingerprint: string;
   copies: number;
   expirySeconds: number;
-}
-
-export type PrintJobReissueType = "RETRY" | "REPRINT";
-
-export interface NewPrintJobReissueRecord {
-  id: string;
-  jobNo: string;
-  sourcePrintJobId: string;
-  requestedBy: number;
-  idempotencyKey: string;
-  requestFingerprint: string;
-  expirySeconds: number;
-  reissueType: PrintJobReissueType;
-  reasonCode: string;
 }
 
 interface PrintJobResponseRow extends RowDataPacket {
@@ -111,16 +102,20 @@ interface PrintJobResponseRow extends RowDataPacket {
 
 @Injectable()
 export class PrintJobsRepository {
-  async findAssignedExamName(executor: SqlExecutor, schedule: PrintJobScheduleKey): Promise<string | null> {
+  async findAssignedExamName(
+    executor: SqlExecutor,
+    schedule: PrintJobScheduleKey,
+    defaultExamName: string,
+  ): Promise<string | null> {
     const [rows] = await executor.execute<Array<RowDataPacket & { examName: string }>>(
-      `SELECT pa.exam_name AS examName
+      `SELECT COALESCE(pa.exam_name, ?) AS examName
        FROM candidate_record cr
-       INNER JOIN examinee e ON e.examinee_no = cr.examinee_no
-       INNER JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+       LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? AND e.status = 'ACTIVE'
+         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE'
+         AND (pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL)
        LIMIT 1`,
-      scheduleParameters(schedule),
+      [defaultExamName, ...scheduleParameters(schedule)],
     );
     return rows[0]?.examName ?? null;
   }
@@ -132,7 +127,8 @@ export class PrintJobsRepository {
   ): Promise<PrintPolicyRecord | null> {
     const [rows] = await executor.execute<Array<RowDataPacket & PrintPolicyRecord>>(
       `SELECT assignment_method AS assignmentMethod,
-              print_preassigned_label AS printPreassignedLabel
+              print_preassigned_label AS printPreassignedLabel,
+              label_template_id AS labelTemplateId
        FROM pseudonym_setting
        WHERE exam_name = ? AND admission_name IN (?, '') AND active = TRUE
        ORDER BY CASE WHEN admission_name = ? THEN 0 ELSE 1 END
@@ -176,25 +172,60 @@ export class PrintJobsRepository {
     schedule: PrintJobScheduleKey,
   ): Promise<PrintCandidateRecord | null> {
     const [rows] = await executor.execute<Array<RowDataPacket & PrintCandidateRecord>>(
-      `SELECT cr.id AS candidateRecordId, cr.examinee_no AS examineeNo, DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate,
-              cr.room_name AS roomName, COALESCE(cr.designated_sort, '') AS seatNo,
-              CONCAT('EX', cr.examinee_no) AS labelBarcode,
-              pa.pseudonym_no AS pseudonymNumber
+      `SELECT cr.id AS candidateRecordId, cr.examinee_no AS examineeNo, cr.name AS candidateName,
+              COALESCE(DATE_FORMAT(cr.birth_date, '%Y-%m-%d'), '') AS birthDate,
+              cr.exam_name AS examName, DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate,
+              cr.start_time AS examStartTime, cr.end_time AS examEndTime, cr.period_name AS periodName,
+              cr.admission AS admissionName, cr.admission_code AS admissionCode,
+              cr.unit_name AS unitName, cr.major AS majorName,
+              cr.building_name AS buildingName, cr.room_name AS roomName,
+              COALESCE(cr.designated_sort, '') AS seatNo, cr.group_name AS groupName,
+              cr.opt1, cr.opt2, cr.opt3, cr.label_barcode AS labelBarcode,
+              cr.temporary_no AS preassignedNumber,
+              COALESCE(pa.pseudonym_no, NULLIF(cr.temporary_no, '')) AS pseudonymNumber,
+              COALESCE(pa.is_absentee, FALSE) AS absent,
+              COALESCE(sp.school_name, '') AS schoolName, COALESCE(sp.academic_year, YEAR(cr.exam_date)) AS academicYear,
+              COALESCE(sp.system_name, '') AS systemName,
+              (SELECT COUNT(*) FROM candidate_record room_candidate
+                WHERE room_candidate.exam_date = cr.exam_date AND room_candidate.start_time = cr.start_time
+                  AND room_candidate.period_name = cr.period_name AND room_candidate.admission = cr.admission
+                  AND room_candidate.building_name = cr.building_name AND room_candidate.room_name = cr.room_name
+                  AND room_candidate.status = 'ACTIVE') AS roomAssignedCount,
+              (SELECT COUNT(*) FROM candidate_record room_candidate
+                INNER JOIN pseudonym_assignment room_assignment ON room_assignment.candidate_record_id = room_candidate.id
+                WHERE room_candidate.exam_date = cr.exam_date AND room_candidate.start_time = cr.start_time
+                  AND room_candidate.period_name = cr.period_name AND room_candidate.admission = cr.admission
+                  AND room_candidate.building_name = cr.building_name AND room_candidate.room_name = cr.room_name
+                  AND room_candidate.status = 'ACTIVE' AND room_assignment.is_absentee = FALSE) AS roomPresentCount,
+              (SELECT COUNT(*) FROM candidate_record room_candidate
+                INNER JOIN pseudonym_assignment room_assignment ON room_assignment.candidate_record_id = room_candidate.id
+                WHERE room_candidate.exam_date = cr.exam_date AND room_candidate.start_time = cr.start_time
+                  AND room_candidate.period_name = cr.period_name AND room_candidate.admission = cr.admission
+                  AND room_candidate.building_name = cr.building_name AND room_candidate.room_name = cr.room_name
+                  AND room_candidate.status = 'ACTIVE' AND room_assignment.is_absentee = TRUE) AS roomAbsentCount
        FROM candidate_record cr
-       INNER JOIN examinee e ON e.examinee_no = cr.examinee_no
-       INNER JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+       LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+       LEFT JOIN system_profile sp ON sp.id = 1
        WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? AND e.status = 'ACTIVE' LIMIT 1 FOR UPDATE`,
+         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE'
+         AND (pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL) LIMIT 1 FOR UPDATE`,
       scheduleParameters(schedule),
     );
     return rows[0] ?? null;
   }
 
-  async findActiveLabelTemplate(executor: SqlExecutor): Promise<LabelTemplateRecord | null> {
-    const [rows] = await executor.query<Array<RowDataPacket & LabelTemplateRecord>>(
-      `SELECT id, version, zpl_template AS zplTemplate
-       FROM label_template WHERE code = 'PSEUDONYM_LABEL' AND active = TRUE
-       ORDER BY version DESC LIMIT 1`,
+  async findActiveLabelTemplate(
+    executor: SqlExecutor,
+    labelTemplateId: number | null,
+  ): Promise<LabelTemplateRecord | null> {
+    const [rows] = await executor.execute<Array<RowDataPacket & LabelTemplateRecord>>(
+      `SELECT id, zpl_template AS zplTemplate, layout_json AS layout
+       FROM label_template
+       WHERE active = TRUE
+         AND (? IS NULL OR id = ?)
+       ORDER BY CASE WHEN code = 'PSEUDONYM_LABEL' THEN 0 ELSE 1 END, id
+       LIMIT 1`,
+      [labelTemplateId, labelTemplateId],
     );
     return rows[0] ?? null;
   }
@@ -210,15 +241,15 @@ export class PrintJobsRepository {
   async insertPrintJob(executor: SqlExecutor, record: NewPrintJobRecord): Promise<void> {
     await executor.execute<ResultSetHeader>(
       `INSERT INTO print_job
-        (id, job_no, label_type, business_ref, template_id, template_version,
+        (id, job_no, label_type, business_ref, candidate_record_id, template_id,
          workstation_id, requested_by, idempotency_key, request_fingerprint, copies, status, expires_at)
        VALUES (?, ?, 'PSEUDONYM_LABEL', ?, ?, ?, ?, ?, ?, ?, ?, 'READY', DATE_ADD(NOW(3), INTERVAL ? SECOND))`,
       [
         record.id,
         record.jobNo,
         record.businessReference,
+        record.candidateRecordId,
         record.templateId,
-        record.templateVersion,
         record.workstationId,
         record.requestedBy,
         record.idempotencyKey,
@@ -236,51 +267,6 @@ export class PrintJobsRepository {
     ]);
   }
 
-  async insertReissuedPrintJob(executor: SqlExecutor, record: NewPrintJobReissueRecord): Promise<void> {
-    const [result] = await executor.execute<ResultSetHeader>(
-      `INSERT INTO print_job
-        (id, job_no, label_type, business_ref, candidate_registration_id, canonical_assignment_id,
-         operation_slot_id, template_id, template_version, workstation_id, requested_by,
-         idempotency_key, request_fingerprint, copies, status, expires_at, original_job_id, reprint_reason)
-       SELECT ?, ?, source.label_type, source.business_ref, source.candidate_registration_id,
-              source.canonical_assignment_id, source.operation_slot_id, source.template_id,
-              source.template_version, source.workstation_id, ?, ?, ?, source.copies, 'READY',
-              DATE_ADD(NOW(3), INTERVAL ? SECOND), COALESCE(source.original_job_id, source.id), ?
-       FROM print_job source WHERE source.id = ?`,
-      [
-        record.id,
-        record.jobNo,
-        record.requestedBy,
-        record.idempotencyKey,
-        record.requestFingerprint,
-        record.expirySeconds,
-        record.reasonCode,
-        record.sourcePrintJobId,
-      ],
-    );
-    assertSingleCopiedRow(result, "출력 재발행 원본을 찾을 수 없습니다.");
-  }
-
-  async insertPayloadFromSnapshot(executor: SqlExecutor, printJobId: string, sourcePrintJobId: string): Promise<void> {
-    const [result] = await executor.execute<ResultSetHeader>(
-      `INSERT INTO print_job_payload (print_job_id, format, payload)
-       SELECT ?, JSON_UNQUOTE(JSON_EXTRACT(projection_json, '$.payloadFormat')),
-              JSON_UNQUOTE(JSON_EXTRACT(projection_json, '$.payload'))
-       FROM print_projection_snapshot WHERE print_job_id = ?`,
-      [printJobId, sourcePrintJobId],
-    );
-    assertSingleCopiedRow(result, "출력 재발행 원본 snapshot을 찾을 수 없습니다.");
-  }
-
-  async insertReissueEvent(executor: SqlExecutor, record: NewPrintJobReissueRecord): Promise<void> {
-    await executor.execute<ResultSetHeader>(
-      `INSERT INTO print_job_reissue_event
-        (source_print_job_id, reissued_print_job_id, reissue_type, reason_code, actor_user_id)
-       VALUES (?, ?, ?, ?, ?)`,
-      [record.sourcePrintJobId, record.id, record.reissueType, record.reasonCode, record.requestedBy],
-    );
-  }
-
   async findJobForUpdate(executor: SqlExecutor, id: string): Promise<PrintJobOwnerRecord | null> {
     const [rows] = await executor.execute<Array<RowDataPacket & PrintJobOwnerRecord>>(
       `SELECT requested_by AS requestedBy, workstation_id AS workstationId, status,
@@ -289,106 +275,6 @@ export class PrintJobsRepository {
       [id],
     );
     return rows[0] ?? null;
-  }
-
-  async findReissueSourceForUpdate(executor: SqlExecutor, id: string): Promise<PrintJobReissueSourceRecord | null> {
-    const [rows] = await executor.execute<Array<RowDataPacket & PrintJobReissueSourceRecord>>(
-      `SELECT requested_by AS requestedBy, workstation_id AS workstationId, status,
-              CASE WHEN expires_at <= NOW(3) THEN 1 ELSE 0 END AS isExpired,
-              EXISTS(SELECT 1 FROM print_projection_snapshot snapshot
-                     WHERE snapshot.print_job_id = print_job.id) AS hasSnapshot
-       FROM print_job WHERE id = ? LIMIT 1 FOR UPDATE`,
-      [id],
-    );
-    return rows[0] ?? null;
-  }
-
-  async findReissueContextForUpdate(
-    executor: SqlExecutor,
-    printJobId: string,
-    actorUserId: number,
-  ): Promise<PrintJobReissueContext | null> {
-    const [rows] = await executor.execute<Array<RowDataPacket & PrintJobReissueContext>>(
-      `SELECT actor.role AS actorRole, actor.admission_scope_mode AS actorAdmissionScopeMode,
-              cycle.id AS examCycleId, admission.id AS admissionId,
-              admission.canonical_name AS admissionName,
-              workstation.enabled AS workstationEnabled
-       FROM print_job job
-       INNER JOIN candidate_registration registration
-         ON registration.id = job.candidate_registration_id AND registration.status = 'ACTIVE'
-       INNER JOIN candidate candidate_identity
-         ON candidate_identity.id = registration.candidate_id AND candidate_identity.status = 'ACTIVE'
-       INNER JOIN schedule_segment segment
-         ON segment.id = registration.schedule_segment_id AND segment.status = 'ACTIVE'
-       INNER JOIN operation_slot slot
-         ON slot.id = segment.operation_slot_id AND slot.id = job.operation_slot_id AND slot.status = 'ACTIVE'
-       INNER JOIN admission
-         ON admission.id = slot.admission_id AND admission.status = 'ACTIVE'
-       INNER JOIN exam_cycle cycle
-         ON cycle.id = admission.exam_cycle_id
-        AND cycle.id = candidate_identity.exam_cycle_id
-        AND cycle.status = 'ACTIVE'
-       INNER JOIN candidate_pseudonym_assignment assignment
-         ON assignment.id = job.canonical_assignment_id
-        AND assignment.registration_id = registration.id
-       INNER JOIN pseudonym_operation_state operation
-         ON operation.id = assignment.pseudonym_operation_id
-        AND operation.operation_slot_id = slot.id
-       INNER JOIN workstation ON workstation.id = job.workstation_id
-       INNER JOIN app_user actor ON actor.id = ? AND actor.enabled = TRUE
-       WHERE job.id = ? LIMIT 1 FOR UPDATE`,
-      [actorUserId, printJobId],
-    );
-    return rows[0] ?? null;
-  }
-
-  async hasAdmissionScopeForUpdate(executor: SqlExecutor, userId: number, admissionId: number): Promise<boolean> {
-    const [rows] = await executor.execute<Array<RowDataPacket & { admissionId: number }>>(
-      `SELECT admission_id AS admissionId
-       FROM user_admission_scope_assignment
-       WHERE user_id = ? AND admission_id = ? LIMIT 1 FOR UPDATE`,
-      [userId, admissionId],
-    );
-    return rows.length === 1;
-  }
-
-  async listLegacyAdmissionNamesForUpdate(executor: SqlExecutor, userId: number): Promise<string[]> {
-    const [rows] = await executor.execute<Array<RowDataPacket & { admissionName: string }>>(
-      `SELECT admission_name AS admissionName
-       FROM user_admission_assignment
-       WHERE user_id = ? ORDER BY admission_name FOR UPDATE`,
-      [userId],
-    );
-    return rows.map((row) => row.admissionName);
-  }
-
-  async findEffectivePrintPolicyForUpdate(
-    executor: SqlExecutor,
-    examCycleId: number,
-    admissionId: number,
-  ): Promise<PrintJobReissuePolicy | null> {
-    const [rows] = await executor.execute<Array<RowDataPacket & PrintJobReissuePolicy>>(
-      `SELECT policy.assignment_method AS assignmentMethod,
-              policy.print_preassigned_label AS printPreassignedLabel
-       FROM pseudonym_policy policy
-       WHERE policy.exam_cycle_id = ?
-         AND (
-           (policy.scope_kind = 'ADMISSION' AND policy.admission_id = ?)
-           OR (
-             policy.scope_kind = 'DEFAULT'
-             AND policy.admission_id IS NULL
-             AND NOT EXISTS (
-               SELECT 1 FROM pseudonym_policy admission_override
-               WHERE admission_override.exam_cycle_id = policy.exam_cycle_id
-                 AND admission_override.scope_kind = 'ADMISSION'
-                 AND admission_override.admission_id = ?
-             )
-           )
-         )
-       ORDER BY policy.id LIMIT 2 FOR UPDATE`,
-      [examCycleId, admissionId, admissionId],
-    );
-    return rows.length === 1 ? rows[0] : null;
   }
 
   async markExpired(executor: SqlExecutor, id: string): Promise<void> {
@@ -414,8 +300,4 @@ export class PrintJobsRepository {
 
 function scheduleParameters(schedule: PrintJobScheduleKey) {
   return [schedule.examineeNo, schedule.examDate, schedule.examTime, schedule.periodName, schedule.admissionName];
-}
-
-function assertSingleCopiedRow(result: ResultSetHeader, message: string): void {
-  if (result.affectedRows !== 1) throw new Error(message);
 }

@@ -136,7 +136,9 @@ export function CandidateUploadPolicySection({ disabled, mode, policy, onChange 
       <div>
         <strong>기존 {mode === "photos" ? "사진" : "데이터"} 처리</strong>
         <span>
-          {mode === "photos" ? "수험번호가 같은 수험생 기준" : "수험번호·시험날짜·시험시간·교시명이 같은 데이터 기준"}
+          {mode === "photos"
+            ? "수험번호가 같은 수험생 기준"
+            : "수험번호·시험날짜·시험시간·교시명·고사건물명이 같은 데이터 기준"}
         </span>
       </div>
       {candidateUploadPolicies.map((option) => (

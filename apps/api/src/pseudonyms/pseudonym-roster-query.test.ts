@@ -13,7 +13,9 @@ const rows: CanonicalPseudonymRosterRow[] = [
     unitName: "디자인학부",
     majorName: "시각디자인",
     assignedAt: "26.09.01. 09:02:00",
-    status: "등록",
+    printedAt: "-",
+    attendance: "-",
+    status: "진행",
   },
   {
     pseudonymNumber: "10",
@@ -22,7 +24,9 @@ const rows: CanonicalPseudonymRosterRow[] = [
     unitName: "디자인학부",
     majorName: "산업디자인",
     assignedAt: "26.09.01. 09:01:00",
-    status: "등록",
+    printedAt: "-",
+    attendance: "-",
+    status: "진행",
   },
   {
     pseudonymNumber: "-",
@@ -31,6 +35,8 @@ const rows: CanonicalPseudonymRosterRow[] = [
     unitName: "체육학부",
     majorName: "-",
     assignedAt: "-",
+    printedAt: "-",
+    attendance: "-",
     status: "대기",
   },
 ];
@@ -39,7 +45,7 @@ describe("pseudonym roster export query", () => {
   it("applies the same exact-value filters and Korean numeric sort used by the client grid", () => {
     expect(
       applyOperationRosterQuery(rows, {
-        filters: [{ field: "status", mode: "include", values: ["등록"] }],
+        filters: [{ field: "status", mode: "include", values: ["진행"] }],
         sort: { field: "pseudonymNumber", direction: "desc" },
       }),
     ).toEqual([
@@ -50,20 +56,20 @@ describe("pseudonym roster export query", () => {
 
   it("builds only allowlisted parameterized filter predicates", () => {
     const result = buildOperationRosterFilterSql([
-      { field: "status", mode: "include", values: ["등록", "결시"] },
+      { field: "status", mode: "include", values: ["진행", "마감"] },
       { field: "majorName", mode: "exclude", values: ["-"] },
     ]);
 
-    expect(result.sql).toContain("CAST(CASE WHEN");
+    expect(result.sql).toContain("CAST(CASE");
     expect(result.sql).toContain("IN (?, ?)");
     expect(result.sql).toContain("CAST(COALESCE(NULLIF(cr.major, ''), '-') AS BINARY) NOT IN (?)");
-    expect(result.parameters).toEqual(["등록", "결시", "-"]);
+    expect(result.parameters).toEqual(["진행", "마감", "-"]);
   });
 
   it("rejects duplicate or runtime-forged fields even when called outside the HTTP validation pipe", () => {
     expect(() =>
       buildOperationRosterFilterSql([
-        { field: "status", mode: "include", values: ["등록"] },
+        { field: "status", mode: "include", values: ["진행"] },
         { field: "status", mode: "exclude", values: ["대기"] },
       ]),
     ).toThrow("중복");

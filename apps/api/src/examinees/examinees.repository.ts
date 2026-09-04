@@ -19,7 +19,8 @@ export class ExamineesRepository {
       `SELECT DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS date, cr.start_time AS time,
               cr.period_name AS periodName, cr.admission AS admissionName,
               GROUP_CONCAT(DISTINCT NULLIF(cr.building_name, '') ORDER BY cr.building_name SEPARATOR '\u001f') AS buildingNames,
-              COUNT(*) AS candidateCount, COUNT(pa.id) AS assignedCount
+              COUNT(*) AS candidateCount,
+              SUM(CASE WHEN pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL THEN 1 ELSE 0 END) AS assignedCount
        FROM candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        WHERE ${access.sql}
@@ -39,7 +40,7 @@ export class ExamineesRepository {
     const [rows] = await this.pool.execute<ExamineeRow[]>(
       `${examineeSelectSql}
        WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.admission = ?
-         AND e.status = 'ACTIVE'
+         AND cr.status = 'ACTIVE'
        ORDER BY cr.designated_sort, cr.examinee_no`,
       [scope.date, scope.time, scope.periodName, admissionName],
     );
@@ -50,7 +51,7 @@ export class ExamineesRepository {
     const [rows] = await this.pool.execute<ExamineeRow[]>(
       `${examineeSelectSql}
        WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? AND e.status = 'ACTIVE' LIMIT 1`,
+         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE' LIMIT 1`,
       [examineeNo, scope.date, scope.time, scope.periodName, admissionName],
     );
     return rows[0] ?? null;
@@ -64,8 +65,7 @@ export class ExamineesRepository {
               cr.period_name AS periodName, cr.admission AS admissionName,
               cr.building_name AS buildingName, cr.room_name AS roomName
        FROM candidate_record cr
-       INNER JOIN examinee e ON e.examinee_no = cr.examinee_no
-       WHERE cr.examinee_no = ? AND e.status = 'ACTIVE' AND ${access.sql}
+       WHERE cr.examinee_no = ? AND cr.status = 'ACTIVE' AND ${access.sql}
        ORDER BY cr.exam_date, cr.start_time, cr.period_name, cr.admission`,
       [examineeNo, ...access.params],
     );
@@ -89,11 +89,13 @@ const examineeSelectSql = `SELECT cr.id, cr.examinee_no AS examineeNo, cr.name,
   DATE_FORMAT(cr.birth_date, '%Y-%m-%d') AS birthDate,
   DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate,
   cr.room_name AS roomName, COALESCE(cr.designated_sort, '') AS seatNo,
-  CONCAT('EX', cr.examinee_no) AS labelBarcode,
+  cr.label_barcode AS labelBarcode,
   NULLIF(cr.temporary_no, '') AS preassignedNumber,
   (cr.temporary_no <> '') AS preassignedAvailable,
-  pa.pseudonym_no AS assignedNumber, pa.assignment_mode AS assignmentMode,
-  pa.assigned_at AS assignedAt, COALESCE(pa.is_absentee, FALSE) AS absent, e.status,
+  COALESCE(pa.pseudonym_no, NULLIF(cr.temporary_no, '')) AS assignedNumber,
+  COALESCE(pa.assignment_mode, CASE WHEN NULLIF(cr.temporary_no, '') IS NOT NULL THEN 'PREASSIGNED' END) AS assignmentMode,
+  pa.assigned_at AS assignedAt, printed.last_printed_at AS lastPrintedAt,
+  COALESCE(pa.is_absentee, FALSE) AS absent, cr.status,
   cr.start_time AS examTime, cr.end_time AS examEndTime,
   cr.period_name AS periodName, cr.period_code AS periodCode,
   cr.admission AS admissionName, cr.admission_code AS admissionCode,
@@ -101,7 +103,12 @@ const examineeSelectSql = `SELECT cr.id, cr.examinee_no AS examineeNo, cr.name,
   cr.major AS majorName, cr.major_code AS majorCode,
   cr.building_name AS buildingName, cr.building_code AS buildingCode,
   cr.room_code AS roomCode, cr.group_name AS groupName,
-  cr.opt1, cr.opt2, cr.opt3
+ cr.opt1, cr.opt2, cr.opt3
  FROM candidate_record cr
- INNER JOIN examinee e ON e.examinee_no = cr.examinee_no
- LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id`;
+ LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+ LEFT JOIN (
+   SELECT candidate_record_id, MAX(sent_at) AS last_printed_at
+   FROM print_job
+   WHERE label_type = 'PSEUDONYM_LABEL' AND status = 'SENT' AND candidate_record_id IS NOT NULL
+   GROUP BY candidate_record_id
+ ) printed ON printed.candidate_record_id = cr.id`;

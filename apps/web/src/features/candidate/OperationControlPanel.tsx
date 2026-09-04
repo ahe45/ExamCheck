@@ -119,6 +119,10 @@ export function OperationControlPanel({
             <dd>{candidate?.birthDate || "-"}</dd>
           </div>
           <div>
+            <dt>가번호</dt>
+            <dd>{assignment?.pseudonymNumber || candidate?.preassignedNumber || "-"}</dd>
+          </div>
+          <div>
             <dt>지원전형</dt>
             <dd>{candidate?.admissionName || "-"}</dd>
           </div>
@@ -154,17 +158,12 @@ export function OperationControlPanel({
           />
         </label>
       )}
-      {selectedMode !== "RANDOM" && (
+      {selectedMode !== "RANDOM" && selectedMode !== "PREASSIGNED" && (
         <section className="operator-primary-actions without-print">
           <button
             className="draw"
             onClick={onAssign}
-            disabled={
-              !canAssign ||
-              assigning ||
-              (selectedMode === "MANUAL" && !manualNumber) ||
-              (selectedMode === "PREASSIGNED" && !candidate?.preassignedAvailable)
-            }
+            disabled={!canAssign || assigning || (selectedMode === "MANUAL" && !manualNumber)}
           >
             <ConfirmButtonIcon />
             <span>

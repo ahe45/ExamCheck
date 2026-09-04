@@ -9,12 +9,14 @@ import type { PseudonymSetting } from "../../shared/api/pseudonyms";
 import { SystemSettingsPage, type SystemSettingsPageHandle } from "./SystemSettingsPage";
 
 const candidateApi = vi.hoisted(() => ({ fetchCandidates: vi.fn() }));
+const labelTemplateApi = vi.hoisted(() => ({ fetchLabelTemplates: vi.fn() }));
 const pseudonymApi = vi.hoisted(() => ({
   fetchPseudonymSetting: vi.fn(),
   updatePseudonymSetting: vi.fn(),
 }));
 
 vi.mock("../../shared/api/candidates", () => candidateApi);
+vi.mock("../../shared/api/label-templates", () => labelTemplateApi);
 vi.mock("../../shared/api/pseudonyms", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../shared/api/pseudonyms")>()),
   ...pseudonymApi,
@@ -44,6 +46,7 @@ beforeEach(() => {
   pseudonymApi.fetchPseudonymSetting.mockReset();
   pseudonymApi.updatePseudonymSetting.mockReset();
   candidateApi.fetchCandidates.mockResolvedValue([]);
+  labelTemplateApi.fetchLabelTemplates.mockResolvedValue({ dataTags: { groups: [] }, templates: [] });
   pseudonymApi.fetchPseudonymSetting.mockResolvedValue({ ...setting });
 });
 
@@ -109,23 +112,69 @@ describe("SystemSettingsPage optimistic save", () => {
 
     render(<SystemSettingsPage token="admin-token" admissionName="학생부교과 면접" embedded />);
 
-    const startInput = await screen.findByRole("spinbutton", { name: /시작 번호/ });
-    const endInput = screen.getByRole("spinbutton", { name: /종료 번호/ });
-    expect(startInput).toHaveValue(1001);
-    expect(endInput).toHaveValue(1002);
+    const startInput = await screen.findByRole("textbox", { name: /시작 번호/ });
+    const endInput = screen.getByRole("textbox", { name: /종료 번호/ });
+    expect(startInput).toHaveValue("1001");
+    expect(endInput).toHaveValue("1002");
 
-    fireEvent.change(startInput, { target: { value: "2501" } });
-    expect(endInput).toHaveValue(2502);
+    fireEvent.change(startInput, { target: { value: "0001" } });
+    expect(endInput).toHaveValue("0002");
 
     fireEvent.click(screen.getByRole("button", { name: /일괄 설정/ }));
     const bulkDialog = screen.getByRole("dialog", { name: "일괄 설정" });
     expect(bulkDialog).toBeInTheDocument();
-    expect(within(bulkDialog).getByRole("spinbutton", { name: /가번호 시작 번호/ })).toHaveFocus();
+    expect(within(bulkDialog).getByRole("textbox", { name: /가번호 시작 번호/ })).toHaveFocus();
     expect(document.body.style.overflow).toBe("hidden");
     expect(screen.getByRole("radio", { name: /동일 시작 번호 적용/ })).toBeChecked();
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "일괄 설정" })).not.toBeInTheDocument());
     expect(document.body.style.overflow).toBe("");
+  });
+
+  it("전형별로 사용할 라벨 양식을 저장한다", async () => {
+    pseudonymApi.fetchPseudonymSetting.mockResolvedValue({
+      ...setting,
+      assignmentMethod: "PREASSIGNED",
+      printPreassignedLabel: true,
+      labelTemplateId: null,
+    });
+    labelTemplateApi.fetchLabelTemplates.mockResolvedValue({
+      dataTags: { groups: [] },
+      templates: [
+        {
+          id: 21,
+          code: "LABEL_A",
+          name: "면접 전형 라벨",
+          description: null,
+          zplTemplate: "^XA^XZ",
+          layout: { widthMm: 75, heightMm: 45, dpi: 203, elements: [] },
+          active: true,
+          createdAt: "2026-09-04T00:00:00.000Z",
+          createdByLoginId: "admin",
+        },
+      ],
+    });
+    pseudonymApi.updatePseudonymSetting.mockImplementation(async (_token, input) => ({
+      ...setting,
+      ...input,
+      id: 11,
+      version: 8,
+      nextSequence: 1001,
+    }));
+    const ref = createRef<SystemSettingsPageHandle>();
+    render(<SystemSettingsPage ref={ref} token="admin-token" admissionName="학생부교과 면접" embedded />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "전형별 라벨 양식" }), {
+      target: { value: "21" },
+    });
+    await act(async () => {
+      await ref.current?.save();
+    });
+
+    expect(pseudonymApi.updatePseudonymSetting).toHaveBeenCalledWith(
+      "admin-token",
+      expect.objectContaining({ admissionName: "학생부교과 면접", labelTemplateId: 21 }),
+    );
   });
 });

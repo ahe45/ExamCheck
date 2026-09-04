@@ -15,6 +15,7 @@ export interface ExamineeRow extends RowDataPacket {
   assignedNumber: string | null;
   assignmentMode: "RANDOM" | "SEQUENTIAL" | "MANUAL" | "PREASSIGNED" | null;
   assignedAt: Date | null;
+  lastPrintedAt: Date | null;
   status: "ACTIVE" | "CANCELLED";
   examTime: string;
   examEndTime: string;

@@ -4,6 +4,7 @@ import type { PseudonymAssignment } from "../../shared/api/pseudonyms";
 import {
   drawViewModel,
   formatRegistrationTimestamp,
+  operationColumnsFor,
   operationRosterStats,
   operationRowValue,
   toOperationRows,
@@ -61,7 +62,10 @@ const assignment: PseudonymAssignment = {
 };
 
 describe("operation view model", () => {
-  it("API 수험생을 운영 행으로 변환하고 등록 상태와 통계를 계산한다", () => {
+  const openRegistration = { operationClosed: false, labelPrintingEnabled: false };
+  const closedRegistration = { operationClosed: true, labelPrintingEnabled: false };
+
+  it("API 수험생을 운영 행으로 변환하고 진행·마감 상태와 응시 통계를 계산한다", () => {
     const rows = toOperationRows([
       examinee({
         assignedNumber: assignment.pseudonymNumber,
@@ -74,10 +78,14 @@ describe("operation view model", () => {
 
     expect(rows[0].assignment).toMatchObject({ pseudonymNumber: "1017", alreadyAssigned: true });
     expect(rows[1].assignment).toBeNull();
-    expect(operationRowValue(rows[0], "status")).toBe("등록");
-    expect(operationRowValue(rows[1], "status")).toBe("결시");
-    expect(operationRowValue(rows[2], "status")).toBe("대기");
-    const stats = operationRosterStats(rows);
+    expect(operationRowValue(rows[0], "status", openRegistration)).toBe("진행");
+    expect(operationRowValue(rows[1], "status", openRegistration)).toBe("대기");
+    expect(operationRowValue(rows[2], "status", openRegistration)).toBe("대기");
+    expect(operationRowValue(rows[0], "attendance", openRegistration)).toBe("응시");
+    expect(operationRowValue(rows[0], "attendance", closedRegistration)).toBe("응시");
+    expect(operationRowValue(rows[1], "attendance", closedRegistration)).toBe("결시");
+    expect(operationRowValue(rows[0], "status", closedRegistration)).toBe("마감");
+    const stats = operationRosterStats(rows, closedRegistration);
     expect(stats).toMatchObject({
       totalCount: 3,
       assignedCount: 1,
@@ -86,11 +94,15 @@ describe("operation view model", () => {
     });
     expect(stats.attendanceRate).toBeCloseTo(100 / 3);
     expect(
-      toRosterExportQuery({ status: ["등록"], name: ["이예민", "이예민"] }, { key: "examineeNo", direction: "desc" }),
+      toRosterExportQuery(
+        { status: ["진행"], name: ["이예민", "이예민"] },
+        { key: "examineeNo", direction: "desc" },
+        operationColumnsFor(false),
+      ),
     ).toEqual({
       filters: [
         { field: "name", mode: "include", values: ["이예민"] },
-        { field: "status", mode: "include", values: ["등록"] },
+        { field: "status", mode: "include", values: ["진행"] },
       ],
       sort: { field: "examineeNo", direction: "desc" },
     });
@@ -100,6 +112,28 @@ describe("operation view model", () => {
     expect(formatRegistrationTimestamp("2026-08-27T23:04:05")).toBe("26.08.27. 23:04:05");
     expect(formatRegistrationTimestamp("")).toBe("-");
     expect(formatRegistrationTimestamp("알 수 없음")).toBe("알 수 없음");
+  });
+
+  it("업로드된 사전 가번호를 별도 불러오기 없이 등록 가번호로 표시한다", () => {
+    const [row] = toOperationRows([examinee({ preassignedNumber: "0821", preassignedAvailable: true })]);
+
+    expect(row.assignment).toMatchObject({ pseudonymNumber: "0821", mode: "PREASSIGNED", alreadyAssigned: true });
+    expect(operationRowValue(row, "pseudonymNumber", openRegistration)).toBe("0821");
+    expect(operationRowValue(row, "status", openRegistration)).toBe("진행");
+    expect(operationRowValue(row, "status", { ...openRegistration, labelPrintingEnabled: true })).toBe("대기");
+  });
+
+  it("라벨 출력 방식은 등록일시 대신 실제 출력일시를 표시한다", () => {
+    const [row] = toOperationRows([
+      examinee({ preassignedNumber: "0821", preassignedAvailable: true, lastPrintedAt: "2026-08-28T10:11:12" }),
+    ]);
+    const context = { operationClosed: false, labelPrintingEnabled: true };
+
+    expect(operationColumnsFor(true).map((column) => column.label)).toContain("출력일시");
+    expect(operationColumnsFor(true).map((column) => column.label)).not.toContain("등록일시");
+    expect(operationRowValue(row, "printedAt", context)).toBe("26.08.28. 10:11:12");
+    expect(operationRowValue(row, "attendance", context)).toBe("응시");
+    expect(operationRowValue(row, "status", context)).toBe("진행");
   });
 
   it("자동 추첨 카운트다운과 완료 상태 표시를 결정한다", () => {

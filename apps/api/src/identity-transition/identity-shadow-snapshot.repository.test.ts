@@ -121,7 +121,6 @@ describe("identity shadow snapshot repository", () => {
       labelType: "PSEUDONYM",
       businessRef: null,
       templateId: 1,
-      templateVersion: 1,
       copies: 1,
       payloadFormat: "ZPL",
       payload: "PRIVATE-ZPL-PAYLOAD",

@@ -42,7 +42,6 @@ const templateFindActive = vi.fn(async () => ({ code: "ROOM_LIST" }));
 const templateSave = vi.fn(async () => ({ id: 21, code: "ROOM_LIST" }));
 const templateUpdateActive = vi.fn(async () => ({ id: 21, code: "ROOM_LIST", active: false }));
 const printJobCreate = vi.fn(async () => ({ id: "11111111-1111-4111-8111-111111111111", status: "READY" }));
-const printJobReissue = vi.fn(async () => ({ id: "22222222-2222-4222-8222-222222222222", status: "READY" }));
 
 const candidatesServiceStub = { dashboardSummary: candidateDashboardSummary, import: candidateImport };
 const pseudonymsServiceStub = {
@@ -55,7 +54,7 @@ const formTemplatesServiceStub = {
   save: templateSave,
   updateActive: templateUpdateActive,
 };
-const printJobsServiceStub = { create: printJobCreate, reissue: printJobReissue };
+const printJobsServiceStub = { create: printJobCreate };
 
 @Module({
   controllers: [CandidatesController, PseudonymsController, FormTemplatesController, PrintJobsController],
@@ -99,7 +98,6 @@ describe("business controller HTTP boundaries", () => {
     templateSave.mockClear();
     templateUpdateActive.mockClear();
     printJobCreate.mockClear();
-    printJobReissue.mockClear();
   });
 
   afterAll(async () => {
@@ -119,32 +117,15 @@ describe("business controller HTTP boundaries", () => {
     expect(pseudonymAssign).not.toHaveBeenCalled();
   });
 
-  it("allows an operator to assign a pseudonym, create a print job and request a safe-code retry", async () => {
+  it("allows an operator to assign a pseudonym and create a print job", async () => {
     const operator = requireUser(2);
     const token = tokenFor(operator);
     const assignment = await jsonRequest("/pseudonyms/assignments", "POST", assignmentInput(), token);
     const printJob = await jsonRequest("/print-jobs", "POST", printJobInput(), token);
-    const reissueInput = {
-      idempotencyKey: "22222222-2222-4222-8222-222222222222",
-      reasonCode: "CLIENT_SEND_RETRY",
-    };
-    const reissue = await jsonRequest(
-      "/print-jobs/11111111-1111-4111-8111-111111111111/reissue",
-      "POST",
-      reissueInput,
-      token,
-    );
-
     expect(assignment.status).toBe(201);
     expect(printJob.status).toBe(201);
-    expect(reissue.status).toBe(201);
     expect(pseudonymAssign).toHaveBeenCalledWith(expect.objectContaining(assignmentInput()), operator);
     expect(printJobCreate).toHaveBeenCalledWith(expect.objectContaining(printJobInput()), operator);
-    expect(printJobReissue).toHaveBeenCalledWith(
-      "11111111-1111-4111-8111-111111111111",
-      expect.objectContaining(reissueInput),
-      operator,
-    );
   });
 
   it("allows an administrator to update settings, save a template and import candidates", async () => {
@@ -267,13 +248,6 @@ describe("business controller HTTP boundaries", () => {
       operatorToken,
       "invalid-body",
     );
-    const invalidReissue = await jsonRequest(
-      "/print-jobs/11111111-1111-4111-8111-111111111111/reissue",
-      "POST",
-      { idempotencyKey: "22222222-2222-4222-8222-222222222222", reasonCode: "contains candidate name" },
-      operatorToken,
-      "invalid-reissue",
-    );
 
     await expectValidationEnvelope(invalidPath, "/form-templates/lower-case", "invalid-path", "code must match");
     await expectValidationEnvelope(invalidQuery, "/candidates/import", "invalid-query", "policy must be one of");
@@ -290,16 +264,9 @@ describe("business controller HTTP boundaries", () => {
       "수험생 데이터 미리보기 토큰을 확인해 주세요.",
     );
     await expectValidationEnvelope(invalidBody, "/pseudonyms/assignments", "invalid-body", "mode must be one of");
-    await expectValidationEnvelope(
-      invalidReissue,
-      "/print-jobs/11111111-1111-4111-8111-111111111111/reissue",
-      "invalid-reissue",
-      "reasonCode must be one of",
-    );
     expect(templateFindActive).not.toHaveBeenCalled();
     expect(candidateImport).not.toHaveBeenCalled();
     expect(pseudonymAssign).not.toHaveBeenCalled();
-    expect(printJobReissue).not.toHaveBeenCalled();
   });
 
   it("rejects malformed aggregate read query DTOs before calling services", async () => {

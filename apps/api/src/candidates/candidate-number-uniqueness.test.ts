@@ -45,6 +45,7 @@ function candidate(overrides: Partial<CandidateInput> = {}): CandidateInput {
     unit: "디자인학부",
     major: "",
     building: "본관",
+    waitingRoom: "본관 대기실",
     room: "101호",
     examineeNo: "10001",
     temporaryNo: "",

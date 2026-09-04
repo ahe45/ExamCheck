@@ -19,6 +19,7 @@
   padding: clamp(14px, 1.2vw, 28px);
 }
 .admission-settings-card {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
@@ -31,6 +32,23 @@
   background: #fff;
   text-align: left;
   box-shadow: 0 10px 24px rgba(25, 38, 67, 0.045);
+}
+.admission-settings-card-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.admission-settings-card-open:focus-visible {
+  outline: 3px solid rgba(45, 99, 245, 0.35);
+  outline-offset: -4px;
 }
 .admission-settings-card:hover {
   border-color: #aec1f4;
@@ -246,23 +264,70 @@
 }
 .admission-settings-card > footer {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
+  gap: 11px;
   padding: clamp(11px, 0.75vw, 19px) var(--admission-card-space);
   border-top: 1px solid #e6eaf0;
   background: #fafbfd;
 }
-.admission-settings-card > footer span {
+.admission-settings-card-building {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+}
+.admission-settings-card-building span {
   color: #8793a4;
   font-size: var(--admission-card-xs);
 }
-.admission-settings-card > footer strong {
+.admission-settings-card-building strong {
   overflow: hidden;
   color: #51627a;
   font-size: var(--admission-card-sm);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.admission-settings-card-actions {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.admission-settings-card-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 10px;
+  color: #53647c;
+  border: 1px solid #d9e1ec;
+  border-radius: 9px;
+  background: #fff;
+  font-size: var(--admission-card-sm);
+  font-weight: 800;
+}
+.exam-admin-app .admission-settings-card > footer .admission-settings-card-actions button span {
+  color: inherit;
+  font-size: inherit;
+}
+.admission-settings-card-actions button:hover {
+  color: #285bd7;
+  border-color: #b9c9ee;
+  background: #f4f7ff;
+}
+.admission-settings-card-actions button.danger {
+  color: #a43b35;
+  border-color: #efcfcc;
+}
+.admission-settings-card-actions button.danger:hover {
+  color: #922f2a;
+  border-color: #e8b8b4;
+  background: #fff4f3;
+}
+.admission-settings-card-actions .button-action-icon {
+  width: 15px;
+  height: 15px;
 }
 .admission-settings-empty {
   display: grid;
@@ -302,7 +367,8 @@
 .admission-settings-modal {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: min(1580px, 100%);
+  width: min(1580px, calc(100vw - 36px));
+  max-width: 100%;
   height: min(920px, calc(100vh - 36px));
   overflow: hidden;
   border: 1px solid #d8e0ea;
@@ -361,6 +427,7 @@
 }
 .admission-settings-modal-body {
   min-height: 0;
+  overflow-x: hidden;
   overflow: hidden;
 }
 .system-settings-view.embedded {
@@ -429,6 +496,188 @@
   padding: 13px 20px 17px;
   border-top: 1px solid #e6eaf0;
   background: #fafbfd;
+}
+
+.admission-data-action-modal {
+  width: min(680px, 100%);
+  overflow: hidden;
+  border: 1px solid #dce3ed;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(20, 31, 52, 0.26);
+}
+.admission-data-action-modal > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 19px 20px;
+  border-bottom: 1px solid #e6eaf0;
+}
+.admission-data-action-modal > header > span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  color: #285bd7;
+  border-radius: 12px;
+  background: #edf3ff;
+  font-size: 17px;
+  font-weight: 900;
+}
+.admission-data-action-modal > header > span .button-action-icon {
+  width: 21px;
+  height: 21px;
+}
+.admission-data-action-modal > header p {
+  margin: 0 0 4px;
+  color: #2d63f5;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+}
+.admission-data-action-modal > header h2 {
+  margin: 0;
+  color: #26344b;
+  font-size: 17px;
+}
+.admission-data-action-modal > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid #e6eaf0;
+  background: #fafbfd;
+}
+.admission-operation-reset-description,
+.admission-delete-warning {
+  display: grid;
+  gap: 5px;
+  margin: 18px 20px 12px;
+  padding: 12px 14px;
+  color: #68768a;
+  border-radius: 10px;
+  background: #f5f7fa;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.admission-operation-reset-description strong {
+  color: #35445b;
+  font-size: 12px;
+}
+.admission-operation-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 20px 10px;
+  color: #65758c;
+  font-size: 11px;
+}
+.admission-operation-list-head label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 800;
+}
+.admission-operation-list-head strong {
+  color: #2d63f5;
+}
+.admission-operation-list {
+  display: grid;
+  gap: 7px;
+  max-height: min(390px, 48vh);
+  margin: 0 20px 18px;
+  overflow-y: auto;
+}
+.admission-operation-list > p {
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  margin: 0;
+  color: #7b889a;
+  border: 1px dashed #d7dee8;
+  border-radius: 11px;
+  font-size: 12px;
+}
+.admission-operation-list > label {
+  display: grid;
+  grid-template-columns: auto 90px minmax(130px, 0.8fr) minmax(130px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 9px 11px;
+  color: #617188;
+  border: 1px solid #e1e6ed;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 10px;
+}
+.admission-operation-list > label:hover,
+.admission-operation-list > label.selected {
+  border-color: #b9caf3;
+  background: #f6f8ff;
+}
+.admission-operation-list > label strong {
+  color: #314058;
+  font-size: 11px;
+}
+.admission-operation-list > label small {
+  color: #7f8da1;
+  text-align: right;
+  white-space: nowrap;
+}
+.admission-operation-date {
+  color: #52647e;
+  font-weight: 800;
+}
+.admission-data-action-error {
+  margin: 0 20px 12px;
+  padding: 10px 12px;
+  color: #a63a32;
+  border-radius: 9px;
+  background: #fff0ef;
+  font-size: 11px;
+}
+.admission-data-action-modal.delete {
+  width: min(500px, 100%);
+}
+.admission-data-action-modal.delete > header > span {
+  color: #b23d35;
+  background: #fff0ef;
+}
+.admission-data-action-modal.delete > header p {
+  color: #b23d35;
+}
+.admission-delete-warning {
+  color: #8b4a44;
+  background: #fff4f3;
+}
+.admission-delete-warning strong {
+  color: #a2352f;
+  font-size: 12px;
+}
+.admission-delete-password {
+  display: grid;
+  gap: 7px;
+  margin: 18px 20px;
+  color: #43536b;
+  font-size: 11px;
+  font-weight: 800;
+}
+.admission-delete-password input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  color: #26344b;
+  border: 1px solid #d8e0ea;
+  border-radius: 10px;
+  outline: none;
+  font: inherit;
+}
+.admission-delete-password input:focus {
+  border-color: #829feb;
+  box-shadow: 0 0 0 3px rgba(45, 99, 245, 0.1);
 }
 
 .system-settings-view {
@@ -784,7 +1033,13 @@
   padding-right: 270px;
 }
 .assignment-method-row.preassigned .assignment-method-row-choice {
-  padding-right: 170px;
+  min-width: 0;
+  padding-right: 12px;
+}
+.assignment-method-row.preassigned {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 40%);
+  align-items: center;
 }
 .assignment-method-row-choice > span {
   display: grid;
@@ -834,11 +1089,14 @@
   border: 6px solid #2d63f5;
 }
 .assignment-row-print-option {
-  position: absolute;
-  top: 50%;
-  right: 54px;
+  position: static;
   z-index: 2;
-  transform: translateY(-50%);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 18px 9px 0;
 }
 .assignment-row-auto-option {
   position: absolute;
@@ -1580,6 +1838,92 @@
   color: #9e3029;
   border-color: #dc9f9a;
   background: #fff0ef;
+}
+
+.label-template-setting-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+}
+
+.label-template-setting-field > span {
+  color: var(--exam-ink, #25334a);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.label-template-setting-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 34px 0 12px;
+  border: 1px solid #ccd6e5;
+  border-radius: 8px;
+  background: #fff;
+  color: #26354c;
+  font: inherit;
+}
+
+.label-template-setting-field small {
+  color: #748198;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1180px) {
+  .system-settings-top-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .admission-settings-modal-overlay {
+    padding: 10px;
+  }
+  .admission-settings-modal {
+    width: calc(100vw - 20px);
+    height: calc(100vh - 20px);
+    border-radius: 14px;
+  }
+  .admission-settings-modal > header {
+    gap: 12px;
+    min-height: 72px;
+    padding: 12px 14px;
+  }
+  .admission-settings-modal > header h2 {
+    font-size: 17px;
+  }
+  .admission-settings-modal > header span {
+    max-width: 58vw;
+  }
+  .admission-settings-modal-actions .exam-outline-button span {
+    display: none;
+  }
+  .system-settings-content {
+    padding: 10px;
+  }
+  .assignment-method-row.preassigned {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .assignment-row-print-option {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 0 14px 14px 50px;
+  }
+}
+
+@media (max-width: 520px) {
+  .assignment-method-row.draw .assignment-method-row-choice {
+    padding-right: 18px;
+  }
+  .assignment-row-auto-option {
+    position: static;
+    padding: 0 14px 14px 50px;
+    transform: none;
+  }
+  .assignment-row-print-option {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .template-card-status-switch {
   display: inline-flex;

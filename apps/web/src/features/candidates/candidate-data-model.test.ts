@@ -20,6 +20,7 @@ describe("candidate data model", () => {
       "unit",
       "major",
       "building",
+      "waitingRoom",
       "room",
       "examineeNo",
       "temporaryNo",

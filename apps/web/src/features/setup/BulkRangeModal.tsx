@@ -22,8 +22,8 @@ export function BulkRangeModal({
   onClose,
   onApply,
 }: {
-  bulkStart: number;
-  onBulkStartChange(value: number): void;
+  bulkStart: string;
+  onBulkStartChange(value: string): void;
   bulkMode: BulkRangeMode;
   onBulkModeChange(value: BulkRangeMode): void;
   bulkCriteria: BulkRangeCriterion[];
@@ -54,10 +54,12 @@ export function BulkRangeModal({
           <label className="bulk-start-field">
             가번호 시작 번호
             <input
-              type="number"
-              min="1"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={9}
               value={bulkStart}
-              onChange={(event) => onBulkStartChange(Number(event.target.value))}
+              onChange={(event) => onBulkStartChange(event.target.value.replace(/\D/g, "").slice(0, 9))}
               autoFocus
             />
             <small>각 범위의 종료 번호는 일정별 수험생 수에 맞춰 자동 계산됩니다.</small>
@@ -131,7 +133,7 @@ export function BulkRangeModal({
             type="button"
             className="exam-primary-button"
             onClick={onApply}
-            disabled={bulkStart < 1 || (bulkMode === "CONTINUOUS" && !bulkCriteria.length)}
+            disabled={Number(bulkStart) < 1 || (bulkMode === "CONTINUOUS" && !bulkCriteria.length)}
           >
             <ConfirmButtonIcon />
             <span>적용</span>

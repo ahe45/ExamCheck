@@ -117,6 +117,30 @@ const validRecords: MutationAuditRecord[] = [
     },
   },
   {
+    eventType: "PSEUDONYM_OPERATIONS_RESET",
+    actorUserId: 1,
+    details: {
+      admissionName: "학생부교과",
+      scheduleCount: 2,
+      deletedAssignmentCount: 20,
+      deletedOperationCount: 2,
+      resetRangeCount: 4,
+    },
+  },
+  {
+    eventType: "ADMISSION_DELETED",
+    actorUserId: 1,
+    details: {
+      admissionName: "학생부교과",
+      deletedCandidateCount: 30,
+      deletedAssignmentCount: 20,
+      deletedOperationCount: 2,
+      deletedSettingCount: 1,
+      deletedRangeCount: 4,
+      deletedAccountAssignmentCount: 1,
+    },
+  },
+  {
     eventType: "PSEUDONYM_ASSIGNED",
     actorUserId: 1,
     details: {

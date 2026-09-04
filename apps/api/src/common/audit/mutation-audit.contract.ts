@@ -70,6 +70,23 @@ export interface MutationAuditDetailsByEvent {
     code: string;
     templateId: number;
   };
+  LABEL_TEMPLATE_SAVED: {
+    code: string;
+    templateId: number;
+    active: boolean;
+  };
+  LABEL_TEMPLATE_METADATA_UPDATED: {
+    code: string;
+    templateId: number;
+  };
+  LABEL_TEMPLATE_AVAILABILITY_UPDATED: {
+    code: string;
+    templateId: number;
+  };
+  LABEL_TEMPLATE_DELETED: {
+    code: string;
+    templateId: number;
+  };
   PSEUDONYM_SETTING_UPDATED: {
     settingId: number;
     version: number;
@@ -98,6 +115,22 @@ export interface MutationAuditDetailsByEvent {
     periodName: string;
     admissionName: string;
     deletedAbsenteeCount: number;
+  };
+  PSEUDONYM_OPERATIONS_RESET: {
+    admissionName: string;
+    scheduleCount: number;
+    deletedAssignmentCount: number;
+    deletedOperationCount: number;
+    resetRangeCount: number;
+  };
+  ADMISSION_DELETED: {
+    admissionName: string;
+    deletedCandidateCount: number;
+    deletedAssignmentCount: number;
+    deletedOperationCount: number;
+    deletedSettingCount: number;
+    deletedRangeCount: number;
+    deletedAccountAssignmentCount: number;
   };
   PSEUDONYM_ASSIGNED: {
     assignmentId: number;
@@ -278,6 +311,23 @@ const EVENT_CONTRACTS = {
     code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
     templateId: positiveInteger,
   }),
+  LABEL_TEMPLATE_SAVED: fields({
+    code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
+    templateId: positiveInteger,
+    active: booleanValue,
+  }),
+  LABEL_TEMPLATE_METADATA_UPDATED: fields({
+    code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
+    templateId: positiveInteger,
+  }),
+  LABEL_TEMPLATE_AVAILABILITY_UPDATED: fields({
+    code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
+    templateId: positiveInteger,
+  }),
+  LABEL_TEMPLATE_DELETED: fields({
+    code: string({ min: 2, max: 100, pattern: /^[A-Z0-9_]+$/ }),
+    templateId: positiveInteger,
+  }),
   PSEUDONYM_SETTING_UPDATED: fields({
     settingId: positiveInteger,
     version: positiveInteger,
@@ -306,6 +356,22 @@ const EVENT_CONTRACTS = {
     periodName: shortIdentifier,
     admissionName: identifier,
     deletedAbsenteeCount: nonNegativeInteger,
+  }),
+  PSEUDONYM_OPERATIONS_RESET: fields({
+    admissionName: identifier,
+    scheduleCount: positiveInteger,
+    deletedAssignmentCount: nonNegativeInteger,
+    deletedOperationCount: nonNegativeInteger,
+    resetRangeCount: nonNegativeInteger,
+  }),
+  ADMISSION_DELETED: fields({
+    admissionName: identifier,
+    deletedCandidateCount: nonNegativeInteger,
+    deletedAssignmentCount: nonNegativeInteger,
+    deletedOperationCount: nonNegativeInteger,
+    deletedSettingCount: nonNegativeInteger,
+    deletedRangeCount: nonNegativeInteger,
+    deletedAccountAssignmentCount: nonNegativeInteger,
   }),
   PSEUDONYM_ASSIGNED: fields({
     assignmentId: positiveInteger,

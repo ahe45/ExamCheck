@@ -100,6 +100,16 @@ describe("PseudonymsRepository SQL mapping", () => {
     expect(executor.calls.every((call) => call.parameters?.join("|") === operationParameters().join("|"))).toBe(true);
   });
 
+  it("excludes uploaded preassigned numbers from the absentee candidate query when requested", async () => {
+    const repository = new PseudonymsRepository();
+    const executor = new FixtureExecutor([[]]);
+
+    await repository.listUnassignedCandidatesForUpdate(executor, operationScope, true);
+
+    expect(executor.calls[0]?.sql).toContain("pa.id IS NULL AND NULLIF(cr.temporary_no, '') IS NULL");
+    expect(executor.calls[0]?.parameters).toEqual(operationParameters());
+  });
+
   it("loads reserved numbers with the configured schedule scope key", async () => {
     const repository = new PseudonymsRepository();
     const executor = new FixtureExecutor([[{ pseudonymNumber: "1001" }, { pseudonymNumber: "1002" }]]);
@@ -125,12 +135,12 @@ describe("PseudonymsRepository SQL mapping", () => {
       operationScope.admissionName,
       pseudonymUniquenessScopeKey("SCHEDULE", schedule),
       "SCHEDULE",
+      operationScope.examName,
       operationScope.admissionName,
       "SCHEDULE",
       operationScope.examDate,
       operationScope.examTime,
       operationScope.periodName,
-      operationScope.examName,
     ]);
     expect(executor.calls[0]?.sql).toContain("candidate_record_id IS NULL");
   });
@@ -140,20 +150,22 @@ describe("PseudonymsRepository SQL mapping", () => {
     const executor = new FixtureExecutor([[]]);
 
     await repository.listOperationRoster(executor, operationScope, [
-      { field: "status", mode: "include", values: ["등록"] },
+      { field: "status", mode: "include", values: ["진행"] },
       { field: "majorName", mode: "exclude", values: ["-"] },
     ]);
 
     const call = executor.calls[0];
-    expect(call?.sql).toContain("INNER JOIN examinee e");
-    expect(call?.sql).toContain("e.exam_name = ?");
-    expect(call?.sql).toContain("e.status = 'ACTIVE'");
+    expect(call?.sql).not.toContain("JOIN examinee");
+    expect(call?.sql).toContain("cr.exam_name = ?");
+    expect(call?.sql).toContain("cr.status = 'ACTIVE'");
     expect(call?.sql).toContain("cr.exam_date = ?");
     expect(call?.sql).toContain("cr.start_time = ?");
     expect(call?.sql).toContain("cr.period_name = ?");
     expect(call?.sql).toContain("cr.admission = ?");
+    expect(call?.sql).toContain("LEFT JOIN pseudonym_operation po");
+    expect(call?.sql).toContain("MAX(sent_at) AS last_printed_at");
     expect(call?.sql).toContain("LIMIT 10001");
-    expect(call?.parameters).toEqual([...operationParameters(), "등록", "-"]);
+    expect(call?.parameters).toEqual([...operationParameters(), "진행", "-"]);
   });
 
   it("resolves assignment candidates by candidate_record schedule fields", async () => {
@@ -197,7 +209,7 @@ describe("PseudonymsRepository SQL mapping", () => {
 
     const call = executor.calls[0];
     expect(call?.sql).toContain("cr.id AS candidateRecordId");
-    expect(call?.sql).toContain("COALESCE(NULLIF(?, ''), e.exam_name) AS examName");
+    expect(call?.sql).toContain("COALESCE(NULLIF(?, ''), cr.exam_name) AS examName");
     expect(call?.sql).toContain("cr.name");
     expect(call?.sql).toContain("NULLIF(cr.temporary_no");
     expect(call?.sql).toContain("cr.building_name AS building");
@@ -233,7 +245,7 @@ describe("PseudonymsRepository SQL mapping", () => {
       { forUpdate: false },
     );
 
-    expect(executor.calls[0]?.sql).toContain("COALESCE(NULLIF(?, ''), e.exam_name) AS examName");
+    expect(executor.calls[0]?.sql).toContain("COALESCE(NULLIF(?, ''), cr.exam_name) AS examName");
     expect(executor.calls[0]?.parameters?.[0]).toBe("");
   });
 
@@ -270,6 +282,93 @@ describe("PseudonymsRepository SQL mapping", () => {
       expect.stringContaining("INSERT INTO pseudonym_setting"),
       expect.stringContaining("DELETE pa FROM pseudonym_assignment"),
     ]);
+  });
+
+  it("lists admission schedules and scopes operation reset mutations to the selected schedule", async () => {
+    const repository = new PseudonymsRepository();
+    const executor = new FixtureExecutor([
+      [
+        {
+          examDate: "2026-09-01",
+          examTime: "09:00",
+          periodName: "1교시",
+          buildingNames: "본관\u001f별관",
+          candidateCount: "12",
+          assignedCount: "8",
+          closed: 1,
+        },
+      ],
+      { affectedRows: 8 } as ResultSetHeader,
+      { affectedRows: 1 } as ResultSetHeader,
+      { affectedRows: 2 } as ResultSetHeader,
+    ]);
+    const schedules = [{ examDate: "2026-09-01", examTime: "09:00", periodName: "1교시" }];
+
+    await expect(
+      repository.listAdmissionOperationSchedules(executor, "2026년도 자격시험", "일반전형"),
+    ).resolves.toEqual([
+      {
+        examDate: "2026-09-01",
+        examTime: "09:00",
+        periodName: "1교시",
+        buildingNames: ["본관", "별관"],
+        candidateCount: 12,
+        assignedCount: 8,
+        closed: true,
+      },
+    ]);
+    await expect(
+      repository.deleteScheduleAssignments(executor, "2026년도 자격시험", "일반전형", schedules),
+    ).resolves.toBe(8);
+    await expect(
+      repository.deleteScheduleOperations(executor, "2026년도 자격시험", "일반전형", schedules),
+    ).resolves.toBe(1);
+    await expect(
+      repository.resetScheduleRangeSequences(executor, "2026년도 자격시험", "일반전형", schedules, 7),
+    ).resolves.toBe(2);
+
+    expect(executor.calls[1]?.sql).toContain("DELETE pa FROM pseudonym_assignment");
+    expect(executor.calls[1]?.parameters).toEqual([
+      "2026년도 자격시험",
+      "일반전형",
+      "2026년도 자격시험",
+      "일반전형",
+      "2026-09-01",
+      "09:00",
+      "1교시",
+    ]);
+    expect(executor.calls[2]?.sql).toContain("DELETE FROM pseudonym_operation");
+    expect(executor.calls[3]?.sql).toContain("SET ptr.next_sequence = ptr.range_start");
+    expect(executor.calls[3]?.parameters).toEqual([7, "2026년도 자격시험", "일반전형", "2026-09-01", "09:00", "1교시"]);
+  });
+
+  it("deletes all admission-owned records through explicit parameterized statements", async () => {
+    const repository = new PseudonymsRepository();
+    const executor = new FixtureExecutor([
+      [{ passwordHash: "hash" }],
+      [{ id: 11 }, { id: 12 }],
+      { affectedRows: 2 } as ResultSetHeader,
+      { affectedRows: 1 } as ResultSetHeader,
+      { affectedRows: 3 } as ResultSetHeader,
+      { affectedRows: 1 } as ResultSetHeader,
+      { affectedRows: 1 } as ResultSetHeader,
+      { affectedRows: 2 } as ResultSetHeader,
+    ]);
+
+    await expect(repository.findUserPasswordForUpdate(executor, 7)).resolves.toBe("hash");
+    await expect(repository.lockAdmissionCandidateIds(executor, "일반전형")).resolves.toEqual([11, 12]);
+    await repository.deleteAdmissionAssignments(executor, "일반전형");
+    await repository.deleteAdmissionOperations(executor, "일반전형");
+    await repository.deleteAdmissionTimeRanges(executor, "일반전형");
+    await repository.deleteAdmissionSettings(executor, "일반전형");
+    await repository.deleteUserAdmissionAssignments(executor, "일반전형");
+    await repository.deleteAdmissionCandidates(executor, "일반전형");
+
+    expect(executor.calls).toHaveLength(8);
+    expect(executor.calls[0]?.sql).toContain("password_hash AS passwordHash");
+    expect(executor.calls[0]?.sql).toContain("FOR UPDATE");
+    expect(executor.calls[1]?.sql).toContain("candidate_record");
+    expect(executor.calls.slice(2).every((call) => call.parameters?.includes("일반전형"))).toBe(true);
   });
 });
 

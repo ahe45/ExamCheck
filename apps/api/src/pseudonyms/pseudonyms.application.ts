@@ -9,6 +9,7 @@ import {
 } from "../common/database/mysql-errors.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import { IdentityBackfillProjectionRepository } from "../database/identity-backfill-projection.repository.js";
+import { displayPseudonymNumber } from "../identity-transition/identity-keys.js";
 import { IdentityTransitionCoordinator } from "../identity-transition/identity-transition-coordinator.js";
 import { pseudonymUniquenessScopeKey } from "../uniqueness/number-uniqueness.js";
 import {
@@ -255,7 +256,7 @@ export class AssignPseudonymUseCase {
       }
 
       assertAssignmentMethod(input.mode, setting.assignmentMethod);
-      let effectiveRange: Pick<SettingRow, "rangeStart" | "rangeEnd" | "nextSequence"> = setting;
+      let effectiveRange: Pick<SettingRow, "rangeStart" | "rangeEnd" | "displayWidth" | "nextSequence"> = setting;
       let timeRangeId: number | null = null;
       if (
         (setting.assignmentMethod === "DRAW" || setting.assignmentMethod === "SEQUENTIAL") &&
@@ -289,18 +290,21 @@ export class AssignPseudonymUseCase {
         uniquenessScope,
       );
       let number: number;
+      let displayWidth = effectiveRange.displayWidth ?? Math.max(String(effectiveRange.rangeStart).length, String(effectiveRange.rangeEnd).length);
       if (input.mode === "PREASSIGNED") {
         if (!candidate.preassignedNumber) throw new BadRequestException("이 수험생에게 미리 등록된 가번호가 없습니다.");
         number = parsePseudonym(candidate.preassignedNumber);
+        displayWidth = candidate.preassignedNumber.length;
       } else if (input.mode === "MANUAL") {
         if (!input.manualNumber) throw new BadRequestException("직접 부여할 가번호를 입력해 주세요.");
         number = parsePseudonym(input.manualNumber);
+        displayWidth = input.manualNumber.length;
         assertWithinRange(number, effectiveRange);
         const reservedOwner = await this.repository.findPreassignedOwner(
           connection,
           candidate.examName,
           candidate.admission || "",
-          String(number),
+          input.manualNumber,
           pseudonymNoUniqueness,
           uniquenessScope,
         );
@@ -322,12 +326,13 @@ export class AssignPseudonymUseCase {
       }
 
       assertWithinRange(number, effectiveRange);
+      const pseudonymNumber = displayPseudonymNumber(number, Math.max(displayWidth, String(number).length));
       const assignmentId = await this.repository.insertAssignment(
         connection,
         candidate,
         candidate.admission || "",
         uniquenessScopeKey,
-        String(number),
+        pseudonymNumber,
         input.mode,
         user.id,
       );
@@ -349,7 +354,7 @@ export class AssignPseudonymUseCase {
         candidate,
         {
           id: assignmentId,
-          pseudonymNumber: String(number),
+          pseudonymNumber,
           mode: input.mode,
           assignedAt: new Date().toISOString(),
         },
@@ -405,7 +410,11 @@ export class ChangePseudonymOperationStatusUseCase {
         const timeRanges = await this.repository.listTimeRangesForUpdate(connection, setting.id);
         const uniquenessScope = operationPseudonymScope(input);
         const uniquenessScopeKey = pseudonymUniquenessScopeKey(pseudonymNoUniqueness, uniquenessScope);
-        const candidates = await this.repository.listUnassignedCandidatesForUpdate(connection, input);
+        const candidates = await this.repository.listUnassignedCandidatesForUpdate(
+          connection,
+          input,
+          setting.assignmentMethod === "PREASSIGNED",
+        );
         const rangesByKey = new Map(timeRanges.map((range) => [scheduleIdentity(range), range]));
         const reserved = await this.repository.loadReservedNumbers(
           connection,
@@ -432,14 +441,18 @@ export class ChangePseudonymOperationStatusUseCase {
               : undefined;
           const effectiveRange = exactRange || setting;
           let number: number;
+          let displayWidth =
+            effectiveRange.displayWidth ??
+            Math.max(String(effectiveRange.rangeStart).length, String(effectiveRange.rangeEnd).length);
           if (setting.assignmentMethod === "PREASSIGNED" && candidate.preassignedNumber) {
             number = parsePseudonym(candidate.preassignedNumber);
+            displayWidth = candidate.preassignedNumber.length;
             assertWithinRange(number, effectiveRange);
             const owner = await this.repository.findPreassignedOwner(
               connection,
               input.examName,
               input.admissionName,
-              String(number),
+              candidate.preassignedNumber,
               pseudonymNoUniqueness,
               uniquenessScope,
             );
@@ -459,12 +472,13 @@ export class ChangePseudonymOperationStatusUseCase {
             );
           }
           reserved.add(number);
+          const pseudonymNumber = displayPseudonymNumber(number, Math.max(displayWidth, String(number).length));
           const assignmentId = await this.repository.insertAbsenteeAssignment(
             connection,
             candidate,
             input.admissionName,
             uniquenessScopeKey,
-            String(number),
+            pseudonymNumber,
             assignmentModeForSetting(setting.assignmentMethod),
             user.id,
           );

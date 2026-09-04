@@ -59,7 +59,6 @@ export class FormTemplatesService {
     try {
       await connection.beginTransaction();
       const existing = await this.repository.findForUpdate(connection, code);
-      if (existing?.deleted) await this.repository.restoreDeletedCode(connection, code);
 
       let templateId: number;
       if (existing) {
@@ -96,7 +95,7 @@ export class FormTemplatesService {
     try {
       await connection.beginTransaction();
       const template = await this.repository.findForUpdate(connection, code);
-      if (!template || template.deleted) throw new NotFoundException("수정할 양식을 찾을 수 없습니다.");
+      if (!template) throw new NotFoundException("수정할 양식을 찾을 수 없습니다.");
 
       await this.repository.updateMetadata(connection, template.id, input);
       await this.audit.record(connection, {
@@ -120,7 +119,7 @@ export class FormTemplatesService {
     try {
       await connection.beginTransaction();
       const template = await this.repository.findForUpdate(connection, code);
-      if (!template || template.deleted) throw new NotFoundException("사용 상태를 변경할 양식을 찾을 수 없습니다.");
+      if (!template) throw new NotFoundException("사용 상태를 변경할 양식을 찾을 수 없습니다.");
 
       await this.repository.updateActive(connection, template.id, input.active);
       await this.audit.record(connection, {
@@ -144,8 +143,8 @@ export class FormTemplatesService {
     try {
       await connection.beginTransaction();
       const template = await this.repository.findForUpdate(connection, code);
-      if (!template || template.deleted) throw new NotFoundException("삭제할 양식을 찾을 수 없습니다.");
-      await this.repository.markDeleted(connection, code, user.id);
+      if (!template) throw new NotFoundException("삭제할 양식을 찾을 수 없습니다.");
+      await this.repository.delete(connection, template.id);
       await this.audit.record(connection, {
         eventType: "FORM_TEMPLATE_DELETED",
         actorUserId: user.id,

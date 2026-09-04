@@ -14,6 +14,7 @@ import { CandidatesModule } from "./candidates/candidates.module.js";
 import { AccountsModule } from "./accounts/accounts.module.js";
 import { DeveloperSettingsModule } from "./developer-settings/developer-settings.module.js";
 import { IdentityTransitionModule } from "./identity-transition/identity-transition.module.js";
+import { LabelTemplatesModule } from "./label-templates/label-templates.module.js";
 
 @Module({})
 export class AppModule {
@@ -35,6 +36,7 @@ export class AppModule {
         CandidatesModule,
         AccountsModule,
         DeveloperSettingsModule,
+        LabelTemplatesModule,
       ],
     };
   }

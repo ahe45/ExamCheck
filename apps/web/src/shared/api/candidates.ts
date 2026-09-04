@@ -12,6 +12,7 @@ export type CandidateFieldKey =
   | "unit"
   | "major"
   | "building"
+  | "waitingRoom"
   | "room"
   | "examineeNo"
   | "temporaryNo"
@@ -41,6 +42,12 @@ const candidateDashboardAdmissionSchema = z.object({
   assignmentRate: percentageSchema,
   status: candidateDashboardAdmissionStatusSchema,
 });
+const candidateDashboardBreakdownsSchema = z.object({
+  admission: z.array(candidateDashboardAdmissionSchema),
+  building: z.array(candidateDashboardAdmissionSchema),
+  period: z.array(candidateDashboardAdmissionSchema),
+  waitingRoom: z.array(candidateDashboardAdmissionSchema),
+});
 export const candidateDashboardSummarySchema = z.object({
   totalCandidates: nonnegativeIntegerSchema,
   assignedCandidates: nonnegativeIntegerSchema,
@@ -52,6 +59,7 @@ export const candidateDashboardSummarySchema = z.object({
     progress: nonnegativeIntegerSchema,
     complete: nonnegativeIntegerSchema,
   }),
+  breakdowns: candidateDashboardBreakdownsSchema,
 });
 export type CandidateDashboardAdmissionStatus = z.infer<typeof candidateDashboardAdmissionStatusSchema>;
 export type CandidateDashboardAdmission = z.infer<typeof candidateDashboardAdmissionSchema>;

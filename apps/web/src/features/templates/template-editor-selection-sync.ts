@@ -266,14 +266,11 @@ export function bindTemplateEditorCanvasSelectionPersistence(
   const handlePointerDown = (event: PointerEvent) => {
     const target = event.target instanceof Element ? event.target : null;
     const pointerTarget = getPointerSelectionTarget(target, surfaceElement);
-    objectSelection = captureObjectSelection(surfaceElement, pointerTarget ? [pointerTarget] : []);
+    objectSelection = pointerTarget ? captureObjectSelection(surfaceElement, [pointerTarget]) : [];
 
     const targetGrid = target?.closest<HTMLElement>("[data-candidate-block-grid]");
-    const selectedGrid =
-      targetGrid ||
-      surfaceElement.querySelector<HTMLElement>("[data-candidate-block-grid].is-selected-candidate-block-grid");
-    selectedGridIndex = selectedGrid
-      ? Array.from(surfaceElement.querySelectorAll("[data-candidate-block-grid]")).indexOf(selectedGrid)
+    selectedGridIndex = targetGrid
+      ? Array.from(surfaceElement.querySelectorAll("[data-candidate-block-grid]")).indexOf(targetGrid)
       : -1;
   };
   const handlePointerEnd = () => {

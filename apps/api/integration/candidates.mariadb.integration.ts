@@ -5,13 +5,11 @@ import type { MutationAuditRepository } from "../src/common/audit/mutation-audit
 import { MutationAuditRepository as AuditRepository } from "../src/common/audit/mutation-audit.repository.js";
 import { runWithRequestContext } from "../src/common/http/request-context.js";
 import type { CandidatePhotoArchiveFiles } from "../src/candidates/candidate-domain.js";
-import type { CandidateIdentityRepository } from "../src/candidates/candidate-identity.repository.js";
 import { candidateFields, type CandidateInput } from "../src/candidates/candidate-fields.js";
 import { CandidatesApplicationService } from "../src/candidates/candidates.application.js";
 import { CandidatesRepository } from "../src/candidates/candidates.repository.js";
 import { CandidatesService } from "../src/candidates/candidates.service.js";
 import { resolveAppConfig } from "../src/config/app-config.js";
-import type { IdentityTransitionCoordinator } from "../src/identity-transition/identity-transition-coordinator.js";
 import { createMariaDbIntegrationHarness, type MariaDbIntegrationHarness } from "../test-support/mariadb-harness.js";
 
 let harness: MariaDbIntegrationHarness;
@@ -103,6 +101,7 @@ describe("candidate import MariaDB integration", () => {
       unit: "필드 검증 모집단위",
       major: "필드 검증 전공",
       building: "필드 검증관",
+      waitingRoom: "필드 검증 대기실",
       room: "필드 검증실",
       temporaryNo: "TMP-71",
       name: "필드검증 수험생",
@@ -129,7 +128,8 @@ describe("candidate import MariaDB integration", () => {
       admission: "수정 필드 검증 전형",
       unit: "수정 필드 검증 모집단위",
       major: "수정 필드 검증 전공",
-      building: "수정 필드 검증관",
+      building: inserted.building,
+      waitingRoom: "수정 필드 검증 대기실",
       room: "수정 필드 검증실",
       temporaryNo: "TMP-72",
       name: "수정된 필드검증 수험생",
@@ -183,16 +183,11 @@ describe("candidate import MariaDB integration", () => {
 
     await expect(application.importCandidates([input], "all", "rollback-checksum", actorUserId)).rejects.toBe(failure);
 
-    const [counts] = await harness.pool.execute<
-      Array<RowDataPacket & { candidateCount: number; examineeCount: number }>
-    >(
-      `SELECT
-         (SELECT COUNT(*) FROM candidate_record WHERE examinee_no = ?) AS candidateCount,
-         (SELECT COUNT(*) FROM examinee WHERE examinee_no = ?) AS examineeCount`,
-      [input.examineeNo, input.examineeNo],
+    const [counts] = await harness.pool.execute<Array<RowDataPacket & { candidateCount: number }>>(
+      `SELECT COUNT(*) AS candidateCount FROM candidate_record WHERE examinee_no = ?`,
+      [input.examineeNo],
     );
     expect(Number(counts[0]?.candidateCount)).toBe(0);
-    expect(Number(counts[0]?.examineeCount)).toBe(0);
     expect(audit.record).toHaveBeenCalledOnce();
   });
 
@@ -220,7 +215,7 @@ describe("candidate import MariaDB integration", () => {
     await expect(candidateCount(input.examineeNo)).resolves.toBe(0);
   });
 
-  it("rejects a candidate insert that would invalidate an existing range capacity", async () => {
+  it("accepts a candidate insert and clears the configured range affected by the new data", async () => {
     const input = candidate("IT-CAND-RANGE", {
       date: "2039-10-02",
       admission: "IT 범위 전형",
@@ -263,12 +258,17 @@ describe("candidate import MariaDB integration", () => {
       createApplication(new AuditRepository()).importCandidates(
         [input],
         "insert-update",
-        "range-checksum",
+        sha256Fixture("f"),
         actorUserId,
       ),
-    ).rejects.toThrow("가번호 범위가 설정된 일정 1곳");
+    ).resolves.toMatchObject({ inserted: 1 });
 
-    await expect(candidateCount(input.examineeNo)).resolves.toBe(0);
+    await expect(candidateCount(input.examineeNo)).resolves.toBe(1);
+    const [rangeRows] = await harness.pool.execute<Array<RowDataPacket & { total: number }>>(
+      "SELECT COUNT(*) AS total FROM pseudonym_time_range WHERE setting_id = ?",
+      [setting.insertId],
+    );
+    expect(Number(rangeRows[0]?.total ?? 0)).toBe(0);
   });
 
   it("serializes imports behind the shared profile lock used by operational mutations", async () => {
@@ -308,13 +308,6 @@ function createApplication(audit: MutationAuditRepository, repository = new Cand
   return new CandidatesApplicationService(
     harness.pool,
     repository,
-    {
-      syncCandidateRecord: vi.fn(),
-      syncCandidatePhoto: vi.fn(),
-    } as unknown as CandidateIdentityRepository,
-    {
-      decideWrite: vi.fn().mockResolvedValue({ writeLegacy: true, writeTarget: false }),
-    } as unknown as IdentityTransitionCoordinator,
     audit,
     resolveAppConfig({ DEFAULT_EXAM_NAME: "IT 수험생 업로드 시험" }),
   );
@@ -360,6 +353,7 @@ function candidate(examineeNo: string, overrides: Partial<CandidateInput> = {}):
     unit: "IT 모집단위",
     major: "IT 전공",
     building: "IT관",
+    waitingRoom: "IT 대기실",
     room: "IT-101",
     examineeNo,
     temporaryNo: "",

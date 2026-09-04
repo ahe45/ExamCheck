@@ -16,6 +16,7 @@ export interface Examinee {
   assignedNumber: string | null;
   assignmentMode: "RANDOM" | "SEQUENTIAL" | "MANUAL" | "PREASSIGNED" | null;
   assignedAt: string | null;
+  lastPrintedAt?: string | null;
   status: "ACTIVE";
   examTime: string;
   examEndTime: string;

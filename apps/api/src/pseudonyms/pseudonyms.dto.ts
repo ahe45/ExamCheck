@@ -27,6 +27,9 @@ import type {
   AssignPseudonymInput,
   PseudonymOperationScopeInput,
   PseudonymTimeRangeInput,
+  ResetAdmissionOperationsInput,
+  DeleteAdmissionInput,
+  AdmissionOperationScheduleInput,
   UpdatePseudonymSettingInput,
 } from "./pseudonyms.types.js";
 
@@ -45,6 +48,51 @@ export class PseudonymSettingsOverviewQueryDto {
   @Length(1, 200)
   @Matches(/\S/)
   examName!: string;
+}
+
+export class AdmissionOperationScheduleDto implements AdmissionOperationScheduleInput {
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDateString({ strict: true, strictSeparator: true })
+  examDate!: string;
+
+  @IsString()
+  @Matches(/^(?:[01]\d|2[0-3]):[0-5]\d$/)
+  examTime!: string;
+
+  @IsString()
+  @Length(1, 100)
+  periodName!: string;
+}
+
+export class ResetAdmissionOperationsDto implements ResetAdmissionOperationsInput {
+  @IsString()
+  @Length(1, 200)
+  examName!: string;
+
+  @IsString()
+  @Length(1, 200)
+  admissionName!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @ArrayUnique((schedule: AdmissionOperationScheduleDto) =>
+    [schedule.examDate, schedule.examTime, schedule.periodName].join("\u001f"),
+  )
+  @ValidateNested({ each: true })
+  @Type(() => AdmissionOperationScheduleDto)
+  schedules!: AdmissionOperationScheduleDto[];
+}
+
+export class DeleteAdmissionDto implements DeleteAdmissionInput {
+  @IsString()
+  @Length(1, 200)
+  admissionName!: string;
+
+  @IsString()
+  @Length(1, 1024)
+  currentPassword!: string;
 }
 
 export class AssignPseudonymDto implements AssignPseudonymInput {
@@ -175,6 +223,12 @@ export class UpdatePseudonymSettingDto implements UpdatePseudonymSettingInput {
   @Max(999999999)
   rangeEnd!: number;
 
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(9)
+  displayWidth?: number;
+
   @IsIn(["DRAW", "SEQUENTIAL", "MATCHING", "PREASSIGNED"])
   assignmentMethod!: "DRAW" | "SEQUENTIAL" | "MATCHING" | "PREASSIGNED";
 
@@ -188,6 +242,11 @@ export class UpdatePseudonymSettingDto implements UpdatePseudonymSettingInput {
 
   @IsBoolean()
   printPreassignedLabel!: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  labelTemplateId?: number | null;
 
   @IsBoolean()
   autoAssignAbsenteesOnClose!: boolean;
@@ -250,4 +309,10 @@ export class PseudonymTimeRangeDto implements PseudonymTimeRangeInput {
   @Min(1)
   @Max(999999999)
   rangeEnd!: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(9)
+  displayWidth?: number;
 }

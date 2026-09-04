@@ -1,6 +1,7 @@
 import type { PseudonymAssignmentMethod } from "../../shared/api/pseudonyms";
+import type { LabelTemplate } from "../../shared/api/label-templates";
 import { RefreshButtonIcon, SettingsButtonIcon } from "../../shared/components/ActionIcons";
-import { scheduleIdentity, type RangeDraft } from "./system-settings-domain";
+import { formatRangeNumber, scheduleIdentity, type RangeDraft } from "./system-settings-domain";
 
 const assignmentMethods: Array<{
   value: PseudonymAssignmentMethod;
@@ -43,6 +44,9 @@ export function AssignmentMethodSection({
   onAutoDrawDelaySecondsChange,
   printPreassignedLabel,
   onPrintPreassignedLabelChange,
+  labelTemplateId,
+  labelTemplates,
+  onLabelTemplateIdChange,
 }: {
   assignmentMethod: PseudonymAssignmentMethod;
   onAssignmentMethodChange(value: PseudonymAssignmentMethod): void;
@@ -52,6 +56,9 @@ export function AssignmentMethodSection({
   onAutoDrawDelaySecondsChange(value: number): void;
   printPreassignedLabel: boolean;
   onPrintPreassignedLabelChange(value: boolean): void;
+  labelTemplateId: number | null;
+  labelTemplates: LabelTemplate[];
+  onLabelTemplateIdChange(value: number | null): void;
 }) {
   return (
     <section className="system-setting-card assignment-method-card">
@@ -124,6 +131,25 @@ export function AssignmentMethodSection({
                   disabled={assignmentMethod !== "PREASSIGNED"}
                   onChange={onPrintPreassignedLabelChange}
                 />
+                <label className="label-template-setting-field">
+                  <span>라벨 양식</span>
+                  <select
+                    aria-label="전형별 라벨 양식"
+                    value={labelTemplateId ?? ""}
+                    disabled={assignmentMethod !== "PREASSIGNED" || !printPreassignedLabel}
+                    onChange={(event) =>
+                      onLabelTemplateIdChange(event.target.value ? Number(event.target.value) : null)
+                    }
+                  >
+                    <option value="">기본 사용 양식</option>
+                    {labelTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                  <small>이 전형의 라벨 출력에 사용할 양식을 선택합니다.</small>
+                </label>
               </div>
             )}
           </div>
@@ -211,7 +237,7 @@ export function ScheduleRangeSection({
   loading: boolean;
   onRefresh(): void;
   onOpenBulk(): void;
-  onRangeStartChange(index: number, value: number): void;
+  onRangeStartChange(index: number, value: string): void;
 }) {
   return (
     <section className="system-setting-card schedule-range-card">
@@ -275,18 +301,20 @@ export function ScheduleRangeSection({
                   <td>
                     <input
                       aria-label={`${formatDate(range.date)} ${range.time} 시작 번호`}
-                      type="number"
-                      min="1"
-                      value={range.rangeStart}
-                      onChange={(event) => onRangeStartChange(index, Number(event.target.value))}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={9}
+                      value={formatRangeNumber(range.rangeStart, range.displayWidth)}
+                      onChange={(event) => onRangeStartChange(index, event.target.value)}
                     />
                   </td>
                   <td>
                     <div className="schedule-end-number">
                       <input
                         aria-label={`${formatDate(range.date)} ${range.time} 종료 번호`}
-                        type="number"
-                        value={range.rangeEnd}
+                        type="text"
+                        value={formatRangeNumber(range.rangeEnd, range.displayWidth)}
                         readOnly
                         tabIndex={-1}
                       />

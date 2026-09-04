@@ -69,22 +69,14 @@ export class CandidatesService {
         })
       : undefined;
     const access = buildAdmissionAccessPredicate(user, ADMISSION_SQL_COLUMNS.candidateRecord);
-    const rows = await this.repository.listDashboardAdmissionCounts(this.pool, access, admissionName);
-    const admissions = rows
-      .map((row) => {
-        const total = Number(row.total);
-        const assigned = Number(row.assigned);
-        const status = assigned === 0 ? "waiting" : assigned === total ? "complete" : "progress";
-        return {
-          name: row.name,
-          total,
-          assigned,
-          unassigned: total - assigned,
-          assignmentRate: percentage(assigned, total),
-          status,
-        } as const;
-      })
-      .sort((left, right) => left.name.localeCompare(right.name, "ko"));
+    const rows = await this.repository.listDashboardBreakdownCounts(this.pool, access, admissionName);
+    const breakdowns = {
+      admission: toDashboardStatistics(rows.filter((row) => row.groupType === "admission")),
+      building: toDashboardStatistics(rows.filter((row) => row.groupType === "building")),
+      period: toDashboardStatistics(rows.filter((row) => row.groupType === "period")),
+      waitingRoom: toDashboardStatistics(rows.filter((row) => row.groupType === "waitingRoom")),
+    };
+    const admissions = breakdowns.admission;
     const totalCandidates = admissions.reduce((sum, admission) => sum + admission.total, 0);
     const assignedCandidates = admissions.reduce((sum, admission) => sum + admission.assigned, 0);
     const admissionCounts = admissions.reduce(
@@ -101,6 +93,7 @@ export class CandidatesService {
       assignmentRate: percentage(assignedCandidates, totalCandidates),
       admissions,
       admissionCounts,
+      breakdowns,
     };
   }
 
@@ -357,4 +350,22 @@ function checksum(buffer: Buffer): string {
 
 function percentage(value: number, total: number) {
   return total ? Math.round((value / total) * 1000) / 10 : 0;
+}
+
+function toDashboardStatistics(rows: readonly { name: string; total: number; assigned: number }[]) {
+  return rows
+    .map((row) => {
+      const total = Number(row.total);
+      const assigned = Number(row.assigned);
+      const status = assigned === 0 ? "waiting" : assigned === total ? "complete" : "progress";
+      return {
+        name: row.name,
+        total,
+        assigned,
+        unassigned: total - assigned,
+        assignmentRate: percentage(assigned, total),
+        status,
+      } as const;
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, "ko"));
 }

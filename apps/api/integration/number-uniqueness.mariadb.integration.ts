@@ -113,18 +113,14 @@ describe("number uniqueness MariaDB integration", () => {
 });
 
 async function seedRepeatedExamineeNumber(pool: Pool) {
-  await pool.execute(
-    `INSERT INTO examinee
-      (examinee_no, name, exam_name, exam_date, room_name, seat_no, label_barcode, status)
-     VALUES (?, '유일 정책 수험생', ?, ?, ?, '1', ?, 'ACTIVE')`,
-    [examineeNo, examName, schedules[0].examDate, schedules[0].roomName, `BARCODE-${examineeNo}`],
-  );
   for (const [index, schedule] of schedules.entries()) {
     await pool.execute(
       `INSERT INTO candidate_record
         (designated_sort, admission, unit_name, major, exam_date, start_time,
-         period_name, building_name, room_name, examinee_no, name, birth_date)
-       VALUES (?, ?, 'IT 모집단위', 'IT 전공', ?, ?, ?, 'IT관', ?, ?, '유일 정책 수험생', '2000-01-01')`,
+         period_name, building_name, room_name, examinee_no, name, birth_date,
+         exam_name, label_barcode, status)
+       VALUES (?, ?, 'IT 모집단위', 'IT 전공', ?, ?, ?, 'IT관', ?, ?, '유일 정책 수험생',
+               '2000-01-01', ?, ?, 'ACTIVE')`,
       [
         String(index + 1),
         admissionName,
@@ -133,6 +129,8 @@ async function seedRepeatedExamineeNumber(pool: Pool) {
         schedule.periodName,
         schedule.roomName,
         examineeNo,
+        examName,
+        `BARCODE-${examineeNo}-${index + 1}`,
       ],
     );
   }

@@ -67,6 +67,7 @@ interface LegacyRangeRow extends RowDataPacket {
   roomName: string;
   rangeStart: number;
   rangeEnd: number;
+  displayWidth: number;
   nextSequence: number;
   updatedBy: number;
 }
@@ -530,7 +531,7 @@ export class IdentityBackfillProjectionRepository {
               ptr.exam_time AS examTime, ptr.period_name AS periodName,
               ptr.unit_name AS unitName, ptr.major AS majorName,
               ptr.building_name AS buildingName, ptr.room_name AS roomName,
-              ptr.range_start AS rangeStart, ptr.range_end AS rangeEnd,
+              ptr.range_start AS rangeStart, ptr.range_end AS rangeEnd, ptr.display_width AS displayWidth,
               ptr.next_sequence AS nextSequence, ptr.updated_by AS updatedBy
        FROM pseudonym_time_range ptr
        INNER JOIN pseudonym_setting ps ON ps.id = ptr.setting_id
@@ -560,7 +561,7 @@ export class IdentityBackfillProjectionRepository {
     if (!Number.isSafeInteger(next) || next < start || next > end + 1) {
       throw new IdentityBackfillProjectionError("RANGE_NEXT_OUT_OF_BOUNDS", "pseudonym_time_range", source.id);
     }
-    const displayWidth = Math.max(String(start).length, String(end).length);
+    const displayWidth = Math.max(Number(source.displayWidth), String(start).length, String(end).length);
     const [existingRows] = await executor.execute<SourceIdRow[]>(
       `SELECT id, source_time_range_id AS sourceId
        FROM pseudonym_range
@@ -894,7 +895,6 @@ export class IdentityBackfillProjectionRepository {
                 'labelType', job.label_type,
                 'businessRef', job.business_ref,
                 'templateId', job.template_id,
-                'templateVersion', job.template_version,
                 'copies', job.copies,
                 'payloadFormat', payload.format,
                 'payload', payload.payload,
@@ -907,7 +907,6 @@ export class IdentityBackfillProjectionRepository {
                 'labelType', job.label_type,
                 'businessRef', job.business_ref,
                 'templateId', job.template_id,
-                'templateVersion', job.template_version,
                 'copies', job.copies,
                 'payloadFormat', payload.format,
                 'payload', payload.payload,

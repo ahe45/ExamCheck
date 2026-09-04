@@ -21,7 +21,6 @@ declare global {
 }
 
 export const BROWSER_PRINT_TIMEOUTS = Object.freeze({
-  scriptLoad: 10_000,
   defaultPrinter: 5_000,
   listPrinters: 5_000,
   send: 15_000,
@@ -35,13 +34,10 @@ const printerSendTimeoutError = () =>
 
 export class BrowserPrintAdapter implements PrinterAdapter {
   async initialize() {
-    await loadBrowserPrintScript();
-    if (!window.BrowserPrint) throw new Error("BROWSER_PRINT_SDK_MISSING");
     await this.isAvailable();
   }
 
   async isAvailable() {
-    if (!window.BrowserPrint) return false;
     try {
       await this.getDefaultPrinter();
       return true;
@@ -83,56 +79,92 @@ export class BrowserPrintAdapter implements PrinterAdapter {
   }
 
   private requireApi() {
-    if (!window.BrowserPrint) throw new Error("BROWSER_PRINT_SDK_MISSING");
-    return window.BrowserPrint;
+    return window.BrowserPrint ?? nativeBrowserPrintApi;
   }
 }
 
-let browserPrintScript: Promise<void> | null = null;
+const nativeBrowserPrintApi: BrowserPrintApi = {
+  getDefaultDevice(_type, onSuccess, onError) {
+    requestBrowserPrint(
+      "GET",
+      "default?type=printer",
+      undefined,
+      (response) => {
+        const device = parseJson<BrowserPrintDevicePayload>(response);
+        onSuccess(hasDeviceIdentity(device) ? createNativeDevice(device) : null);
+      },
+      onError,
+    );
+  },
+  getLocalDevices(onSuccess, onError) {
+    requestBrowserPrint(
+      "GET",
+      "available",
+      undefined,
+      (response) => {
+        const available = parseJson<{ printer?: BrowserPrintDevicePayload[] }>(response);
+        onSuccess((available.printer ?? []).filter(hasDeviceIdentity).map(createNativeDevice));
+      },
+      onError,
+    );
+  },
+};
 
-function loadBrowserPrintScript(): Promise<void> {
-  if (window.BrowserPrint) return Promise.resolve();
-  if (browserPrintScript) return browserPrintScript;
+interface BrowserPrintDevicePayload {
+  uid?: string;
+  name?: string;
+  connection?: string;
+  deviceType?: string;
+  version?: number;
+  provider?: string;
+  manufacturer?: string;
+}
 
-  const script = document.createElement("script");
-  script.src = "/vendor/BrowserPrint.js";
-  let resolveScript!: () => void;
-  let rejectScript!: (error: Error) => void;
-  let settled = false;
-  let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
-  const pendingScript = new Promise<void>((resolve, reject) => {
-    resolveScript = resolve;
-    rejectScript = reject;
-  });
-  browserPrintScript = pendingScript;
+function createNativeDevice(payload: BrowserPrintDevicePayload): BrowserPrintDevice {
+  return {
+    ...payload,
+    send(data, onSuccess, onError) {
+      requestBrowserPrint("POST", "write", JSON.stringify({ device: payload, data }), () => onSuccess(), onError);
+    },
+  };
+}
 
-  const finish = (error?: Error) => {
-    if (settled) return;
-    settled = true;
-    if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
-    script.onload = null;
-    script.onerror = null;
-    if (!error) {
-      resolveScript();
+function requestBrowserPrint(
+  method: "GET" | "POST",
+  path: string,
+  body: string | undefined,
+  onSuccess: (response: string) => void,
+  onError: (error: unknown) => void,
+) {
+  const request = new XMLHttpRequest();
+  request.open(method, `${browserPrintBaseUrl()}${path}`, true);
+  request.onreadystatechange = () => {
+    if (request.readyState !== 4) return;
+    if (request.status === 200) {
+      try {
+        onSuccess(request.responseText);
+      } catch (error) {
+        onError(error);
+      }
       return;
     }
-    if (browserPrintScript === pendingScript) browserPrintScript = null;
-    script.remove();
-    rejectScript(error);
+    onError(new Error("BROWSER_PRINT_NOT_RUNNING"));
   };
+  request.onerror = () => onError(new Error("BROWSER_PRINT_NOT_RUNNING"));
+  request.send(body);
+}
 
-  timeoutId = globalThis.setTimeout(
-    () => finish(new Error("BROWSER_PRINT_SDK_MISSING")),
-    BROWSER_PRINT_TIMEOUTS.scriptLoad,
-  );
-  script.onload = () => finish(window.BrowserPrint ? undefined : new Error("BROWSER_PRINT_SDK_MISSING"));
-  script.onerror = () => finish(new Error("BROWSER_PRINT_SDK_MISSING"));
-  try {
-    document.head.appendChild(script);
-  } catch {
-    finish(new Error("BROWSER_PRINT_SDK_MISSING"));
-  }
-  return pendingScript;
+function browserPrintBaseUrl() {
+  const safari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  return safari && window.location.protocol === "https:" ? "https://127.0.0.1:9101/" : "http://127.0.0.1:9100/";
+}
+
+function parseJson<T>(value: string): T {
+  return JSON.parse(value || "{}") as T;
+}
+
+function hasDeviceIdentity(device: BrowserPrintDevicePayload) {
+  return Boolean(device.uid || device.name);
 }
 
 function waitForBrowserPrintCallback<T>(

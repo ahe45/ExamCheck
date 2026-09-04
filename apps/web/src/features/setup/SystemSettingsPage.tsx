@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type FormEvent } from "react";
 import { fetchCandidates, type CandidateRecord } from "../../shared/api/candidates";
+import { fetchLabelTemplates, type LabelTemplate } from "../../shared/api/label-templates";
 import {
   fetchPseudonymSetting,
   updatePseudonymSetting,
@@ -16,7 +17,9 @@ import {
   buildScheduleRanges,
   configuredRangeBounds,
   createSettingsSnapshot,
+  formatRangeNumber,
   hasInvalidRange,
+  parseRangeNumberInput,
   toSettingRanges,
   totalRangeCapacity,
   updateRangeStart,
@@ -51,11 +54,13 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
     const [assignmentMethod, setAssignmentMethod] = useState<PseudonymAssignmentMethod>("DRAW");
     const [ranges, setRanges] = useState<RangeDraft[]>([]);
-    const [fallbackRange, setFallbackRange] = useState({ start: 1001, end: 1999 });
+    const [fallbackRange, setFallbackRange] = useState({ start: 1001, end: 1999, displayWidth: 4 });
     const [settingVersion, setSettingVersion] = useState(1);
     const [autoDrawEnabled, setAutoDrawEnabled] = useState(false);
     const [autoDrawDelaySeconds, setAutoDrawDelaySeconds] = useState(3);
     const [printPreassignedLabel, setPrintPreassignedLabel] = useState(true);
+    const [labelTemplateId, setLabelTemplateId] = useState<number | null>(null);
+    const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([]);
     const [autoAssignAbsenteesOnClose, setAutoAssignAbsenteesOnClose] = useState(false);
     const [deleteAbsenteeInfoOnReopen, setDeleteAbsenteeInfoOnReopen] = useState(false);
     const [useCandidatePhotos, setUseCandidatePhotos] = useState(true);
@@ -64,7 +69,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [saving, setSaving] = useState(false);
     const [bulkOpen, setBulkOpen] = useState(false);
     const [bulkMode, setBulkMode] = useState<BulkRangeMode>("SAME_START");
-    const [bulkStart, setBulkStart] = useState(1001);
+    const [bulkStart, setBulkStart] = useState("1001");
     const [bulkCriteria, setBulkCriteria] = useState<BulkRangeCriterion[]>([]);
     const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
     const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -76,9 +81,15 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       setAssignmentMethod(setting.assignmentMethod);
       setAutoDrawEnabled(setting.autoDrawEnabled);
       setAutoDrawDelaySeconds(setting.autoDrawDelaySeconds);
-      setFallbackRange({ start: setting.rangeStart, end: setting.rangeEnd });
+      setFallbackRange({
+        start: setting.rangeStart,
+        end: setting.rangeEnd,
+        displayWidth:
+          setting.displayWidth ?? Math.max(String(setting.rangeStart).length, String(setting.rangeEnd).length),
+      });
       setRanges(nextRanges);
       setPrintPreassignedLabel(setting.printPreassignedLabel);
+      setLabelTemplateId(setting.labelTemplateId ?? null);
       setAutoAssignAbsenteesOnClose(setting.autoAssignAbsenteesOnClose);
       setDeleteAbsenteeInfoOnReopen(setting.deleteAbsenteeInfoOnReopen);
       setUseCandidatePhotos(setting.useCandidatePhotos);
@@ -90,6 +101,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           autoDrawEnabled: setting.autoDrawEnabled,
           autoDrawDelaySeconds: setting.autoDrawDelaySeconds,
           printPreassignedLabel: setting.printPreassignedLabel,
+          labelTemplateId: setting.labelTemplateId ?? null,
           autoAssignAbsenteesOnClose: setting.autoAssignAbsenteesOnClose,
           deleteAbsenteeInfoOnReopen: setting.deleteAbsenteeInfoOnReopen,
           useCandidatePhotos: setting.useCandidatePhotos,
@@ -101,10 +113,12 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       setLoading(true);
       setNotice(null);
       try {
-        const [setting, rows] = await Promise.all([
+        const [setting, rows, labelTemplateResult] = await Promise.all([
           fetchPseudonymSetting(token, DEFAULT_EXAM_NAME, admissionName),
           fetchCandidates(token),
+          fetchLabelTemplates(token),
         ]);
+        setLabelTemplates(labelTemplateResult.templates.filter((template) => template.active));
         applySetting(
           setting,
           rows.filter((candidate) => candidate.admission.trim() === admissionName),
@@ -141,6 +155,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           autoDrawEnabled,
           autoDrawDelaySeconds,
           printPreassignedLabel,
+          labelTemplateId,
           autoAssignAbsenteesOnClose,
           deleteAbsenteeInfoOnReopen,
           useCandidatePhotos,
@@ -152,6 +167,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
         autoDrawEnabled,
         autoDrawDelaySeconds,
         printPreassignedLabel,
+        labelTemplateId,
         autoAssignAbsenteesOnClose,
         deleteAbsenteeInfoOnReopen,
         useCandidatePhotos,
@@ -182,10 +198,14 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           expectedVersion: settingVersion,
           rangeStart,
           rangeEnd,
+          displayWidth: configuredRanges.length
+            ? Math.max(...configuredRanges.map((range) => range.displayWidth ?? String(range.rangeEnd).length))
+            : fallbackRange.displayWidth,
           assignmentMethod,
           autoDrawEnabled,
           autoDrawDelaySeconds,
           printPreassignedLabel,
+          labelTemplateId,
           autoAssignAbsenteesOnClose,
           deleteAbsenteeInfoOnReopen,
           useCandidatePhotos,
@@ -213,12 +233,18 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       void persistSettings();
     }
 
-    function changeRangeStart(index: number, value: number) {
-      setRanges((current) => updateRangeStart(current, index, value));
+    function changeRangeStart(index: number, rawValue: string) {
+      const parsed = parseRangeNumberInput(rawValue);
+      setRanges((current) => updateRangeStart(current, index, parsed.value, parsed.displayWidth));
     }
 
     function openBulkSettings() {
-      setBulkStart(ranges[0]?.rangeStart ?? fallbackRange.start);
+      const firstRange = ranges[0];
+      setBulkStart(
+        firstRange
+          ? formatRangeNumber(firstRange.rangeStart, firstRange.displayWidth)
+          : formatRangeNumber(fallbackRange.start, fallbackRange.displayWidth),
+      );
       setBulkMode("SAME_START");
       setBulkCriteria([]);
       setBulkOpen(true);
@@ -233,8 +259,11 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     }
 
     function applyBulkSettings() {
-      if (bulkStart < 1 || (bulkMode === "CONTINUOUS" && !bulkCriteria.length)) return;
-      setRanges((current) => applyBulkRangeSettings(current, bulkStart, bulkMode, bulkCriteria));
+      const parsed = parseRangeNumberInput(bulkStart);
+      if (parsed.value < 1 || (bulkMode === "CONTINUOUS" && !bulkCriteria.length)) return;
+      setRanges((current) =>
+        applyBulkRangeSettings(current, parsed.value, bulkMode, bulkCriteria, parsed.displayWidth),
+      );
       setBulkOpen(false);
     }
 
@@ -272,6 +301,9 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
                 onAutoDrawDelaySecondsChange={setAutoDrawDelaySeconds}
                 printPreassignedLabel={printPreassignedLabel}
                 onPrintPreassignedLabelChange={setPrintPreassignedLabel}
+                labelTemplateId={labelTemplateId}
+                labelTemplates={labelTemplates}
+                onLabelTemplateIdChange={setLabelTemplateId}
               />
               <OperationPolicySection
                 assignmentMethod={assignmentMethod}

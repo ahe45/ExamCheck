@@ -31,7 +31,7 @@ export function bindSignatureNameControls({
   `;
 
   const pageNumberSection = pagePropertiesHost.querySelector(".examlist-page-number-field");
-  if (pageNumberSection) pageNumberSection.after(section);
+  if (pageNumberSection) pageNumberSection.before(section);
   else pagePropertiesHost.append(section);
 
   const input = section.querySelector<HTMLInputElement>("[data-examcheck-signature-name-setting]");

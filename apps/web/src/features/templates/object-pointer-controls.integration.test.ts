@@ -168,6 +168,118 @@ describe("template editor object pointer controls", () => {
     root.remove();
   });
 
+  it("빠르게 연속된 표 크기 조절은 화면 갱신 주기마다 마지막 위치만 계산한다", () => {
+    Object.defineProperty(window, "PointerEvent", { configurable: true, value: TestPointerEvent });
+    const originalRequestAnimationFrame = window.requestAnimationFrame;
+    const originalCancelAnimationFrame = window.cancelAnimationFrame;
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrameId = 1;
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: vi.fn((callback: FrameRequestCallback) => {
+        const frameId = nextFrameId++;
+        frames.set(frameId, callback);
+        return frameId;
+      }),
+    });
+    Object.defineProperty(window, "cancelAnimationFrame", {
+      configurable: true,
+      value: vi.fn((frameId: number) => frames.delete(frameId)),
+    });
+    const runFrames = () => {
+      const pendingFrames = [...frames.entries()];
+      frames.clear();
+      pendingFrames.forEach(([, callback]) => callback(performance.now()));
+    };
+    const root = document.createElement("div");
+    root.innerHTML = `
+      <div data-template-editor-runtime-surface contenteditable="true">
+        <div class="template-doc"><table class="is-selected-table-object"><tbody><tr><td>셀</td></tr></tbody></table></div>
+      </div>
+      <div class="template-editor-table-selection is-selected">
+        <button data-template-table-object-handle data-template-table-object-handle-position="bottom-right"></button>
+      </div>
+    `;
+    document.body.append(root);
+    const surface = root.querySelector<HTMLElement>("[data-template-editor-runtime-surface]")!;
+    const documentElement = root.querySelector<HTMLElement>(".template-doc")!;
+    const table = root.querySelector<HTMLTableElement>("table")!;
+    const overlay = root.querySelector<HTMLElement>(".template-editor-table-selection")! as HTMLElement & {
+      __templateEditorTableElement?: HTMLTableElement;
+    };
+    overlay.__templateEditorTableElement = table;
+    Object.defineProperties(documentElement, {
+      clientHeight: { configurable: true, value: 600 },
+      clientWidth: { configurable: true, value: 800 },
+    });
+    documentElement.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    table.getBoundingClientRect = () =>
+      ({ left: 50, top: 40, right: 150, bottom: 90, width: 100, height: 50, x: 50, y: 40, toJSON() {} }) as DOMRect;
+    const editor = { updateImageSelectionOverlay: vi.fn(), updateTableObjectOverlay: vi.fn() };
+    const onDirty = vi.fn();
+    const editorWindow = window as Window & {
+      ExamListEditorTableUtils?: {
+        buildTemplateTableCellMap: () => { entries: Map<unknown, unknown> };
+        ensureTemplateEditorTableColGroup: () => { cellMap: unknown[]; columns: unknown[] };
+      };
+    };
+    const originalTableUtils = editorWindow.ExamListEditorTableUtils;
+    const buildTemplateTableCellMap = vi.fn(() => ({ entries: new Map() }));
+    editorWindow.ExamListEditorTableUtils = {
+      buildTemplateTableCellMap,
+      ensureTemplateEditorTableColGroup: () => ({ cellMap: [], columns: [] }),
+    };
+    const dispose = bindObjectPointerControls({
+      editor,
+      onDirty,
+      rootElement: root,
+      selectedPage: { id: "page-1", settings: {} },
+      surfaceElement: surface,
+    });
+
+    try {
+      runFrames();
+      const resizeHandle = root.querySelector<HTMLElement>("[data-template-table-object-handle]")!;
+      dispatchPointerEvent(resizeHandle, "pointerdown", { button: 0, clientX: 150, clientY: 90, pointerId: 41 });
+      for (let index = 1; index <= 80; index += 1) {
+        dispatchPointerEvent(window, "pointermove", {
+          clientX: 150 + index,
+          clientY: 90 + index,
+          pointerId: 41,
+        });
+      }
+
+      expect(frames).toHaveLength(1);
+      expect(editor.updateTableObjectOverlay).not.toHaveBeenCalled();
+      expect(table.style.width).toBe("200px");
+
+      runFrames();
+
+      expect(editor.updateTableObjectOverlay).toHaveBeenCalledOnce();
+      expect(table.style.transform).toContain("scale(1.8, 2.6)");
+      expect(buildTemplateTableCellMap).not.toHaveBeenCalled();
+      dispatchPointerEvent(window, "pointerup", { clientX: 230, clientY: 170, pointerId: 41 });
+      expect(table.style.transform).toBe("");
+      expect(table.style.width).toBe("360px");
+      expect(table.style.height).toBe("260px");
+      expect(buildTemplateTableCellMap).toHaveBeenCalledOnce();
+      expect(onDirty).toHaveBeenCalledOnce();
+    } finally {
+      dispose?.();
+      root.remove();
+      Object.defineProperty(window, "requestAnimationFrame", {
+        configurable: true,
+        value: originalRequestAnimationFrame,
+      });
+      Object.defineProperty(window, "cancelAnimationFrame", {
+        configurable: true,
+        value: originalCancelAnimationFrame,
+      });
+      editorWindow.ExamListEditorTableUtils = originalTableUtils;
+    }
+  });
+
   it("축소된 캔버스에서 데이터블록 모서리 핸들로 크기를 변경한다", () => {
     Object.defineProperty(window, "PointerEvent", { configurable: true, value: TestPointerEvent });
     const root = document.createElement("div");

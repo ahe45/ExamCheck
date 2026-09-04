@@ -94,8 +94,8 @@ describe("typed application configuration", () => {
       candidates: { defaultExamName: "통합 설정 시험" },
       printJobs: { expirySeconds: 45 },
       identityTransition: {
-        enabled: true,
-        shadowHmacSecret: "0123456789abcdef0123456789abcdef",
+        enabled: false,
+        shadowHmacSecret: null,
       },
     });
   });

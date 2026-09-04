@@ -1,13 +1,12 @@
 import { useState } from "react";
-import type { FormTemplate } from "../../shared/api/form-templates";
 import { CancelButtonIcon, DeleteButtonIcon } from "../../shared/components/ActionIcons";
 import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
 
 interface TemplateDeleteModalProps {
-  template: FormTemplate;
+  template: { id: number; code: string; name: string };
   onClose(): void;
-  onDelete(template: FormTemplate): Promise<boolean>;
+  onDelete(): Promise<boolean>;
 }
 
 export function TemplateDeleteModal({ template, onClose, onDelete }: TemplateDeleteModalProps) {
@@ -20,7 +19,7 @@ export function TemplateDeleteModal({ template, onClose, onDelete }: TemplateDel
     if (deleting) return;
     setDeleting(true);
     try {
-      await onDelete(template);
+      await onDelete();
     } finally {
       setDeleting(false);
     }

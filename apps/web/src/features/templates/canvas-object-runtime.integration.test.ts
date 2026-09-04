@@ -11,16 +11,6 @@ describe("ExamList canvas object runtime", () => {
   });
 
   it("이미지를 선택해 이동하고 모서리 핸들로 크기를 조절한다", async () => {
-    class TestPointerEvent extends MouseEvent {
-      pointerId: number;
-
-      constructor(type: string, init: PointerEventInit = {}) {
-        super(type, init);
-        this.pointerId = init.pointerId || 0;
-      }
-    }
-    Object.defineProperty(window, "PointerEvent", { configurable: true, value: TestPointerEvent });
-
     const root = document.createElement("div");
     document.body.append(root);
     const onDirtyChange = vi.fn();
@@ -149,6 +139,80 @@ describe("ExamList canvas object runtime", () => {
     expect(images[0]).not.toHaveClass("is-selected-object");
     expect(images[1]).toHaveClass("is-selected-object");
     disposeSelectionPersistence();
+    editor.destroy();
+  });
+
+  it("절대 위치 표를 반복 동기화해도 흐름 위치 예약 요소를 재생성하지 않는다", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const editor = mountTemplateEditor({
+      root,
+      initialHtml: `
+        <div class="template-doc">
+          <p>표 앞 문장</p>
+          <table style="position:absolute;left:0;top:40px;width:300px;height:80px"><tbody><tr><td>셀</td></tr></tbody></table>
+          <p><br></p>
+        </div>
+      `,
+      permissions: { canManageTemplates: true },
+    });
+    const documentElement = root.querySelector<HTMLElement>(".template-doc")!;
+    const tableElement = documentElement.querySelector<HTMLTableElement>("table")!;
+    documentElement.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 700, bottom: 800, width: 700, height: 800, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    tableElement.getBoundingClientRect = () =>
+      ({ left: 0, top: 40, right: 300, bottom: 120, width: 300, height: 80, x: 0, y: 40, toJSON() {} }) as DOMRect;
+    Object.defineProperties(tableElement, {
+      offsetHeight: { configurable: true, value: 80 },
+      offsetWidth: { configurable: true, value: 300 },
+    });
+
+    editor.sync();
+    const initialSpacer = documentElement.querySelector<HTMLElement>("[data-template-object-flow-spacer]")!;
+    const removeSpacer = vi.spyOn(initialSpacer, "remove");
+    const startedAt = performance.now();
+
+    for (let index = 0; index < 20; index += 1) {
+      editor.sync();
+    }
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(documentElement.querySelector("[data-template-object-flow-spacer]")).toBe(initialSpacer);
+    expect(documentElement.querySelectorAll("[data-template-object-flow-spacer]")).toHaveLength(1);
+    expect(removeSpacer).not.toHaveBeenCalled();
+    expect(editor.getHtml()).not.toContain("data-template-object-flow-spacer");
+    expect(editor.getHtml()).not.toContain("data-template-object-flow-id");
+    expect(elapsedMs).toBeLessThan(2_500);
+    editor.destroy();
+  });
+
+  it("빈 캔버스에 표를 삽입하면 기존 빈 줄을 중복해서 남기지 않는다", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const editor = mountTemplateEditor({
+      root,
+      initialHtml: '<div class="template-doc"><p><br></p></div>',
+      permissions: { canManageTemplates: true },
+    });
+    const surface = root.querySelector<HTMLElement>("[data-template-editor-runtime-surface]")!;
+    const documentElement = surface.querySelector<HTMLElement>(".template-doc")!;
+    const initialParagraph = documentElement.querySelector<HTMLParagraphElement>("p")!;
+    const selection = window.getSelection()!;
+    const range = document.createRange();
+
+    range.selectNodeContents(initialParagraph);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    surface.focus();
+    expect(
+      editor.insertHtml(
+        '<table style="width:200px;height:80px"><tbody><tr><td>셀</td></tr></tbody></table>',
+      ),
+    ).not.toBe(false);
+
+    expect(Array.from(documentElement.children).map((element) => element.tagName)).toEqual(["TABLE", "P"]);
+    expect(editor.getHtml().match(/<p><br><\/p>/g)).toHaveLength(1);
     editor.destroy();
   });
 });

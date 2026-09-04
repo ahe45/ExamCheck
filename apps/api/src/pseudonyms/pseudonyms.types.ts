@@ -21,6 +21,23 @@ export interface PseudonymOperationScopeInput {
   admissionName: string;
 }
 
+export interface AdmissionOperationScheduleInput {
+  examDate: string;
+  examTime: string;
+  periodName: string;
+}
+
+export interface ResetAdmissionOperationsInput {
+  examName: string;
+  admissionName: string;
+  schedules: AdmissionOperationScheduleInput[];
+}
+
+export interface DeleteAdmissionInput {
+  admissionName: string;
+  currentPassword: string;
+}
+
 export interface PseudonymTimeRangeInput {
   date: string;
   time: string;
@@ -32,6 +49,7 @@ export interface PseudonymTimeRangeInput {
   room: string;
   rangeStart: number;
   rangeEnd: number;
+  displayWidth?: number;
 }
 
 export interface UpdatePseudonymSettingInput {
@@ -40,10 +58,12 @@ export interface UpdatePseudonymSettingInput {
   admissionName: string;
   rangeStart: number;
   rangeEnd: number;
+  displayWidth?: number;
   assignmentMethod: PseudonymAssignmentMethod;
   autoDrawEnabled: boolean;
   autoDrawDelaySeconds: number;
   printPreassignedLabel: boolean;
+  labelTemplateId?: number | null;
   autoAssignAbsenteesOnClose: boolean;
   deleteAbsenteeInfoOnReopen: boolean;
   useCandidatePhotos: boolean;

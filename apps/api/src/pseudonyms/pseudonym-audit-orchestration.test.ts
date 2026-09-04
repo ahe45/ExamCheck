@@ -122,6 +122,21 @@ describe("pseudonym application audit orchestration", () => {
       { removedCurrentAbsenteeCount: 1 },
     );
   });
+
+  it("does not treat candidates with uploaded numbers as unassigned in preassigned mode", async () => {
+    const fixture = createOperationFixture({
+      autoAssignAbsenteesOnClose: true,
+      assignmentMethod: "PREASSIGNED",
+    });
+
+    await fixture.useCase.close(operationScope, actor);
+
+    expect(fixture.repository.listUnassignedCandidatesForUpdate).toHaveBeenCalledWith(
+      fixture.connection,
+      operationScope,
+      true,
+    );
+  });
 });
 
 const actor = { id: 7, loginId: "admin", role: "ADMIN" as const, admissionNames: [] };
@@ -179,6 +194,7 @@ function createOperationFixture(
     dualWrite?: boolean;
     autoAssignAbsenteesOnClose?: boolean;
     deleteAbsenteeInfoOnReopen?: boolean;
+    assignmentMethod?: SettingRow["assignmentMethod"];
   } = {},
 ) {
   const connection = createConnection();
@@ -191,6 +207,7 @@ function createOperationFixture(
       settingRow({
         autoAssignAbsenteesOnClose: options.autoAssignAbsenteesOnClose ?? false,
         deleteAbsenteeInfoOnReopen: options.deleteAbsenteeInfoOnReopen ?? false,
+        assignmentMethod: options.assignmentMethod ?? "MATCHING",
       }),
     ),
     listTimeRangesForUpdate: vi.fn().mockResolvedValue([]),
@@ -266,7 +283,9 @@ function candidateRow(): CandidateRow {
 }
 
 function settingRow(
-  overrides: Partial<Pick<SettingRow, "autoAssignAbsenteesOnClose" | "deleteAbsenteeInfoOnReopen">> = {},
+  overrides: Partial<
+    Pick<SettingRow, "assignmentMethod" | "autoAssignAbsenteesOnClose" | "deleteAbsenteeInfoOnReopen">
+  > = {},
 ): SettingRow {
   return {
     id: 9,

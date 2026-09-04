@@ -6,21 +6,23 @@ describe("identity transition configuration", () => {
     expect(resolveIdentityTransitionConfig({})).toEqual({ enabled: false, shadowHmacSecret: null });
   });
 
-  it("enables the database-controlled transition behind an emergency master switch", () => {
+  it("ignores removed transition switches", () => {
     expect(
       resolveIdentityTransitionConfig({
         IDENTITY_TRANSITION_ENABLED: " true ",
         IDENTITY_SHADOW_HMAC_SECRET: "0123456789abcdef0123456789abcdef",
       }),
-    ).toEqual({ enabled: true, shadowHmacSecret: "0123456789abcdef0123456789abcdef" });
+    ).toEqual({ enabled: false, shadowHmacSecret: null });
   });
 
-  it("rejects ambiguous switches and weak shadow secrets", () => {
-    expect(() => resolveIdentityTransitionConfig({ IDENTITY_TRANSITION_ENABLED: "yes" })).toThrow(
-      "IDENTITY_TRANSITION_ENABLED",
-    );
-    expect(() => resolveIdentityTransitionConfig({ IDENTITY_SHADOW_HMAC_SECRET: "too-short" })).toThrow(
-      "at least 32 bytes",
-    );
+  it("remains disabled for legacy values that may still exist in deployment configuration", () => {
+    expect(resolveIdentityTransitionConfig({ IDENTITY_TRANSITION_ENABLED: "yes" })).toEqual({
+      enabled: false,
+      shadowHmacSecret: null,
+    });
+    expect(resolveIdentityTransitionConfig({ IDENTITY_SHADOW_HMAC_SECRET: "too-short" })).toEqual({
+      enabled: false,
+      shadowHmacSecret: null,
+    });
   });
 });

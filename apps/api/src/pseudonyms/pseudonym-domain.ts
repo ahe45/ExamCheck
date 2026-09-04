@@ -54,11 +54,13 @@ export interface PseudonymSettingSnapshot {
   admissionName: string;
   rangeStart: number;
   rangeEnd: number;
+  displayWidth?: number;
   nextSequence: number;
   assignmentMethod: PseudonymAssignmentMethod;
   autoDrawEnabled: number | boolean;
   autoDrawDelaySeconds: number;
   printPreassignedLabel: number | boolean;
+  labelTemplateId?: number | null;
   autoAssignAbsenteesOnClose: number | boolean;
   deleteAbsenteeInfoOnReopen: number | boolean;
   useCandidatePhotos: number | boolean;
@@ -70,6 +72,7 @@ export interface RangeCursorSnapshot {
   scheduleKey: string;
   rangeStart: number;
   rangeEnd: number;
+  displayWidth?: number;
   nextSequence: number;
 }
 
@@ -345,11 +348,13 @@ export function settingResponse(
     admissionName,
     rangeStart: setting.rangeStart,
     rangeEnd: setting.rangeEnd,
+    displayWidth: setting.displayWidth ?? Math.max(String(setting.rangeStart).length, String(setting.rangeEnd).length),
     nextSequence: setting.nextSequence,
     assignmentMethod: setting.assignmentMethod,
     autoDrawEnabled: Boolean(setting.autoDrawEnabled),
     autoDrawDelaySeconds: Number(setting.autoDrawDelaySeconds),
     printPreassignedLabel: Boolean(setting.printPreassignedLabel),
+    labelTemplateId: setting.labelTemplateId === null ? null : Number(setting.labelTemplateId),
     autoAssignAbsenteesOnClose: Boolean(setting.autoAssignAbsenteesOnClose),
     deleteAbsenteeInfoOnReopen: Boolean(setting.deleteAbsenteeInfoOnReopen),
     useCandidatePhotos: Boolean(setting.useCandidatePhotos),
@@ -365,6 +370,7 @@ export function settingResponse(
       room: range.room,
       rangeStart: range.rangeStart,
       rangeEnd: range.rangeEnd,
+      displayWidth: range.displayWidth ?? Math.max(String(range.rangeStart).length, String(range.rangeEnd).length),
       nextSequence: range.nextSequence,
     })),
   };

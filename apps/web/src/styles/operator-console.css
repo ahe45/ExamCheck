@@ -99,6 +99,9 @@
   min-width: 0;
   height: var(--operator-header-control-height);
 }
+.operator-header-summary.without-range {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
 .operator-header-summary > div {
   display: grid;
   align-content: center;
@@ -729,11 +732,11 @@
   grid-template-columns: 1fr;
 }
 .operator-toast-region {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 100%;
+  position: fixed;
+  z-index: 120;
+  right: 24px;
+  bottom: 24px;
+  width: min(420px, calc(100vw - 48px));
   pointer-events: none;
 }
 .operator-toast {
@@ -823,7 +826,7 @@
 @keyframes operator-toast-in {
   from {
     opacity: 0;
-    transform: translate3d(18px, -8px, 0);
+    transform: translate3d(18px, 8px, 0);
   }
   to {
     opacity: 1;
@@ -837,7 +840,7 @@
   }
   to {
     opacity: 0;
-    transform: translate3d(14px, -5px, 0);
+    transform: translate3d(14px, 5px, 0);
   }
 }
 .operator-roster-panel {
@@ -903,8 +906,56 @@
 }
 .operator-roster-heading > div:last-child {
   display: flex;
+  align-items: center;
   flex: none;
   gap: 8px;
+}
+.operator-printer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 6px 9px;
+  color: #65758b;
+  border: 1px solid #dfe5ed;
+  border-radius: 999px;
+  background: #f8fafc;
+  font-size: var(--operator-fs-10);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.operator-printer-status > i {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(101, 117, 139, 0.12);
+}
+.operator-printer-status.ready {
+  color: #17745f;
+  border-color: #bfe2d6;
+  background: #eefaf6;
+}
+.operator-printer-status.ready > i {
+  box-shadow: 0 0 0 3px rgba(23, 116, 95, 0.12);
+}
+.operator-printer-status.error {
+  color: #b24b42;
+  border-color: #edcbc7;
+  background: #fff6f5;
+}
+.operator-printer-status.error > i {
+  box-shadow: 0 0 0 3px rgba(178, 75, 66, 0.1);
+}
+.operator-printer-status.checking > i {
+  animation: operator-printer-pulse 1s ease-in-out infinite;
+}
+@keyframes operator-printer-pulse {
+  50% {
+    opacity: 0.35;
+  }
 }
 .operator-roster-heading button {
   height: var(--operator-roster-control-height);
@@ -928,12 +979,14 @@
 .operator-roster-heading button.operator-operation-close-button,
 .operator-roster-heading button.operator-template-print-button,
 .operator-roster-heading button.operator-download-button,
-.operator-roster-heading button.operator-refresh-button {
+.operator-roster-heading button.operator-refresh-button,
+.operator-roster-heading button.operator-roster-label-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   min-width: 104px;
+  white-space: nowrap;
   font-weight: 800;
 }
 .operator-roster-heading button.operator-refresh-button {
@@ -1686,10 +1739,17 @@
   min-width: 113px;
   max-width: 113px;
 }
-.operator-roster-panel .operator-roster-table .operator-roster-column-assignedAt {
+.operator-roster-panel .operator-roster-table .operator-roster-column-assignedAt,
+.operator-roster-panel .operator-roster-table .operator-roster-column-printedAt {
   width: 165px;
   min-width: 165px;
   max-width: 165px;
+}
+.operator-roster-panel .operator-roster-table .operator-roster-column-attendance,
+.operator-roster-panel .operator-roster-table .operator-roster-column-status {
+  width: 92px;
+  min-width: 92px;
+  max-width: 92px;
 }
 .operator-roster-panel .operator-roster-table th.operator-roster-column-unitName,
 .operator-roster-panel .operator-roster-table td.operator-roster-column-unitName,
@@ -1772,9 +1832,37 @@
   font-size: var(--operator-fs-9);
   font-weight: 800;
 }
-.operator-roster-panel .operator-roster-table td:last-child > span.waiting {
+.operator-roster-panel .operator-roster-table td:last-child > span.status-waiting {
   color: #87601a;
   background: #fff2d9;
+}
+.operator-roster-panel .operator-roster-table td:last-child > span.status-progress {
+  color: #2359da;
+  background: #e9f0ff;
+}
+.operator-roster-panel .operator-roster-table td:last-child > span.status-closed {
+  color: #176b5f;
+  background: #e8f6f1;
+}
+.operator-roster-panel .operator-roster-table td.operator-roster-column-attendance > span {
+  display: inline-block;
+  width: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: var(--operator-fs-9);
+  font-weight: 800;
+}
+.operator-roster-panel .operator-roster-table td.operator-roster-column-attendance > span.attendance-present {
+  color: #176b5f;
+  background: #e8f6f1;
+}
+.operator-roster-panel .operator-roster-table td.operator-roster-column-attendance > span.attendance-absent {
+  color: #ad3a44;
+  background: #fdebed;
+}
+.operator-roster-panel .operator-roster-table td.operator-roster-column-attendance > span.attendance-pending {
+  color: #77859a;
+  background: #eef1f5;
 }
 .operator-roster-panel .operator-roster-table.is-empty tbody,
 .operator-roster-panel .operator-roster-table.is-empty tbody tr {
@@ -1830,7 +1918,8 @@
 }
 .operator-printer-toolbar,
 .operator-printer-page .setup-layout,
-.operator-printer-page .mode-banner {
+.operator-printer-page .mode-banner,
+.operator-printer-page .printer-device-settings {
   width: min(1180px, 100%);
   margin-right: auto;
   margin-left: auto;
@@ -1854,6 +1943,119 @@
 .operator-printer-page .section-label,
 .operator-printer-page .install-link {
   color: #2d63f5;
+}
+.printer-device-settings {
+  display: grid;
+  gap: 22px;
+  margin-bottom: 24px;
+  padding: 24px;
+}
+.printer-device-settings > header,
+.printer-device-settings > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.printer-device-settings > header > div {
+  display: grid;
+  gap: 4px;
+}
+.printer-device-settings .section-label,
+.printer-device-settings h2,
+.printer-device-settings p {
+  margin: 0;
+}
+.printer-device-settings h2 {
+  color: #17233a;
+  font-size: 20px;
+}
+.printer-device-settings header p:last-child {
+  color: #718096;
+  font-size: 12px;
+}
+.printer-device-state {
+  flex: 0 0 auto;
+  padding: 7px 11px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.printer-device-state.ready {
+  color: #16715b;
+  background: #e7f6f0;
+}
+.printer-device-state.pending {
+  color: #8a651e;
+  background: #fff3d8;
+}
+.printer-device-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.printer-device-field {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.printer-device-field > label {
+  color: #42526a;
+  font-size: 13px;
+  font-weight: 800;
+}
+.printer-device-fields select {
+  width: 100%;
+  min-height: 43px;
+  padding: 9px 36px 9px 12px;
+  color: #26344c;
+  border: 1px solid #cfd8e6;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 13px;
+}
+.printer-device-fields select:focus {
+  border-color: #5f8ef0;
+  outline: 3px solid rgba(45, 99, 245, 0.12);
+}
+.printer-device-fields select:disabled {
+  color: #8794a8;
+  background: #f3f5f8;
+}
+.printer-device-fields small {
+  min-height: 18px;
+  color: #7a8799;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.printer-device-settings > footer {
+  justify-content: flex-end;
+  padding-top: 18px;
+  border-top: 1px solid #e7ebf1;
+}
+.printer-device-settings > footer button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 132px;
+}
+
+@media (max-width: 800px) {
+  .printer-device-settings > header,
+  .printer-device-settings > footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .printer-device-fields {
+    grid-template-columns: 1fr;
+  }
+  .printer-device-state {
+    align-self: flex-start;
+  }
+  .printer-device-settings > footer button {
+    width: 100%;
+  }
 }
 
 .operator-draw-popover {

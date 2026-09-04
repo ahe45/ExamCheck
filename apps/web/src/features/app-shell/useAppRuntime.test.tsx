@@ -25,7 +25,10 @@ const loadedProfile: DeveloperSettings = {
 };
 
 describe("app shell runtime hooks", () => {
-  beforeEach(() => mocks.fetchSystemProfile.mockReset());
+  beforeEach(() => {
+    mocks.fetchSystemProfile.mockReset();
+    window.localStorage.clear();
+  });
 
   it("시스템 정보를 불러오고 실패 시에는 기본 브랜드를 유지한다", async () => {
     mocks.fetchSystemProfile.mockResolvedValueOnce(loadedProfile);
@@ -46,6 +49,8 @@ describe("app shell runtime hooks", () => {
     await act(async () => result.current.diagnose());
     expect(result.current.busy).toBe(false);
     expect(result.current.diagnostic).toMatchObject({ status: "READY", printer: { connection: "MOCK" } });
+    expect(result.current.printers).toHaveLength(1);
+    expect(result.current.selectedPrinterId).toBe("MOCK-GT800-001");
 
     act(() => result.current.resetDiagnostic());
     expect(result.current.diagnostic).toEqual(INITIAL_PRINTER_DIAGNOSTIC);

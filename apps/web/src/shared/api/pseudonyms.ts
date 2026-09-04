@@ -18,6 +18,7 @@ export const pseudonymTimeRangeSchema = z.object({
   room: z.string(),
   rangeStart: nonnegativeIntegerSchema,
   rangeEnd: nonnegativeIntegerSchema,
+  displayWidth: z.number().int().min(1).max(9).optional(),
   nextSequence: nonnegativeIntegerSchema,
 });
 export type PseudonymTimeRange = z.infer<typeof pseudonymTimeRangeSchema>;
@@ -51,7 +52,15 @@ export interface PseudonymOperationScope {
 }
 
 export type PseudonymRosterExportField =
-  "pseudonymNumber" | "examineeNo" | "name" | "unitName" | "majorName" | "assignedAt" | "status";
+  | "pseudonymNumber"
+  | "examineeNo"
+  | "name"
+  | "unitName"
+  | "majorName"
+  | "assignedAt"
+  | "printedAt"
+  | "attendance"
+  | "status";
 
 export interface PseudonymRosterExportQuery {
   filters: Array<{
@@ -72,11 +81,13 @@ export const pseudonymSettingSchema = z.object({
   admissionName: z.string(),
   rangeStart: nonnegativeIntegerSchema,
   rangeEnd: nonnegativeIntegerSchema,
+  displayWidth: z.number().int().min(1).max(9).optional(),
   nextSequence: nonnegativeIntegerSchema,
   assignmentMethod: pseudonymAssignmentMethodSchema,
   autoDrawEnabled: z.boolean(),
   autoDrawDelaySeconds: nonnegativeIntegerSchema,
   printPreassignedLabel: z.boolean(),
+  labelTemplateId: z.number().int().positive().nullable().optional(),
   autoAssignAbsenteesOnClose: z.boolean(),
   deleteAbsenteeInfoOnReopen: z.boolean(),
   useCandidatePhotos: z.boolean(),
@@ -95,6 +106,41 @@ export const pseudonymSettingsOverviewCardSchema = z.object({
   error: z.boolean(),
 });
 export type PseudonymSettingsOverviewCard = z.infer<typeof pseudonymSettingsOverviewCardSchema>;
+
+export const admissionOperationScheduleSchema = z.object({
+  examDate: z.string().min(1),
+  examTime: z.string().min(1),
+  periodName: z.string().min(1),
+  buildingNames: z.array(z.string()),
+  candidateCount: nonnegativeIntegerSchema,
+  assignedCount: nonnegativeIntegerSchema,
+  closed: z.boolean(),
+});
+export type AdmissionOperationSchedule = z.infer<typeof admissionOperationScheduleSchema>;
+
+export interface AdmissionOperationScheduleSelection {
+  examDate: string;
+  examTime: string;
+  periodName: string;
+}
+
+const resetAdmissionOperationsResultSchema = z.object({
+  resetScheduleCount: nonnegativeIntegerSchema,
+  deletedAssignmentCount: nonnegativeIntegerSchema,
+  deletedOperationCount: nonnegativeIntegerSchema,
+  resetRangeCount: nonnegativeIntegerSchema,
+});
+
+const deleteAdmissionResultSchema = z.object({
+  deleted: z.literal(true),
+  admissionName: z.string(),
+  deletedCandidateCount: nonnegativeIntegerSchema,
+  deletedAssignmentCount: nonnegativeIntegerSchema,
+  deletedOperationCount: nonnegativeIntegerSchema,
+  deletedSettingCount: nonnegativeIntegerSchema,
+  deletedRangeCount: nonnegativeIntegerSchema,
+  deletedAccountAssignmentCount: nonnegativeIntegerSchema,
+});
 
 export type UpdatePseudonymSettingInput = Omit<PseudonymSetting, "id" | "version" | "nextSequence" | "ranges"> & {
   expectedVersion: number;
@@ -146,6 +192,37 @@ export function updatePseudonymSetting(token: string, input: UpdatePseudonymSett
     },
     token,
     pseudonymSettingSchema,
+  );
+}
+
+export function fetchAdmissionOperationSchedules(token: string, examName: string, admissionName: string) {
+  const query = new URLSearchParams({ examName, admissionName }).toString();
+  return apiFetch(
+    `/pseudonyms/admission-operation-schedules?${query}`,
+    {},
+    token,
+    z.array(admissionOperationScheduleSchema),
+  );
+}
+
+export function resetAdmissionOperations(
+  token: string,
+  input: { examName: string; admissionName: string; schedules: AdmissionOperationScheduleSelection[] },
+) {
+  return apiFetch(
+    "/pseudonyms/admission-operations/reset",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+    resetAdmissionOperationsResultSchema,
+  );
+}
+
+export function deleteAdmission(token: string, admissionName: string, currentPassword: string) {
+  return apiFetch(
+    "/pseudonyms/admission",
+    { method: "DELETE", body: JSON.stringify({ admissionName, currentPassword }) },
+    token,
+    deleteAdmissionResultSchema,
   );
 }
 

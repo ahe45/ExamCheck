@@ -11,18 +11,18 @@ describe("candidate workbook headers", () => {
 
   it("일부 필수 컬럼이 있어도 전체 구성이 다르면 거부한다", () => {
     const differentHeaders = [...expectedHeaders];
-    differentHeaders[9] = "연락처";
+    differentHeaders[10] = "연락처";
 
     expect(() => validateCandidateWorkbookHeaders(differentHeaders)).toThrow(
-      "10번째 컬럼: '수험번호' 필요, 현재 '연락처'",
+      "11번째 컬럼: '수험번호' 필요, 현재 '연락처'",
     );
   });
 
   it("과거 양식처럼 컬럼이 추가되거나 빠진 경우 거부한다", () => {
-    const legacyHeaders = [...expectedHeaders.slice(0, 9), "대기실명", ...expectedHeaders.slice(9, 14), "성별"];
+    const legacyHeaders = expectedHeaders.filter((header) => header !== "대기실명");
 
     expect(() => validateCandidateWorkbookHeaders(legacyHeaders)).toThrow(
-      "필요한 컬럼은 17개이지만 16개가 확인되었습니다",
+      "필요한 컬럼은 18개이지만 17개가 확인되었습니다",
     );
   });
 });

@@ -28,4 +28,33 @@ describe("dashboard statistics", () => {
     const statistics = buildDashboardStatistics([{ admission: "", assignedNumber: null }]);
     expect(statistics.admissions[0]).toMatchObject({ name: "미지정 전형", status: "waiting" });
   });
+
+  it("건물, 교시, 대기실 기준의 세부 운영 현황을 함께 계산한다", () => {
+    const statistics = buildDashboardStatistics([
+      {
+        admission: "학생부교과",
+        building: "본관",
+        waitingRoom: "101호 대기실",
+        date: "2026-09-01",
+        time: "09:00",
+        period: "1교시",
+        assignedNumber: "1001",
+      },
+      {
+        admission: "실기전형",
+        building: "본관",
+        waitingRoom: "101호 대기실",
+        date: "2026-09-01",
+        time: "09:00",
+        period: "1교시",
+        assignedNumber: null,
+      },
+    ]);
+
+    expect(statistics.breakdowns.building).toEqual([
+      { name: "본관", total: 2, assigned: 1, unassigned: 1, assignmentRate: 50, status: "progress" },
+    ]);
+    expect(statistics.breakdowns.period[0]).toMatchObject({ name: "1교시 · 2026.09.01 09:00", total: 2 });
+    expect(statistics.breakdowns.waitingRoom[0]).toMatchObject({ name: "본관 · 101호 대기실", total: 2 });
+  });
 });
