@@ -37,12 +37,12 @@ if not exist "%~dp0.git" (
   goto FAILED
 )
 
-git status --porcelain >nul 2>> "%__UPDATE_LOG%"
+git status --porcelain -uno >nul 2>> "%__UPDATE_LOG%"
 if errorlevel 1 goto FAILED
-for /f "delims=" %%S in ('git status --porcelain 2^>nul') do set "__HAS_LOCAL_CHANGES=1"
+for /f "delims=" %%S in ('git status --porcelain -uno 2^>nul') do set "__HAS_LOCAL_CHANGES=1"
 if "%__HAS_LOCAL_CHANGES%"=="1" (
-  echo Local changes were found. Update stopped to preserve your files.
-  git status --short
+  echo Tracked project files have local changes. Update stopped to preserve your files.
+  git status --short --untracked-files=no
   echo Commit or stash your changes before running this file again.
   goto FAILED
 )
@@ -58,6 +58,7 @@ if errorlevel 1 (
 )
 
 echo Pulling latest changes...
+rem Git preserves untracked files and stops if an incoming file would overwrite one.
 git pull --ff-only >> "%__UPDATE_LOG%" 2>&1
 if errorlevel 1 goto FAILED
 
@@ -81,6 +82,11 @@ exit /b 0
 
 :FAILED
 echo.
+if exist "%__UPDATE_LOG%" (
+  echo Update log:
+  type "%__UPDATE_LOG%"
+  echo.
+)
 echo ExamCheck update stopped. Check the message above and the log file:
 echo   %__UPDATE_LOG%
 pause

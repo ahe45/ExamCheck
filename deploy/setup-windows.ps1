@@ -13,17 +13,6 @@ function Read-RequiredText([string]$label, [string]$currentValue) {
     }
 }
 
-function Read-Port([string]$currentValue) {
-    while ($true) {
-        $answer = Read-RequiredText 'DB PORT' $currentValue
-        $portNumber = 0
-        if ([int]::TryParse($answer, [ref]$portNumber) -and $portNumber -ge 1 -and $portNumber -le 65535) {
-            return [string]$portNumber
-        }
-        Write-Warning 'Enter a port between 1 and 65535.'
-    }
-}
-
 function Read-Password([string]$currentValue) {
     $hint = if ($currentValue) { 'Enter keeps the existing password' } else { 'required' }
     while ($true) {
@@ -49,20 +38,20 @@ try {
     Write-Host 'MySQL or MariaDB must already be installed and running.'
     Write-Host 'Use a password-authenticated account with permission to create and manage the ExamCheck database.'
     Write-Host 'Other application settings are preserved. Password input is hidden.'
+    Write-Host "DB_HOST is set automatically to '127.0.0.1'."
+    Write-Host "DB_PORT is set automatically to '3306'."
+    Write-Host "DB_NAME is set automatically to 'examcheck'."
 
     # Capture settings privately. Never print this JSON or pass passwords as command arguments.
     $currentJson = & node.exe tools/windows-env.mjs read
     if ($LASTEXITCODE -ne 0) { throw 'Could not read database settings.' }
     $current = $currentJson | ConvertFrom-Json
-    $dbHost = Read-RequiredText 'DB HOST' $current.DB_HOST
-    $dbPort = Read-Port $current.DB_PORT
-    Write-Host "Database: $($current.DB_NAME)"
     $dbUser = Read-RequiredText 'DB USER ID' $current.DB_USER
     $dbPassword = Read-Password $current.DB_PASSWORD
     $settings = [ordered]@{
-        DB_HOST = $dbHost
-        DB_PORT = $dbPort
-        DB_NAME = $current.DB_NAME
+        DB_HOST = '127.0.0.1'
+        DB_PORT = '3306'
+        DB_NAME = 'examcheck'
         DB_USER = $dbUser
         DB_PASSWORD = $dbPassword
     }
