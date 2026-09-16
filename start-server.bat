@@ -3,6 +3,9 @@ setlocal
 cd /d "%~dp0"
 
 set "__START_LOG=%~dp0log\start-server.log"
+set "__SETUP_REQUIRED=0"
+if /i "%~1"=="--setup" set "__SETUP_REQUIRED=1"
+if not exist "%~dp0.env" set "__SETUP_REQUIRED=1"
 if not exist "%~dp0log" mkdir "%~dp0log"
 if not exist "%~dp0log" goto FAILED
 echo ExamCheck startup: %DATE% %TIME%> "%__START_LOG%"
@@ -18,17 +21,26 @@ if errorlevel 1 (
   goto FAILED
 )
 
-if not exist "%~dp0.env" (
-  if not exist "%~dp0.env.example" goto FAILED
-  copy /y "%~dp0.env.example" "%~dp0.env" >nul
-  echo Configure the database connection in .env, then run this file again.
-  echo The database server must already be installed and running.
-  goto FAILED
-)
-
-if exist "%~dp0node_modules\.bin\concurrently.cmd" if exist "%~dp0node_modules\.bin\tsx.cmd" if exist "%~dp0node_modules\.bin\vite.cmd" goto PREPARE_DATABASE
+if exist "%~dp0node_modules\.bin\concurrently.cmd" if exist "%~dp0node_modules\.bin\tsx.cmd" if exist "%~dp0node_modules\.bin\vite.cmd" goto CHECK_SETTINGS
 echo Installing dependencies...
 call npm ci --include=dev >> "%__START_LOG%" 2>&1
+if errorlevel 1 goto FAILED
+
+:CHECK_SETTINGS
+if "%__SETUP_REQUIRED%"=="1" goto RUN_SETUP
+node tools\windows-env.mjs check >> "%__START_LOG%" 2>&1
+if errorlevel 2 goto RUN_SETUP
+if errorlevel 1 goto FAILED
+goto PREPARE_DATABASE
+
+:RUN_SETUP
+where powershell.exe >nul 2>nul
+if errorlevel 1 (
+  echo Windows PowerShell was not found. It is required for initial setup.
+  goto FAILED
+)
+echo Configuring ExamCheck database access...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy\setup-windows.ps1"
 if errorlevel 1 goto FAILED
 
 :PREPARE_DATABASE
@@ -52,7 +64,13 @@ exit /b %__SERVER_EXIT%
 
 :FAILED
 echo.
+if exist "%__START_LOG%" (
+  echo Startup log:
+  type "%__START_LOG%"
+  echo.
+)
 echo ExamCheck startup stopped. Check the message above and the log file:
 echo   %__START_LOG%
+echo To enter database settings again, run start-server.bat --setup
 pause
 exit /b 1

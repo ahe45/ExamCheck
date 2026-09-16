@@ -61,7 +61,17 @@ export async function withDatabaseConnection<T>(
 }
 
 export function reportDatabaseCliFailure(label: string, error: unknown) {
-  console.error(`${label} failed:`, error instanceof Error ? error.message : error);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`${label} failed:`, message);
+  if (message.includes("auth_gssapi_client")) {
+    console.error(
+      "MariaDB requested Windows authentication, which this application's database driver does not support.\n" +
+        "This can also happen when password authentication fails. Check DB_USER and DB_PASSWORD in the project .env.\n" +
+        "On Windows, run start-server.bat --setup to enter the database credentials again.\n" +
+        "Use a password-authenticated database account with permission to create and manage DB_NAME=examcheck.\n" +
+        "If the account only supports Windows authentication, ask the database administrator for a separate password-authenticated account.",
+    );
+  }
   process.exitCode = 1;
 }
 

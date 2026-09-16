@@ -29,10 +29,13 @@ npm run dev
 
 Node.js 22 또는 24 LTS와 npm, 실행 중인 MariaDB/MySQL 서버가 필요합니다. 업데이트에는 Git for Windows와 원격 추적 브랜치가 설정된 Git 복제본도 필요합니다.
 
-- `start-server.bat`: `.env`가 없으면 `.env.example`을 복사하고 설정 안내 후 중단합니다. DB 접속 정보를 입력하고 다시 실행하면, 의존성이 없는 경우 설치하고 DB 스키마·누락 초기 계정을 준비한 뒤 웹과 API 개발 서버를 함께 실행합니다. 접속 주소는 `http://localhost:5173`이며, 실행 창을 유지하고 종료할 때 `Ctrl+C`를 누릅니다.
+- `start-server.bat`: 필요한 의존성을 설치하고, `.env`가 없거나 DB 설정이 비어 있으면 설정 화면을 엽니다. DB 호스트·포트·아이디·비밀번호를 입력하면 `.env`에 저장하고 DB 스키마·누락 초기 계정을 준비한 뒤 웹과 API 개발 서버를 함께 실행합니다. 비밀번호 입력은 숨김 처리하며, 기존 비밀번호가 있으면 Enter로 유지합니다. 새 설치의 DB 이름은 `examcheck`이고 기존 DB 이름과 다른 설정은 유지합니다. 접속 주소는 `http://localhost:5173`이며, 실행 창을 유지하고 종료할 때 `Ctrl+C`를 누릅니다.
+- `start-server.bat --setup`: 기존 `.env`가 있어도 DB 설정 화면을 다시 엽니다. 예전 실행 파일로 빈 설정을 복사했거나 잘못된 비밀번호를 입력한 경우 사용할 수 있습니다.
 - `update-server.bat`: 실행 중인 서버를 먼저 종료한 뒤 실행합니다. 로컬 변경이 없을 때 현재 브랜치의 원격 최신 코드를 fast-forward 방식으로 받고, 의존성 설치·빌드·DB 마이그레이션을 수행합니다. 완료 후 `start-server.bat`로 다시 실행합니다. 로컬 변경이나 충돌이 있으면 중단합니다.
 
-준비·업데이트 로그는 각각 `log/start-server.log`, `log/update-server.log`에 기록하며, 서버 실행 로그는 실행 창에서 확인합니다. 기존 `.env`는 유지됩니다. 배치 파일은 현재 `npm run dev` 실행 구성을 사용하며 Windows 서비스로 등록하지 않습니다.
+준비·설정·업데이트 로그는 각각 `log/start-server.log`, `log/setup-windows.log`, `log/update-server.log`에 기록하며, 서버 실행 로그는 실행 창에서 확인합니다. `start-server.bat`의 준비 단계가 실패하면 로그를 실행 창에도 표시합니다. 설정 과정에서 비밀번호는 로그에 기록하지 않습니다. 배치 파일은 현재 `npm run dev` 실행 구성을 사용하며 Windows 서비스로 등록하지 않습니다.
+
+DB 준비 중 `unknown plugin auth_gssapi_client` 오류가 나면 MariaDB가 Windows 통합 인증을 요청한 상태입니다. Windows MariaDB는 비밀번호 인증 실패 후 통합 인증으로 넘어갈 수 있으므로, 먼저 프로젝트 `.env`의 `DB_USER`와 `DB_PASSWORD`를 확인합니다. 예제 설정의 `root` / 빈 비밀번호를 그대로 사용하지 말고 실제 비밀번호 인증 계정을 입력합니다. 비밀번호에 `#`이 있으면 값 전체를 큰따옴표로 감쌉니다. 같은 DB 서버에서 정상 작동하는 ExamList 등의 설정과 접속 계정을 비교할 수 있지만, `DB_NAME`은 반드시 `examcheck`로 유지하고 해당 DB 생성·관리 권한이 있는 계정을 사용합니다. Windows 인증 전용 계정이면 DB 관리자에게 별도의 비밀번호 인증 계정을 요청합니다. [MariaDB의 Windows 인증 동작 설명](https://mariadb.com/docs/server/reference/plugins/authentication-plugins/authentication-plugin-gssapi#passwordless-login-on-windows)
 
 로컬 개발용 초기 계정은 `npm run db:setup`에서 비밀번호가 아직 없는 경우에만 생성합니다.
 
