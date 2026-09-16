@@ -25,6 +25,15 @@ npm run dev
 - 가번호 부여 담당자 로그인 후: `http://localhost:5173/operation/select`
 - API 상태: `http://localhost:3100/api/v1/health`
 
+### Windows 배치 파일로 실행·업데이트
+
+Node.js 22 또는 24 LTS와 npm, 실행 중인 MariaDB/MySQL 서버가 필요합니다. 업데이트에는 Git for Windows와 원격 추적 브랜치가 설정된 Git 복제본도 필요합니다.
+
+- `start-server.bat`: `.env`가 없으면 `.env.example`을 복사하고 설정 안내 후 중단합니다. DB 접속 정보를 입력하고 다시 실행하면, 의존성이 없는 경우 설치하고 DB 스키마·누락 초기 계정을 준비한 뒤 웹과 API 개발 서버를 함께 실행합니다. 접속 주소는 `http://localhost:5173`이며, 실행 창을 유지하고 종료할 때 `Ctrl+C`를 누릅니다.
+- `update-server.bat`: 실행 중인 서버를 먼저 종료한 뒤 실행합니다. 로컬 변경이 없을 때 현재 브랜치의 원격 최신 코드를 fast-forward 방식으로 받고, 의존성 설치·빌드·DB 마이그레이션을 수행합니다. 완료 후 `start-server.bat`로 다시 실행합니다. 로컬 변경이나 충돌이 있으면 중단합니다.
+
+준비·업데이트 로그는 각각 `log/start-server.log`, `log/update-server.log`에 기록하며, 서버 실행 로그는 실행 창에서 확인합니다. 기존 `.env`는 유지됩니다. 배치 파일은 현재 `npm run dev` 실행 구성을 사용하며 Windows 서비스로 등록하지 않습니다.
+
 로컬 개발용 초기 계정은 `npm run db:setup`에서 비밀번호가 아직 없는 경우에만 생성합니다.
 
 - 관리자: `admin` / `1234`
