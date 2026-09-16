@@ -1,0 +1,50 @@
+diff --git a/src/core/candidate-block-grid-config.js b/src/core/candidate-block-grid-config.js
+index fb6cd20..c39a3f8 100644
+--- a/src/core/candidate-block-grid-config.js
++++ b/src/core/candidate-block-grid-config.js
+@@ -16,16 +16,16 @@ export const candidateBlockGridDefaults = Object.freeze({
+     heightPt: candidateBlockGridColumnNameRowDefaultHeightPt,
+     templateHtml: "<p><br></p>",
+   }),
+-  columns: 2,
++  columns: 1,
+   enabled: false,
+   emptyBlockLayer: Object.freeze({
+     enabled: false,
+     templateHtml: "<p><br></p>",
+   }),
+   fillEmptyBlocks: true,
+-  gapXPt: 4,
+-  gapYPt: 4,
+-  rows: 10,
++  gapXPt: 0,
++  gapYPt: 0,
++  rows: 20,
+   sortDirection: "asc",
+   sortKey: "examineeNo",
+   variant: "photo",
+diff --git a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-config.js b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-config.js
+index 0e17bf1..ca2fa0a 100644
+--- a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-config.js
++++ b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-config.js
+@@ -14,16 +14,16 @@ export const candidateBlockGridDefaults = Object.freeze({
+     heightPt: candidateBlockGridColumnNameRowDefaultHeightPt,
+     templateHtml: "<p><br></p>",
+   }),
+-  columns: 2,
++  columns: 1,
+   enabled: false,
+   emptyBlockLayer: Object.freeze({
+     enabled: false,
+     templateHtml: "<p><br></p>",
+   }),
+   fillEmptyBlocks: true,
+-  gapXPt: 4,
+-  gapYPt: 4,
+-  rows: 10,
++  gapXPt: 0,
++  gapYPt: 0,
++  rows: 20,
+   sortDirection: "asc",
+   sortKey: "examineeNo",
+   variant: "photo",

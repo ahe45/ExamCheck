@@ -18,6 +18,7 @@ describe("PrintJobsRepository", () => {
       examineeNo: schedule.examineeNo,
       examDate: schedule.examDate,
       roomName: "202호",
+      waitingRoom: "201호 대기실",
       seatNo: "22",
       labelBarcode: "EX10001",
       pseudonymNumber: "8201",
@@ -42,6 +43,7 @@ describe("PrintJobsRepository", () => {
     expect(execute.mock.calls[1]?.[0]).toContain("label_template_id AS labelTemplateId");
     expect(execute.mock.calls[1]?.[0]).toContain("FOR UPDATE");
     expect(execute.mock.calls[2]?.[0]).toContain("cr.id AS candidateRecordId");
+    expect(execute.mock.calls[2]?.[0]).toContain("cr.waiting_room AS waitingRoom");
     expect(execute.mock.calls[2]?.[0]).toContain("FOR UPDATE");
   });
 

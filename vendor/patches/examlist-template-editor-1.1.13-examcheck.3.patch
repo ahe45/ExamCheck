@@ -1,0 +1,90 @@
+diff --git a/src/dom/document-overflow.js b/src/dom/document-overflow.js
+index 9f3c3bb..2dc9139 100644
+--- a/src/dom/document-overflow.js
++++ b/src/dom/document-overflow.js
+@@ -36,57 +36,44 @@ function getDocumentContentRectBoundary(documentRoot) {
+   const elementConstructor = ownerWindow.Element || globalThis.Element;
+   const nodeTypes = ownerWindow.Node || globalThis.Node || { ELEMENT_NODE: 1, TEXT_NODE: 3 };
+ 
+-  function isEmptyTrailingBlockElement(element) {
+-    if (!(elementConstructor && element instanceof elementConstructor) || !element.matches("p")) {
+-      return false;
+-    }
+-
+-    const hasOnlyEmptyInlineContent = Array.from(element.childNodes || []).every((node) => {
++  // Cache only for this measurement: edits can change which paragraphs trail
++  // visible content. Inspect each sibling list once, backwards, rather than
++  // recursively rechecking every suffix (2^n work for n empty paragraphs).
++  const measuredParents = new WeakSet();
++  const emptyTrailingBlocks = new WeakSet();
++
++  function isEmptyParagraph(element) {
++    return element.matches("p") && Array.from(element.childNodes || []).every((node) => {
+       if (node.nodeType === nodeTypes.TEXT_NODE) {
+         return !String(node.textContent || "").replace(/\u00a0/g, " ").trim();
+       }
+-
+-      if (node.nodeType !== nodeTypes.ELEMENT_NODE) {
+-        return true;
+-      }
+-
+-      return node.matches("br");
++      return node.nodeType !== nodeTypes.ELEMENT_NODE || node.matches("br");
+     });
++  }
+ 
+-    if (!hasOnlyEmptyInlineContent) {
++  function isEmptyTrailingBlockElement(element) {
++    if (!(elementConstructor && element instanceof elementConstructor) || !element.matches("p")) {
+       return false;
+     }
+-
+-    let nextNode = element.nextSibling;
+-
+-    while (nextNode) {
+-      if (nextNode.nodeType === nodeTypes.TEXT_NODE) {
+-        if (String(nextNode.textContent || "").replace(/\u00a0/g, " ").trim()) {
+-          return false;
++    const parent = element.parentNode;
++    if (!parent) return isEmptyParagraph(element);
++    if (!measuredParents.has(parent)) {
++      measuredParents.add(parent);
++      let isTrailing = true;
++      for (let node = parent.lastChild; node; node = node.previousSibling) {
++        if (node.nodeType === nodeTypes.TEXT_NODE) {
++          if (String(node.textContent || "").replace(/\u00a0/g, " ").trim()) isTrailing = false;
++          continue;
+         }
+-        nextNode = nextNode.nextSibling;
+-        continue;
+-      }
+-
+-      if (nextNode.nodeType !== nodeTypes.ELEMENT_NODE) {
+-        nextNode = nextNode.nextSibling;
+-        continue;
+-      }
+-
+-      if (
+-        nextNode.matches("br") ||
+-        nextNode.matches(transientMeasurementSelector) ||
+-        nextNode.matches(candidateBlockGridMeasurementSelector) ||
+-        isEmptyTrailingBlockElement(nextNode)
+-      ) {
+-        nextNode = nextNode.nextSibling;
+-        continue;
++        if (node.nodeType !== nodeTypes.ELEMENT_NODE) continue;
++        if (node.matches("br") || node.matches(transientMeasurementSelector) || node.matches(candidateBlockGridMeasurementSelector)) {
++          continue;
++        }
++        if (isTrailing && isEmptyParagraph(node)) emptyTrailingBlocks.add(node);
++        else isTrailing = false;
+       }
+-
+-      return false;
+     }
+-
+-    return true;
++    return emptyTrailingBlocks.has(element);
+   }
+ 
+   try {

@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { useDialogFocus } from "./useDialogFocus";
+import { ToastNotice } from "../components/ToastNotice";
 
 function Dialog({ open, onClose }: { open: boolean; onClose(): void }) {
   const dialogRef = useDialogFocus<HTMLDivElement>(open);
@@ -70,6 +71,36 @@ afterEach(() => {
 });
 
 describe("useDialogFocus", () => {
+  it.each([true, false])("keeps toast controls accessible when the toast precedes the dialog: %s", (toastFirst) => {
+    const toast = <ToastNotice notice={{ kind: "error", text: "저장 실패" }} />;
+    const { rerender } = render(
+      <>
+        {toastFirst && toast}
+        <DialogHarness />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "열기" }));
+    if (!toastFirst)
+      rerender(
+        <>
+          {toast}
+          <DialogHarness />
+        </>,
+      );
+    const toastClose = screen.getByRole("button", { name: "알림 닫기" });
+    expect(toastClose.closest("[inert], [aria-hidden='true']")).toBeNull();
+    expect(screen.getByRole("button", { name: "첫 번째" })).toHaveFocus();
+    const dialogClose = screen.getByRole("button", { name: "닫기" });
+    dialogClose.focus();
+    fireEvent.keyDown(dialogClose, { key: "Tab" });
+    expect(toastClose).toHaveFocus();
+    fireEvent.keyDown(toastClose, { key: "Tab" });
+    expect(screen.getByRole("button", { name: "첫 번째" })).toHaveFocus();
+    fireEvent.click(toastClose);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("열릴 때 첫 요소로 이동하고 Tab을 순환한 뒤 닫힐 때 기존 포커스를 복원한다", async () => {
     render(<DialogHarness />);
     const opener = screen.getByRole("button", { name: "열기" });

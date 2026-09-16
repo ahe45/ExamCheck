@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, HttpException, HttpStatus, type ExceptionFilter } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
+import { JSON_BODY_TOO_LARGE_MESSAGE } from "./request-body-limits.js";
 import { ensureRequestId, REQUEST_ID_HEADER, resolveRequestPath, type HttpRequestLike } from "./request-context.js";
 
 export type StableHttpErrorCode =
@@ -9,6 +10,7 @@ export type StableHttpErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "RATE_LIMITED"
+  | "PAYLOAD_TOO_LARGE"
   | "HTTP_ERROR"
   | "INTERNAL_ERROR";
 
@@ -47,6 +49,19 @@ export class HttpExceptionEnvelopeFilter implements ExceptionFilter {
 }
 
 function buildErrorPayload(exception: unknown): { statusCode: number; payload: Record<string, unknown> } {
+  // Body-parser errors occur before the controller and are not Nest exceptions.
+  if (
+    exception instanceof Error &&
+    "type" in exception &&
+    exception.type === "entity.too.large" &&
+    "status" in exception &&
+    exception.status === HttpStatus.PAYLOAD_TOO_LARGE
+  ) {
+    return {
+      statusCode: HttpStatus.PAYLOAD_TOO_LARGE,
+      payload: { message: JSON_BODY_TOO_LARGE_MESSAGE },
+    };
+  }
   if (!(exception instanceof HttpException)) {
     return { statusCode: HttpStatus.INTERNAL_SERVER_ERROR, payload: {} };
   }
@@ -66,9 +81,8 @@ function omitInternalErrorDetails(response: object): Record<string, unknown> {
 }
 
 function resolveMessage(exception: unknown, payload: Record<string, unknown>, statusCode: number): string | string[] {
-  if (!(exception instanceof HttpException)) return "서버에서 요청을 처리하지 못했습니다.";
-
   if (typeof payload.message === "string" || isStringArray(payload.message)) return payload.message;
+  if (!(exception instanceof HttpException)) return "서버에서 요청을 처리하지 못했습니다.";
 
   const response = exception.getResponse();
   if (typeof response === "string") return response;
@@ -94,6 +108,8 @@ export function mapErrorCode(statusCode: number): StableHttpErrorCode {
       return "CONFLICT";
     case HttpStatus.TOO_MANY_REQUESTS:
       return "RATE_LIMITED";
+    case HttpStatus.PAYLOAD_TOO_LARGE:
+      return "PAYLOAD_TOO_LARGE";
     default:
       return statusCode >= HttpStatus.INTERNAL_SERVER_ERROR ? "INTERNAL_ERROR" : "HTTP_ERROR";
   }

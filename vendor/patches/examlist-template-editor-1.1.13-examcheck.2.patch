@@ -1,0 +1,86 @@
+diff --git a/src/runtime/index.js b/src/runtime/index.js
+index 8402d7d..2db1399 100644
+--- a/src/runtime/index.js
++++ b/src/runtime/index.js
+@@ -649,13 +649,26 @@ export function mountTemplateEditor(options = {}) {
+ 
+     if (nextHtml !== rawHtml) {
+       runtimeChangeNormalizationDepth += 1;
++      const historyState = rawRuntimeApi.state.templateEditor;
++      const wasRestoringHistory = historyState.isRestoringHistory;
++      const currentSnapshot = historyState.historyEntries[historyState.historyIndex];
++      // Canonicalizing HTML (for example a trailing style semicolon) is part of
++      // the same edit. getHtml() synchronizes the surface, so suppress its extra
++      // snapshot and canonicalize the existing entry. Otherwise undo restores
++      // the raw entry, normalization adds it again, and undo can never advance.
++      historyState.isRestoringHistory = true;
+ 
+       try {
+         withoutSetHtmlCallback(() => {
+           rawRuntimeApi.setHtml(nextHtml, { notify: false, resetHistory: false });
+         });
+-        nextHtml = sanitizeResolvedHtml(rawRuntimeApi.getHtml(), options.document || globalThis.document, options);
++        const canonicalHtml = rawRuntimeApi.getHtml();
++        if (currentSnapshot?.html === rawHtml) {
++          currentSnapshot.html = canonicalHtml;
++        }
++        nextHtml = sanitizeResolvedHtml(canonicalHtml, options.document || globalThis.document, options);
+       } finally {
++        historyState.isRestoringHistory = wasRestoringHistory;
+         runtimeChangeNormalizationDepth -= 1;
+       }
+     }
+diff --git a/src/runtime/template-editor-runtime-foundation.bundle.js b/src/runtime/template-editor-runtime-foundation.bundle.js
+index 48dc0cf..9141f0d 100644
+--- a/src/runtime/template-editor-runtime-foundation.bundle.js
++++ b/src/runtime/template-editor-runtime-foundation.bundle.js
+@@ -11529,6 +11529,7 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+     saveTemplateEditorSelection,
+     setTemplateEditorStatus,
+     syncTemplateEditorContent,
++    state,
+     undoTemplateEditorHistory,
+     updateTemplateEditorActiveCell,
+   }) {
+@@ -12266,10 +12267,26 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+       updateTemplateEditorActiveCell();
+     }
+ 
++    function withFormattingHistory(operation) {
++      const historyState = state?.templateEditor;
++      if (!historyState || historyState.isRestoringHistory) return operation();
++      // Native text formatting and protected-token formatting synchronize in
++      // several stages. They are one user action, hence one undo snapshot.
++      historyState.isRestoringHistory = true;
++      try {
++        return operation();
++      } finally {
++        historyState.isRestoringHistory = false;
++        syncTemplateEditorContent({ preserveSelection: true, focusEditor: true });
++      }
++    }
++
+     return Object.freeze({
+-      applyTemplateEditorCommand,
+-      applyTemplateEditorFontFamily,
+-      applyTemplateEditorFontSize,
++      applyTemplateEditorCommand: (command, value) => command === "undo" || command === "redo"
++        ? applyTemplateEditorCommand(command, value)
++        : withFormattingHistory(() => applyTemplateEditorCommand(command, value)),
++      applyTemplateEditorFontFamily: (...args) => withFormattingHistory(() => applyTemplateEditorFontFamily(...args)),
++      applyTemplateEditorFontSize: (...args) => withFormattingHistory(() => applyTemplateEditorFontSize(...args)),
+       getTemplateEditorDocumentElement,
+       getTemplateEditorImageOverlayContainer,
+       placeCaretAtEnd,
+diff --git a/src/runtime/template-editor-runtime-bootstrap.bundle.js b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+index 94fbc73..14bdb4a 100644
+--- a/src/runtime/template-editor-runtime-bootstrap.bundle.js
++++ b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+@@ -1802,6 +1802,7 @@ import "./template-editor-runtime-objects.bundle.js";
+           setFallbackStatus(...args);
+         },
+         syncTemplateEditorContent,
++        state,
+         undoTemplateEditorHistory,
+         updateTemplateEditorActiveCell,
+       });

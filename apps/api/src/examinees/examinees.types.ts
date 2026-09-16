@@ -8,6 +8,7 @@ export interface ExamineeRow extends RowDataPacket {
   examName: string;
   examDate: string | Date;
   roomName: string;
+  waitingRoom: string;
   seatNo: string;
   labelBarcode: string;
   preassignedNumber: string | null;
@@ -50,6 +51,8 @@ export interface OperationScheduleRow extends RowDataPacket {
   buildingNames: string | null;
   candidateCount: number;
   assignedCount: number;
+  printedCount: number;
+  labelPrintingEnabled: number | boolean;
 }
 
 export interface ExamineeScheduleRow extends RowDataPacket {

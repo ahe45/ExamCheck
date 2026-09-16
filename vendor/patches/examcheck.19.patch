@@ -1,0 +1,82 @@
+diff --git a/src/extensions/examlist/client/features/template-editor/editor-line-height-control.js b/src/extensions/examlist/client/features/template-editor/editor-line-height-control.js
+index 65fdcd9..2fbc1a8 100644
+--- a/src/extensions/examlist/client/features/template-editor/editor-line-height-control.js
++++ b/src/extensions/examlist/client/features/template-editor/editor-line-height-control.js
+@@ -219,6 +219,15 @@ function applyLineHeightToSelection(editor, surfaceElement, rawValue) {
+ 
+   targets.forEach((element) => {
+     element.style.lineHeight = lineHeightCssValue;
++    // Font-sized inline runs evaluate their own relative line height. Keep
++    // those runs in sync when the paragraph spacing is changed afterward.
++    const blockSelector = "p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,div";
++    element.querySelectorAll("[style]").forEach((inlineElement) => {
++      if (inlineElement.style.fontSize && !inlineElement.matches(blockSelector) &&
++          inlineElement.parentElement?.closest(blockSelector) === element) {
++        inlineElement.style.lineHeight = lineHeightCssValue;
++      }
++    });
+ 
+     if (textBlockTags.has(element.tagName)) {
+       element.style.marginTop = "0";
+diff --git a/src/runtime/template-editor-runtime-foundation.bundle.js b/src/runtime/template-editor-runtime-foundation.bundle.js
+index fd52e4d..055fe84 100644
+--- a/src/runtime/template-editor-runtime-foundation.bundle.js
++++ b/src/runtime/template-editor-runtime-foundation.bundle.js
+@@ -11619,7 +11619,9 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+         return Number(spacingValue) <= 0 ? "1" : `calc(1em + ${spacingValue}pt)`;
+       }
+ 
+-      if (inlineLineHeight && inlineLineHeight !== "normal") {
++      // Preserve scalable line heights, but convert fixed lengths using the
++      // pre-format font size so enlarging text retains the authored spacing.
++      if (inlineLineHeight && !/^[\d.]+(?:px|pt)$/i.test(inlineLineHeight) && inlineLineHeight !== "inherit") {
+         return inlineLineHeight;
+       }
+ 
+@@ -11707,15 +11709,28 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+     }
+ 
+     function createTemplateEditorLineHeightSnapshot(templateEditorSurface) {
++      const blockSelector = "p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,div";
++      const blocks = Array.from(templateEditorSurface.querySelectorAll(blockSelector));
+       return getTemplateEditorLineHeightTargets(templateEditorSurface).map((element) => ({
+         element,
++        surface: templateEditorSurface,
++        blockIndex: blocks.indexOf(element),
+         lineHeight: getTemplateEditorPreservedLineHeightValue(element),
+       }));
+     }
+ 
+     function restoreTemplateEditorLineHeightSnapshot(lineHeightSnapshot) {
++      const blockSelector = "p,h1,h2,h3,h4,h5,h6,li,blockquote,td,th,div";
+       const connectedSnapshot = Array.isArray(lineHeightSnapshot)
+-        ? lineHeightSnapshot.filter(({ element }) => element instanceof HTMLElement && element.isConnected)
++        ? lineHeightSnapshot.map((entry) => ({
++          ...entry,
++          // Font normalization may replace the content DOM. Formatting does
++          // not reorder blocks, so recover their live counterparts before sync.
++          element: entry.element.isConnected
++            ? entry.element
++            : entry.surface.querySelectorAll(blockSelector)[entry.blockIndex],
++        }))
++          .filter(({ element }) => element instanceof HTMLElement && element.isConnected)
+         : [];
+ 
+       if (!connectedSnapshot.length) {
+@@ -11724,6 +11739,16 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+ 
+       connectedSnapshot.forEach(({ element, lineHeight }) => {
+         element.style.lineHeight = lineHeight;
++        // CSS computes an inherited calc(1em + spacing) on the parent. An
++        // enlarged inline span must evaluate it against its own font size.
++        element.querySelectorAll("[style]").forEach((inlineElement) => {
++          if (!inlineElement.style.fontSize || inlineElement.matches(blockSelector) ||
++              inlineElement.parentElement?.closest(blockSelector) !== element) return;
++          const ownLineHeight = inlineElement.style.lineHeight;
++          if (!ownLineHeight || ownLineHeight === "inherit" || /^[\d.]+(?:px|pt)$/i.test(ownLineHeight)) {
++            inlineElement.style.lineHeight = lineHeight;
++          }
++        });
+       });
+       return true;
+     }

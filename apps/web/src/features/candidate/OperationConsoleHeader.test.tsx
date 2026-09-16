@@ -25,6 +25,8 @@ const schedule: OperationSchedule = {
   buildingNames: ["본관"],
   candidateCount: 10,
   assignedCount: 0,
+  printedCount: 0,
+  labelPrintingEnabled: false,
 };
 
 function renderHeader(selectedMode: "PREASSIGNED" | "RANDOM") {
@@ -44,7 +46,7 @@ function renderHeader(selectedMode: "PREASSIGNED" | "RANDOM") {
       onChangeSchedule={vi.fn()}
       onToggleSettings={vi.fn()}
       onOpenPrinter={vi.fn()}
-      onResetLookup={vi.fn()}
+      onResetHistory={vi.fn()}
       onLogout={vi.fn()}
     />,
   );

@@ -5,6 +5,11 @@ import type { AuthenticatedUser } from "../src/auth/auth.types.js";
 import { resolveAppConfig } from "../src/config/app-config.js";
 import type { CreatePrintJobDto } from "../src/print-jobs/print-jobs.dto.js";
 import { PrintJobsService } from "../src/print-jobs/print-jobs.service.js";
+import { LabelTemplatesService } from "../src/label-templates/label-templates.service.js";
+import { LabelTemplatesRepository } from "../src/label-templates/label-templates.repository.js";
+import { defaultLabelTemplateLayout } from "../src/label-templates/label-template-layout.js";
+import { MutationAuditRepository } from "../src/common/audit/mutation-audit.repository.js";
+import { PseudonymsService } from "../src/pseudonyms/pseudonyms.service.js";
 import { createMariaDbIntegrationHarness, type MariaDbIntegrationHarness } from "../test-support/mariadb-harness.js";
 
 const schedule = {
@@ -22,9 +27,7 @@ let workstationCode = "";
 
 beforeAll(async () => {
   harness = await createMariaDbIntegrationHarness();
-  const [identityRows] = await harness.pool.execute<
-    Array<RowDataPacket & { userId: number; workstationCode: string }>
-  >(
+  const [identityRows] = await harness.pool.execute<Array<RowDataPacket & { userId: number; workstationCode: string }>>(
     `SELECT u.id AS userId, w.code AS workstationCode
      FROM app_user u
      INNER JOIN workstation w ON w.enabled = TRUE
@@ -54,9 +57,9 @@ beforeAll(async () => {
   );
   await harness.pool.execute(
     `INSERT INTO pseudonym_setting
-      (exam_name, admission_name, range_start, range_end, next_sequence,
+      (exam_name, admission_name, range_start, range_end, display_width, next_sequence,
        assignment_method, print_preassigned_label, updated_by)
-     VALUES (?, ?, 8000, 8999, 8172, 'PREASSIGNED', TRUE, ?)`,
+     VALUES (?, ?, 8000, 8999, 4, 8172, 'PREASSIGNED', TRUE, ?)`,
     [schedule.examName, schedule.admissionName, owner.id],
   );
 
@@ -68,6 +71,41 @@ afterAll(async () => {
 });
 
 describe("print job MariaDB integration", () => {
+  it("persists template defaults, resolves the assigned template and allows per-job copies without changing it", async () => {
+    const templates = new LabelTemplatesService(
+      harness.pool,
+      new LabelTemplatesRepository(),
+      new MutationAuditRepository(),
+    );
+    const saved = await templates.save(
+      { code: "COPIES_TEST", name: "매수 검증 라벨", layout: { ...defaultLabelTemplateLayout }, defaultCopies: 2 },
+      owner,
+    );
+    await harness.pool.execute(
+      "UPDATE pseudonym_setting SET label_template_id = ? WHERE exam_name = ? AND admission_name = ?",
+      [saved.id, schedule.examName, schedule.admissionName],
+    );
+    const settings = new PseudonymsService(harness.pool);
+    expect((await settings.getSetting(schedule.examName, schedule.admissionName, owner)).labelPrintDefaults).toEqual({
+      templateId: saved.id,
+      templateName: saved.name,
+      copies: 2,
+    });
+    const baseline = await service.create({ ...createRequest(), copies: 2 }, owner);
+    const override = await service.create({ ...createRequest(), copies: 4 }, owner);
+    expect(override.copies).toBe(4);
+    expect(override.payload).toBe(baseline.payload);
+    expect((await templates.list()).templates.find((item) => item.id === saved.id)?.defaultCopies).toBe(2);
+    await templates.save({ code: saved.code, name: saved.name, layout: { ...saved.layout }, defaultCopies: 3 }, owner);
+    expect(
+      (await settings.getSetting(schedule.examName, schedule.admissionName, owner)).labelPrintDefaults?.copies,
+    ).toBe(3);
+    await templates.updateActive(saved.code, { active: false }, owner);
+    const fallback = (await settings.getSetting(schedule.examName, schedule.admissionName, owner)).labelPrintDefaults;
+    expect(fallback?.templateId).not.toBe(saved.id);
+    expect(fallback?.copies).toBe(1);
+  });
+
   it("creates one persisted job and returns it for an identical retry", async () => {
     const request = createRequest();
     const created = await service.create(request, owner);
@@ -88,7 +126,8 @@ describe("print job MariaDB integration", () => {
   });
 
   it("persists a terminal sent status", async () => {
-    const created = await service.create(createRequest(), owner);
+    const request = createRequest();
+    const created = await service.create(request, owner);
 
     await expect(service.complete(created.id, { status: "SENT" }, owner)).resolves.toEqual({
       id: created.id,
@@ -100,6 +139,10 @@ describe("print job MariaDB integration", () => {
       [created.id],
     );
     expect(rows).toEqual([{ status: "SENT" }]);
+    await expect(service.create(createRequest(), owner)).rejects.toThrow(
+      "이미 출력된 수험생은 라벨을 재출력할 수 없습니다.",
+    );
+    await expect(service.create(request, owner)).rejects.toThrow("이미 출력된 수험생은 라벨을 재출력할 수 없습니다.");
   });
 
   it("runs only on the simplified operational tables", async () => {

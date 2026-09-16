@@ -25,6 +25,7 @@ function examinee(examineeNo: string, name = "이예민"): Examinee {
     examName: "2026년도 자격시험",
     examDate: "2026-10-30",
     roomName: "101호",
+    waitingRoom: "201호 대기실",
     seatNo: "1",
     labelBarcode: examineeNo,
     preassignedNumber: null,
@@ -62,6 +63,8 @@ const schedule: OperationSchedule = {
   buildingNames: ["본관"],
   candidateCount: 30,
   assignedCount: 0,
+  printedCount: 0,
+  labelPrintingEnabled: false,
 };
 
 const assignment: PseudonymAssignment = {
@@ -97,6 +100,7 @@ function options(overrides: Record<string, unknown> = {}) {
       })),
       fetchPhoto: vi.fn(async () => null),
       assignPseudonym: vi.fn(async () => assignment),
+      previewSequential: vi.fn(async () => ({ pseudonymNumber: "1017" })),
     },
     ...overrides,
   };
@@ -265,7 +269,8 @@ describe("useOperationCandidateController", () => {
         periodName: schedule.periodName,
         admissionName: schedule.admissionName,
       },
-      undefined,
+      "1017",
+      "1017",
     );
 
     act(() => result.current.resetLookup());
@@ -276,9 +281,37 @@ describe("useOperationCandidateController", () => {
     expect(result.current.assigning).toBe(false);
   });
 
+  it("순차 예정 번호를 자동 입력하고 수정한 번호를 저장하며 다음 조회에서 새 예정 번호로 채운다", async () => {
+    const currentOptions = options();
+    const { result } = renderHook(() => useOperationCandidateController(currentOptions));
+    await act(async () => result.current.lookupExaminee("1162001"));
+    expect(result.current.manualNumber).toBe("1017");
+    act(() => result.current.setManualNumber(""));
+    expect(result.current.canAssign).toBe(false);
+    await act(async () => result.current.assign());
+    expect(currentOptions.services.assignPseudonym).not.toHaveBeenCalled();
+    act(() => result.current.setManualNumber("01020"));
+    expect(result.current.canAssign).toBe(true);
+    await act(async () => result.current.assign());
+    expect(currentOptions.services.assignPseudonym).toHaveBeenCalledWith(
+      "token",
+      "1162001",
+      "SEQUENTIAL",
+      expect.any(Object),
+      "01020",
+      "1017",
+    );
+    currentOptions.services.previewSequential.mockResolvedValue({ pseudonymNumber: "1021" });
+    await act(async () => result.current.lookupExaminee("1162002"));
+    expect(result.current.manualNumber).toBe("1021");
+    expect(result.current.sequentialPreviewNumber).toBe("1021");
+  });
+
   it("사전 가번호는 조회 즉시 기존 배정으로 표시하고 별도 배정 요청을 보내지 않는다", async () => {
     const candidate = examinee("1162001");
     candidate.preassignedNumber = "0821";
+    candidate.assignedNumber = "0821";
+    candidate.assignmentMode = "PREASSIGNED";
     candidate.preassignedAvailable = true;
     const lookupExaminee = vi.fn(async () => ({ status: "CURRENT" as const, examinee: candidate }));
     const assignPseudonym = vi.fn(async () => assignment);
@@ -291,7 +324,7 @@ describe("useOperationCandidateController", () => {
     await act(async () => result.current.lookupExaminee("1162001"));
 
     expect(result.current.assignment).toMatchObject({ pseudonymNumber: "0821", mode: "PREASSIGNED" });
-    expect(result.current.notice).toEqual({ kind: "success", text: "이미 부여된 가번호 0821을 확인했습니다." });
+    expect(result.current.notice).toBeNull();
     expect(assignPseudonym).not.toHaveBeenCalled();
   });
 
@@ -376,4 +409,87 @@ describe("useOperationCandidateController", () => {
     expect(result.current.photoUrl).toBeNull();
     expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:current");
   });
+});
+
+it("추첨 방식에서 업로드된 예약 번호만 있는 수험생은 추첨 팝오버를 열고 추첨을 허용한다", async () => {
+  const candidate = { ...examinee("1162001"), preassignedNumber: "0821", preassignedAvailable: true };
+  const currentOptions = options({ selectedMode: "RANDOM" });
+  currentOptions.services.lookupExaminee.mockResolvedValue({ status: "CURRENT", examinee: candidate });
+  const { result } = renderHook(() => useOperationCandidateController(currentOptions));
+  await act(async () => result.current.lookupExaminee("1162001"));
+  expect(result.current.assignment).toBeNull();
+  expect(result.current.drawPopoverOpen).toBe(true);
+  expect(result.current.canAssign).toBe(true);
+});
+
+it("순차부여는 예정 번호를 조회하고 저장 전까지 실제 부여를 하지 않는다", async () => {
+  const config = options();
+  const { result } = renderHook(() => useOperationCandidateController(config));
+  await act(async () => result.current.lookupExaminee("1162001"));
+  expect(result.current.drawPopoverOpen).toBe(true);
+  expect(result.current.sequentialPreviewNumber).toBe("1017");
+  expect(result.current.assignment).toBeNull();
+  expect(config.services.assignPseudonym).not.toHaveBeenCalled();
+  act(() => result.current.setDrawPopoverOpen(false));
+  expect(config.services.assignPseudonym).not.toHaveBeenCalled();
+});
+
+it("늦게 도착한 순차 예정 번호는 다음 수험생의 번호를 덮어쓰지 않는다", async () => {
+  const first = deferred<{ pseudonymNumber: string }>();
+  const previewSequential = vi
+    .fn()
+    .mockImplementationOnce(() => first.promise)
+    .mockResolvedValue({ pseudonymNumber: "0202" });
+  const config = options({ services: { ...options().services, previewSequential } });
+  const { result } = renderHook(() => useOperationCandidateController(config));
+  let lookup: Promise<unknown>;
+  await act(async () => {
+    lookup = result.current.lookupExaminee("1162001");
+  });
+  expect(result.current.canAssign).toBe(false);
+  act(() => result.current.resetLookup());
+  await act(async () => result.current.lookupExaminee("1162002"));
+  await act(async () => {
+    first.resolve({ pseudonymNumber: "0101" });
+    await lookup;
+  });
+  expect(result.current.candidate?.examineeNo).toBe("1162002");
+  expect(result.current.sequentialPreviewNumber).toBe("0202");
+});
+
+it("예정 번호 조회 실패 시 저장을 막고 오류를 표시한다", async () => {
+  const config = options({
+    services: { ...options().services, previewSequential: vi.fn().mockRejectedValue(new Error("범위 소진")) },
+  });
+  const { result } = renderHook(() => useOperationCandidateController(config));
+  await act(async () => result.current.lookupExaminee("1162001"));
+  await act(async () => result.current.assign());
+  expect(result.current.canAssign).toBe(false);
+  expect(result.current.notice?.text).toBe("범위 소진");
+  expect(config.services.assignPseudonym).not.toHaveBeenCalled();
+});
+
+it("매칭은 검색마다 빈 입력 팝오버를 열고 입력한 번호로만 저장한다", async () => {
+  const config = options({ selectedMode: "MANUAL" });
+  const { result } = renderHook(() => useOperationCandidateController(config));
+  await act(async () => result.current.lookupExaminee("1162001"));
+  expect(result.current.drawPopoverOpen).toBe(true);
+  expect(result.current.manualNumber).toBe("");
+  expect(result.current.canAssign).toBe(false);
+  await act(async () => result.current.assign());
+  expect(config.services.assignPseudonym).not.toHaveBeenCalled();
+  act(() => result.current.setManualNumber("0017"));
+  expect(result.current.canAssign).toBe(true);
+  await act(async () => result.current.assign());
+  expect(config.services.assignPseudonym).toHaveBeenCalledWith(
+    "token",
+    "1162001",
+    "MANUAL",
+    expect.any(Object),
+    "0017",
+  );
+  await act(async () => result.current.lookupExaminee("1162002"));
+  expect(result.current.manualNumber).toBe("");
+  expect(result.current.canAssign).toBe(false);
+  expect(config.services.previewSequential).not.toHaveBeenCalled();
 });

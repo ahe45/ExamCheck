@@ -3,6 +3,7 @@ import type { OperationSchedule } from "../../shared/api/examinees";
 import {
   fetchPseudonymSetting,
   type AssignmentMode,
+  type PseudonymSetting,
   type PseudonymAssignmentMethod,
   type PseudonymTimeRange,
 } from "../../shared/api/pseudonyms";
@@ -25,6 +26,8 @@ export function useOperationSettings(token: string, examName: string, schedule: 
   const [autoDrawDelaySeconds, setAutoDrawDelaySeconds] = useState(3);
   const [printPreassignedLabel, setPrintPreassignedLabel] = useState(true);
   const [autoAssignAbsenteesOnClose, setAutoAssignAbsenteesOnClose] = useState(false);
+  const [deleteAbsenteeInfoOnReopen, setDeleteAbsenteeInfoOnReopen] = useState(false);
+  const [labelPrintDefaults, setLabelPrintDefaults] = useState<PseudonymSetting["labelPrintDefaults"]>(null);
   const [settingLoaded, setSettingLoaded] = useState(false);
 
   useEffect(() => {
@@ -36,7 +39,9 @@ export function useOperationSettings(token: string, examName: string, schedule: 
     setAutoDrawDelaySeconds(3);
     setPrintPreassignedLabel(true);
     setAutoAssignAbsenteesOnClose(false);
+    setDeleteAbsenteeInfoOnReopen(false);
     setSettingLoaded(false);
+    setLabelPrintDefaults(null);
   }, [resetKey]);
 
   useEffect(() => {
@@ -62,7 +67,9 @@ export function useOperationSettings(token: string, examName: string, schedule: 
         setAutoDrawEnabled(setting.autoDrawEnabled);
         setAutoDrawDelaySeconds(setting.autoDrawDelaySeconds);
         setPrintPreassignedLabel(setting.printPreassignedLabel);
+        setLabelPrintDefaults(setting.labelPrintDefaults ?? null);
         setAutoAssignAbsenteesOnClose(setting.autoAssignAbsenteesOnClose);
+        setDeleteAbsenteeInfoOnReopen(setting.deleteAbsenteeInfoOnReopen);
         setSelectedMode(assignmentMethodToOperationMode(setting.assignmentMethod));
         setSettingLoaded(true);
       })
@@ -82,7 +89,9 @@ export function useOperationSettings(token: string, examName: string, schedule: 
     autoDrawEnabled,
     autoDrawDelaySeconds,
     printPreassignedLabel,
+    labelPrintDefaults,
     autoAssignAbsenteesOnClose,
+    deleteAbsenteeInfoOnReopen,
     settingLoaded,
     setRange,
   };

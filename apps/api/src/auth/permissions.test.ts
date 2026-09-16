@@ -12,12 +12,13 @@ describe("role permission policy", () => {
     expect(hasEveryPermission("ADMIN", ["settings.manage", "operation.reopen", "account.manage"])).toBe(true);
     expect(hasEveryPermission("OPERATOR", ["pseudonym.assign", "operation.close", "print.create"])).toBe(true);
     expect(hasEveryPermission("OPERATOR", ["settings.manage"])).toBe(false);
-    expect(hasEveryPermission("OPERATOR", ["operation.reopen"])).toBe(false);
+    expect(hasEveryPermission("OPERATOR", ["operation.reopen"])).toBe(true);
   });
 
   it("keeps viewer read-only", () => {
     expect(hasEveryPermission("VIEWER", ["candidate.read"])).toBe(true);
     expect(hasEveryPermission("VIEWER", ["pseudonym.assign"])).toBe(false);
+    expect(hasEveryPermission("VIEWER", ["operation.reopen"])).toBe(false);
   });
 
   it("defines a duplicate-free permission set for every role", () => {

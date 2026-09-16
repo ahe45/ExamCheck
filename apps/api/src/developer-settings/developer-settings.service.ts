@@ -57,6 +57,25 @@ export class DeveloperSettingsService {
     return profileResponse(profile);
   }
 
+  getHistoryResetPassword() {
+    return this.repository.getHistoryResetPasswordConfigured();
+  }
+
+  async updateHistoryResetPassword(password: string, user: AuthenticatedUser) {
+    const passwordHash = await hashPassword(password);
+    return withTransaction(this.pool, async (connection) => {
+      if (!(await this.repository.lockProfile(connection)))
+        throw new NotFoundException("시스템 설정을 찾을 수 없습니다.");
+      await this.repository.updateHistoryResetPassword(connection, passwordHash);
+      await this.audit.record(connection, {
+        eventType: "HISTORY_RESET_PASSWORD_CHANGED",
+        actorUserId: user.id,
+        details: {},
+      });
+      return { configured: true };
+    });
+  }
+
   async getForUser(user: AuthenticatedUser) {
     return withTransaction(this.pool, async (connection) => {
       const routed = await this.identityReadRouter.route(connection, {

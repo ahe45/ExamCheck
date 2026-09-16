@@ -19,15 +19,10 @@ describe("OperationControlPanel", () => {
         photoUrl={null}
         selectedMode="PREASSIGNED"
         assignment={null}
-        manualNumber=""
-        canAssign={false}
-        assigning={false}
         onSearch={vi.fn()}
         onInput={vi.fn()}
         onReset={vi.fn()}
         onCloseNotice={vi.fn()}
-        onManualNumber={vi.fn()}
-        onAssign={vi.fn()}
       />,
     );
 
@@ -46,6 +41,7 @@ function preassignedExaminee(): Examinee {
     examName: "2026년도 자격시험",
     examDate: "2026-10-30",
     roomName: "101호",
+    waitingRoom: "201호 대기실",
     seatNo: "1",
     labelBarcode: "10001",
     preassignedNumber: "0821",

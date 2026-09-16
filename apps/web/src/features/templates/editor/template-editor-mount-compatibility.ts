@@ -19,11 +19,28 @@ function prepareSelectedPageCandidateBlocks(template: TemplateEditorValue): void
 
   const parsed = new DOMParser().parseFromString(`<body>${htmlTarget.value}</body>`, "text/html");
 
-  parsed.body.querySelectorAll<HTMLElement>("[data-candidate-block-grid]").forEach((grid) => {
-    if (grid.style.position !== "absolute") return;
-    grid.style.position = "relative";
-    grid.style.top = "";
-  });
+  // Keep saved object positions during mount. Temporarily returning a grid to
+  // normal flow makes the editor shift following tables before restoring the grid.
+  const content = parsed.body.querySelector(".template-doc") || parsed.body;
+  const trailingParagraphs: Element[] = [];
+  let previous = content.lastElementChild;
+  while (
+    previous?.matches("p") &&
+    previous.attributes.length === 0 &&
+    Array.from(previous.childNodes).every((node) =>
+      node.nodeType === Node.TEXT_NODE
+        ? !node.textContent?.trim()
+        : node.nodeType === Node.ELEMENT_NODE && (node as Element).matches("br"),
+    )
+  ) {
+    trailingParagraphs.unshift(previous);
+    previous = previous.previousElementSibling;
+  }
+  // Older resize sessions inserted a paragraph on every pointer move. Keep
+  // one place to type after the block, without retaining the accidental tail.
+  if (previous?.matches("[data-candidate-block-grid]")) {
+    trailingParagraphs.slice(1).forEach((paragraph) => paragraph.remove());
+  }
   htmlTarget.set(parsed.body.innerHTML);
 }
 

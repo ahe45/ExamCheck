@@ -1,0 +1,30 @@
+diff --git a/src/runtime/template-editor-runtime-objects.bundle.js b/src/runtime/template-editor-runtime-objects.bundle.js
+index a0c0ceb..499567d 100644
+--- a/src/runtime/template-editor-runtime-objects.bundle.js
++++ b/src/runtime/template-editor-runtime-objects.bundle.js
+@@ -10251,13 +10251,24 @@ function getFlowObjectMetrics(objectElement, documentElement, geometry = {}, min
+         return false;
+       }
+ 
+-      const documentElement = ensureProtectedTemplateDocumentElement();
++      const documentElement = getProtectedTemplateDocumentElement();
+ 
+       if (hasMeaningfulTemplateDocumentContent(documentElement)) {
+         return false;
+       }
+ 
++      // A blank document may still contain several authored lines. Only guard
++      // its final caret host; otherwise preserve the selection for native
++      // Backspace/Delete, including selecting and clearing all blank lines.
++      const blockSelector = "p, div, h1, h2, h3, h4, h5, h6, li, blockquote, pre";
++      const leafBlocks = Array.from(documentElement?.querySelectorAll(blockSelector) || [])
++        .filter((element) => !element.querySelector(blockSelector));
++      if (leafBlocks.length > 1 || documentElement?.querySelectorAll("br").length > 1) {
++        return false;
++      }
++
+       event.preventDefault();
++      ensureProtectedTemplateDocumentElement();
+       syncTemplateEditorContent({ preserveSelection: true, focusEditor: true });
+       return true;
+     }

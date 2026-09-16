@@ -1,3 +1,4 @@
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import type { RefObject } from "react";
 import type { PseudonymSetting } from "../../shared/api/pseudonyms";
 import { CancelButtonIcon, DiscardButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
@@ -68,9 +69,7 @@ export function AdmissionSettingsEditorModal({
               <SaveButtonIcon />
               <span>{saveState.saving ? "저장 중…" : "설정 저장"}</span>
             </button>
-            <button type="button" className="admission-settings-modal-close" onClick={onRequestClose} aria-label="닫기">
-              ×
-            </button>
+            <ModalCloseButton onClick={onRequestClose} />
           </div>
         </header>
         <div className="admission-settings-modal-body">

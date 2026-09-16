@@ -23,6 +23,7 @@ export interface OperationCandidateState {
   notice: OperationNotice | null;
   drawPopoverOpen: boolean;
   drawPreviewNumber: number;
+  sequentialPreviewNumber: string | null;
   autoDrawRemainingMs: number;
   scheduleMismatch: OperationScheduleMismatch | null;
 }
@@ -33,6 +34,7 @@ export type OperationCandidateAction =
   | { type: "SET_NOTICE"; value: OperationNotice | null }
   | { type: "SET_DRAW_OPEN"; value: boolean }
   | { type: "SET_DRAW_PREVIEW"; value: number }
+  | { type: "SET_SEQUENTIAL_PREVIEW"; value: string }
   | { type: "SET_DRAW_REMAINING"; value: number }
   | { type: "SET_SCHEDULE_MISMATCH"; value: OperationScheduleMismatch | null }
   | { type: "LOOKUP_STARTED" }
@@ -64,6 +66,7 @@ export function createOperationCandidateState(previewNumber: number): OperationC
     notice: null,
     drawPopoverOpen: false,
     drawPreviewNumber: previewNumber,
+    sequentialPreviewNumber: null,
     autoDrawRemainingMs: 0,
     scheduleMismatch: null,
   };
@@ -77,6 +80,8 @@ export function operationCandidateReducer(
   if (action.type === "SET_MANUAL_NUMBER") return { ...state, manualNumber: action.value };
   if (action.type === "SET_NOTICE") return { ...state, notice: action.value };
   if (action.type === "SET_DRAW_OPEN") return { ...state, drawPopoverOpen: action.value };
+  if (action.type === "SET_SEQUENTIAL_PREVIEW")
+    return { ...state, sequentialPreviewNumber: action.value, manualNumber: action.value };
   if (action.type === "SET_DRAW_PREVIEW") return { ...state, drawPreviewNumber: action.value };
   if (action.type === "SET_DRAW_REMAINING") return { ...state, autoDrawRemainingMs: action.value };
   if (action.type === "SET_SCHEDULE_MISMATCH") return { ...state, scheduleMismatch: action.value };
@@ -87,6 +92,8 @@ export function operationCandidateReducer(
       photoUrl: null,
       assignment: null,
       searching: true,
+      sequentialPreviewNumber: null,
+      manualNumber: "",
       assigning: false,
       notice: null,
       drawPopoverOpen: false,

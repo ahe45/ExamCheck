@@ -4,6 +4,28 @@ import { renderTemplateHtml, sanitizeTemplateHtml } from "./template-renderer";
 import { TemplateDataProjectionError } from "./template-data-projection";
 
 describe("template renderer security boundary", () => {
+  it("prints the selected date, time and datetime formats per occurrence", () => {
+    const tag = (key: string, format: string) =>
+      `<span data-template-tag-value="${key}" data-template-tag-format="${format}"></span>`;
+    const html = renderTemplateHtml(
+      tag("candidate.examDate", "YYYY.MM.DD (ddd)") +
+        tag("candidate.examDate", "M월 D일") +
+        tag("candidate.examStartTime", "A h:mm") +
+        tag("system.printedAt", "YYYY.MM.DD HH:mm"),
+      {
+        "candidate.examDate": "2026-10-30",
+        "candidate.examStartTime": "13:05",
+        "system.printedAt": "2026. 9. 16. 오후 5:40",
+      },
+    );
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(Array.from(doc.querySelectorAll("span"), (tag) => tag.textContent)).toEqual([
+      "2026.10.30 (금)",
+      "10월 30일",
+      "오후 1:05",
+      "2026.09.16 17:40",
+    ]);
+  });
   it("removes executable markup while preserving editor data tags and safe styles", () => {
     const html = sanitizeTemplateHtml(
       `<section class="sheet" data-template-tag-value="candidate.name" style="text-align:center">홍길동</section>

@@ -84,6 +84,7 @@ export function enhanceDataTagPanel({
           ${renderSwitch("showIcons", "아이콘 표시", viewOptions.showIcons)}
           ${renderSwitch("showSampleData", "샘플데이터로 표시", viewOptions.showSampleData)}
         </div>
+        <p class="template-tag-format-help">문서의 날짜·시간 태그를 클릭하면 표시 형식을 변경할 수 있습니다.</p>
         <div class="template-tag-accordion" data-template-tag-accordion>
           ${groups.map(renderGroup).join("")}
         </div>

@@ -14,6 +14,7 @@ describe("formTemplateDataTags", () => {
         "candidate.admissionTypeName",
         "candidate.departmentName",
         "candidate.buildingName",
+        "candidate.waitingRoomName",
         "candidate.roomName",
         "candidate.seatNo",
         "candidate.opt3",
@@ -37,6 +38,12 @@ describe("formTemplateDataTags", () => {
   it("업로드 화면과 같은 사용자 용어를 사용한다", () => {
     expect(tags.find((tag) => tag.key === "candidate.examDate")?.label).toBe("시험날짜");
     expect(tags.find((tag) => tag.key === "candidate.buildingName")?.label).toBe("고사건물명");
+    expect(formTemplateDataTags.groups.find((group) => group.key === "site")?.tags).toContainEqual({
+      key: "candidate.waitingRoomName",
+      label: "대기실명",
+      type: "string",
+      example: "101호 대기실",
+    });
     expect(tags.find((tag) => tag.key === "candidate.seatNo")?.label).toBe("지정정렬");
     expect(tags.find((tag) => tag.key === "signature.author")?.label).toBe("작성자");
     expect(tags.find((tag) => tag.key === "signature.reviewer")?.label).toBe("확인자");

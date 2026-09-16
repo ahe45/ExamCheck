@@ -1,3 +1,4 @@
+import { ToastNotice } from "../../shared/components/ToastNotice";
 import { useState, type FormEvent } from "react";
 import type { Session } from "../../shared/api/auth";
 import { login } from "../../shared/api/auth";
@@ -70,11 +71,7 @@ export function LoginPage({
               placeholder="비밀번호 입력"
             />
           </label>
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
+          {error && <ToastNotice notice={{ kind: "error", text: error }} onClose={() => setError(null)} />}
           <button className="primary login-submit" disabled={busy || !loginId.trim() || password.length < 4}>
             <LoginButtonIcon />
             <span>{busy ? "로그인 중…" : "로그인"}</span>

@@ -21,7 +21,8 @@ interface Props {
   onChangeSchedule(): void;
   onToggleSettings(): void;
   onOpenPrinter(): void;
-  onResetLookup(): void;
+  onResetHistory(): void;
+  resetDisabled?: boolean;
   onLogout(): void;
 }
 
@@ -41,7 +42,8 @@ export function OperationConsoleHeader({
   onChangeSchedule,
   onToggleSettings,
   onOpenPrinter,
-  onResetLookup,
+  onResetHistory,
+  resetDisabled,
   onLogout,
 }: Props) {
   const mode = assignmentModeDisplay(selectedMode);
@@ -133,11 +135,11 @@ export function OperationConsoleHeader({
                   </span>
                 </button>
               )}
-              <button role="menuitem" onClick={onResetLookup}>
+              <button role="menuitem" onClick={onResetHistory} disabled={resetDisabled}>
                 <OperatorResetIcon />
                 <span>
-                  <strong>입력 초기화</strong>
-                  <small>현재 조회 내용을 모두 지우기</small>
+                  <strong>이력 초기화</strong>
+                  <small>현재 작업된 내용을 모두 지우기</small>
                 </span>
               </button>
             </div>

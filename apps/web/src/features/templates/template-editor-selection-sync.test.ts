@@ -9,6 +9,47 @@ import {
 } from "./template-editor-selection-sync";
 
 describe("template editor selection synchronization", () => {
+  it("태그 클릭과 서식 적용 뒤 DOM이 교체되어도 태그 선택을 유지한다", async () => {
+    vi.useFakeTimers();
+    const root = document.createElement("div");
+    root.innerHTML = `
+      <div class="editor-toolbar"><button data-template-command="bold">굵게</button></div>
+      <div data-template-editor-runtime-surface contenteditable="true"><div class="template-doc"><p>앞 <span class="template-token" contenteditable="false" data-template-tag-value="candidate.name">이름</span> 뒤</p></div></div>
+    `;
+    document.body.append(root);
+    const surface = root.querySelector<HTMLElement>("[data-template-editor-runtime-surface]")!;
+    const toolbar = root.querySelector<HTMLElement>(".editor-toolbar")!;
+    const state = { savedRange: null as Range | null, savedSelectionSnapshot: null };
+    const editor = { getRuntime: () => ({ state: { templateEditor: state } }) } as unknown as TemplateEditorInstance;
+    const disposeCanvas = bindTemplateEditorCanvasSelectionPersistence(editor, surface);
+    const disposeToolbar = bindTemplateEditorToolbarFocusPersistence(editor, surface, toolbar);
+    try {
+      surface.querySelector(".template-token")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      window.getSelection()!.removeAllRanges();
+      await vi.runAllTimersAsync();
+      expect(window.getSelection()!.toString()).toBe("이름");
+
+      toolbar.addEventListener("click", () => {
+        const paragraph = surface.querySelector("p")!;
+        paragraph.innerHTML = paragraph.innerHTML.replace(
+          'contenteditable="false"',
+          'contenteditable="false" style="font-weight:700"',
+        );
+        window.getSelection()!.collapse(surface, 0);
+      });
+      toolbar.querySelector("button")!.click();
+      await vi.runAllTimersAsync();
+      expect(window.getSelection()!.toString()).toBe("이름");
+      expect(state.savedRange?.toString()).toBe("이름");
+      expect(surface.querySelector(".template-token")).toHaveStyle({ fontWeight: "700" });
+    } finally {
+      disposeToolbar();
+      disposeCanvas();
+      root.remove();
+      vi.useRealTimers();
+    }
+  });
+
   it("툴바를 연속 클릭하기 직전 활성 편집면의 최신 선택 범위를 다시 저장한다", () => {
     const root = document.createElement("div");
     root.innerHTML = `
@@ -155,12 +196,10 @@ describe("template editor selection synchronization", () => {
     const editor = {
       getRuntime: () => runtime,
     } as unknown as TemplateEditorInstance;
-    const requestAnimationFrame = vi
-      .spyOn(window, "requestAnimationFrame")
-      .mockImplementation((callback) => {
-        callback(0);
-        return 1;
-      });
+    const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
     const dispose = bindTemplateEditorCanvasSelectionPersistence(editor, surface);
 
     surface.addEventListener(
@@ -171,10 +210,9 @@ describe("template editor selection synchronization", () => {
       },
       { once: true },
     );
-    const pointerTarget = selector === "[data-template-editor-runtime-surface]" ? surface : surface.querySelector(selector)!;
-    pointerTarget.dispatchEvent(
-      new MouseEvent("pointerdown", { bubbles: true, button: 0 }),
-    );
+    const pointerTarget =
+      selector === "[data-template-editor-runtime-surface]" ? surface : surface.querySelector(selector)!;
+    pointerTarget.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
     window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, button: 0 }));
 
     expect(table).not.toHaveClass("is-selected-table-object");

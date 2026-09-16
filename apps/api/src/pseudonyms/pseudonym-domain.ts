@@ -292,7 +292,10 @@ export function assertExistingAssignmentsWithinProposedRanges(
   assignments: readonly ExistingAssignmentScope[],
   proposed: Pick<UpdatePseudonymSettingInput, "assignmentMethod" | "rangeStart" | "rangeEnd" | "ranges">,
 ) {
-  const usesScheduleRanges = proposed.assignmentMethod === "DRAW" || proposed.assignmentMethod === "SEQUENTIAL";
+  const usesScheduleRanges =
+    proposed.assignmentMethod === "DRAW" ||
+    proposed.assignmentMethod === "SEQUENTIAL" ||
+    proposed.assignmentMethod === "MATCHING";
   const proposedRanges = new Map(proposed.ranges.map((range) => [scheduleKey(range), range]));
 
   for (const assignment of assignments) {

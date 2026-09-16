@@ -1,4 +1,6 @@
-import { useEffect, useState, type ChangeEvent } from "react";
+import { ToastNotice } from "../../shared/components/ToastNotice";
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
+import { useEffect, useState } from "react";
 import {
   downloadCandidateTemplate,
   importCandidatePhotoArchive,
@@ -42,16 +44,33 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
     if (!uploadBusy) onClose();
   });
 
-  async function chooseFile(event: ChangeEvent<HTMLInputElement>) {
-    const selected = event.target.files?.[0] || null;
-    event.target.value = "";
-    if (!selected) return;
-    if (!selected.name.toLowerCase().endsWith(".xlsx")) {
-      setFile(null);
-      setPreview(null);
-      setError("XLSX 형식의 수험생 업로드 양식을 선택해 주세요.");
+  function chooseFiles(files: File[]) {
+    if (uploadBusy) return;
+    const selected = files[0];
+    const isPhoto = uploadMode === "photos";
+    const extension = isPhoto ? ".zip" : ".xlsx";
+    if (files.length !== 1 || !selected.name.toLowerCase().endsWith(extension)) {
+      if (isPhoto) {
+        setPhotoFile(null);
+        setPhotoPreview(null);
+      } else {
+        setFile(null);
+        setPreview(null);
+      }
+      setError(
+        files.length !== 1
+          ? "한 번에 파일 한 개만 선택해 주세요."
+          : isPhoto
+            ? "ZIP 형식의 수험생 사진 파일을 선택해 주세요."
+            : "XLSX 형식의 수험생 업로드 양식을 선택해 주세요.",
+      );
       return;
     }
+    if (isPhoto) void choosePhotoArchive(selected);
+    else void chooseFile(selected);
+  }
+
+  async function chooseFile(selected: File) {
     setFile(selected);
     setPreview(null);
     setError(null);
@@ -65,10 +84,7 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
     }
   }
 
-  async function choosePhotoArchive(event: ChangeEvent<HTMLInputElement>) {
-    const selected = event.target.files?.[0] || null;
-    event.target.value = "";
-    if (!selected) return;
+  async function choosePhotoArchive(selected: File) {
     setPhotoFile(selected);
     setPhotoPreview(null);
     setError(null);
@@ -136,6 +152,10 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
       role="dialog"
       aria-modal="true"
       aria-labelledby="candidate-upload-title"
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => event.preventDefault()}
     >
       <section className="candidate-upload-modal">
         <header>
@@ -143,14 +163,11 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
             <p>수험생 데이터</p>
             <h2 id="candidate-upload-title">데이터 업로드</h2>
           </div>
-          <button
+          <ModalCloseButton
             onClick={() => {
               if (!uploadBusy) onClose();
             }}
-            aria-label="닫기"
-          >
-            ×
-          </button>
+          />
         </header>
         <div className="candidate-upload-tabs">
           <button
@@ -174,24 +191,18 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
             수험생 사진
           </button>
         </div>
+        {error && <ToastNotice notice={{ kind: "error", text: error }} onClose={() => setError(null)} />}
         {uploadMode === "workbook" ? (
           <WorkbookUploadSection
             busy={uploadBusy}
             downloadBusy={downloadBusy}
-            error={error}
             file={file}
             preview={preview}
-            onChoose={(event) => void chooseFile(event)}
+            onChoose={chooseFiles}
             onDownload={() => void downloadTemplate()}
           />
         ) : (
-          <PhotoUploadSection
-            busy={uploadBusy}
-            error={error}
-            file={photoFile}
-            preview={photoPreview}
-            onChoose={(event) => void choosePhotoArchive(event)}
-          />
+          <PhotoUploadSection busy={uploadBusy} file={photoFile} preview={photoPreview} onChoose={chooseFiles} />
         )}
         <CandidateUploadPolicySection disabled={uploadBusy} mode={uploadMode} policy={policy} onChange={setPolicy} />
         <footer>

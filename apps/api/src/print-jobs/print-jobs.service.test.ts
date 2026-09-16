@@ -58,6 +58,30 @@ const koreanLabelLayout = {
 };
 
 describe("PrintJobsService", () => {
+  it("대기실명 태그를 라벨 출력 데이터에 연결한다", async () => {
+    const connection = createConnectionMock();
+    const repository = createRepositoryMock({
+      findActiveLabelTemplate: vi.fn().mockResolvedValue({
+        id: 3,
+        layout: null,
+        zplTemplate: "^XA^FD{{CANDIDATE_WAITING_ROOM_NAME}}^FS^XZ",
+      }),
+    });
+    const result = await createService(connection, repository).create(input, operator);
+    expect(result.payload).toContain("WAIT-201");
+    expect(result.payload).not.toContain("{{CANDIDATE_WAITING_ROOM_NAME}}");
+  });
+
+  it("rejects a candidate with a recorded print timestamp before returning or creating a job", async () => {
+    const connection = createConnectionMock();
+    const repository = createRepositoryMock({ hasPrintedLabel: vi.fn().mockResolvedValue(true) });
+    await expect(createService(connection, repository).create(input, operator)).rejects.toThrow(
+      "이미 출력된 수험생은 라벨을 재출력할 수 없습니다.",
+    );
+    expect(repository.findByIdempotencyKey).not.toHaveBeenCalled();
+    expect(repository.insertPrintJob).not.toHaveBeenCalled();
+    expect(connection.rollback).toHaveBeenCalledOnce();
+  });
   it("rejects an admission outside the operator scope before opening a transaction", async () => {
     const getConnection = vi.fn();
     const service = new PrintJobsService(
@@ -223,6 +247,7 @@ function createRepositoryMock(overrides: Partial<Record<keyof PrintJobsRepositor
       labelTemplateId: 9,
     }),
     findByIdempotencyKey: vi.fn().mockResolvedValue(null),
+    hasPrintedLabel: vi.fn().mockResolvedValue(false),
     findCandidateForUpdate: vi.fn().mockResolvedValue({
       candidateRecordId: 202,
       examineeNo: input.examineeNo,
@@ -239,6 +264,7 @@ function createRepositoryMock(overrides: Partial<Record<keyof PrintJobsRepositor
       majorName: "유아교육",
       buildingName: "사범관",
       roomName: "202호",
+      waitingRoom: "WAIT-201",
       seatNo: "22",
       groupName: "1조",
       opt1: "추가정보1",

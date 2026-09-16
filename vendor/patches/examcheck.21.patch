@@ -1,0 +1,53 @@
+diff --git a/src/runtime/template-editor-runtime-foundation.bundle.js b/src/runtime/template-editor-runtime-foundation.bundle.js
+index 802876f..60744ad 100644
+--- a/src/runtime/template-editor-runtime-foundation.bundle.js
++++ b/src/runtime/template-editor-runtime-foundation.bundle.js
+@@ -9378,7 +9378,7 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+         : String(definitionOrKey?.key || definitionOrKey?.dataKey || definitionOrKey?.token || "").trim();
+       const type = typeof definitionOrKey === "string" ? "" : String(definitionOrKey?.type || "").trim().toLowerCase();
+ 
+-      return formatSupportedDateTagKeys.has(key) || formatSupportedTimeTagKeys.has(key) || type === "date" || type === "time";
++      return formatSupportedDateTagKeys.has(key) || formatSupportedTimeTagKeys.has(key) || type === "date" || type === "time" || type === "datetime";
+     }
+ 
+     function syncTemplateTokenFormatSupportAttribute(tokenElement, definitionOrKey = "") {
+@@ -9453,7 +9453,7 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+       };
+     }
+ 
+-    function getTemplateEditorTagPresentation(rawTag, { storage = false } = {}) {
++    function getTemplateEditorTagPresentation(rawTag, { storage = false, formatValue = "", formatType = "" } = {}) {
+       const normalizedTag = normalizeTemplateTag(rawTag);
+       const matchedDefinition = findTemplateTagDefinition(normalizedTag);
+       const fallbackText = getTemplateEditorTagText(normalizedTag);
+@@ -9470,6 +9470,8 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+             iconMarkup: fallbackIconMarkup,
+             label: fallbackText,
+             tag: normalizedTag,
++            formatValue,
++            formatType,
+           }),
+           fallbackText,
+           fallbackIconMarkup,
+@@ -9545,7 +9547,7 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+       }
+ 
+       const matchedDefinition = findTemplateTagDefinition(normalizedTag);
+-      const presentation = getTemplateEditorTagPresentation(normalizedTag, { storage });
++      const presentation = getTemplateEditorTagPresentation(normalizedTag, { storage, formatValue: tokenElement.dataset.templateTagFormat || "", formatType: tokenElement.dataset.templateTagFormatType || "" });
+       const label = String(matchedDefinition?.label || presentation.text || "").trim();
+       const example = String(matchedDefinition?.example || "").trim();
+       const title = presentation.title || [label, example].filter(Boolean).join(" / ");
+diff --git a/types/index.d.ts b/types/index.d.ts
+index cfb3f0c..1a77f22 100644
+--- a/types/index.d.ts
++++ b/types/index.d.ts
+@@ -143,6 +143,8 @@ export interface TemplateEditorRuntimeState {
+ }
+ 
+ export interface TemplateEditorTagDisplayContext {
++  formatValue?: string;
++  formatType?: string;
+   definition: Readonly<DataTagDefinition> | null;
+   iconMarkup: string;
+   label: string;

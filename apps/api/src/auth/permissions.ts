@@ -39,6 +39,7 @@ export const ROLE_PERMISSIONS = {
     "candidate.read",
     "driver.download",
     "operation.close",
+    "operation.reopen",
     "operation.export",
     "print.create",
     "pseudonym.assign",

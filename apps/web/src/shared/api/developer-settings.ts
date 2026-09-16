@@ -30,6 +30,22 @@ export function fetchDeveloperSettings(token: string) {
   return apiFetch("/developer-settings", {}, token, developerSettingsSchema);
 }
 
+export function fetchHistoryResetPassword(token: string) {
+  return apiFetch("/developer-settings/history-reset-password", {}, token, z.object({ configured: z.boolean() }));
+}
+
+export function updateHistoryResetPassword(token: string, newPassword: string) {
+  return apiFetch(
+    "/developer-settings/history-reset-password",
+    {
+      method: "PUT",
+      body: JSON.stringify({ newPassword }),
+    },
+    token,
+    z.object({ configured: z.boolean() }),
+  );
+}
+
 export function fetchSystemProfile() {
   return apiFetch("/system-profile", {}, undefined, developerSettingsSchema);
 }

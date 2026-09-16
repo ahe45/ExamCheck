@@ -3,6 +3,7 @@ import { fetchExamineePhoto, type OperationSchedule } from "../../shared/api/exa
 import type { FormTemplate } from "../../shared/api/form-templates";
 import { boundedMap, isAbortError, throwIfAborted } from "../../shared/async/bounded-map";
 import { getTemplateDocumentHtml, renderTemplateHtml } from "../templates/template-renderer";
+import { getPrintableCandidateGrid, renderCandidateGridPages } from "../templates/template-candidate-pages";
 import { emptyTemplateSignatureNames, type TemplateSignatureNames } from "../templates/template-signatures";
 import type { OperationRow } from "./operation-view-model";
 
@@ -25,24 +26,33 @@ export async function buildOperationTemplatePages(
   throwIfAborted(context.signal);
   if (!rows.length) throw new Error("PDF로 생성할 수험생 데이터가 없습니다.");
   const requiresPhoto = getTemplateDocumentHtml(template.layout).includes("candidate.photo");
+  const grid = getPrintableCandidateGrid(template.layout);
+  if (grid) {
+    const groups = template.usageScope === "ROOM" ? groupByRoom(rows) : [rows];
+    const values = await boundedMap(
+      rows,
+      async (row) => {
+        const photo = requiresPhoto ? await candidatePhoto(row, context) : "";
+        const group = template.usageScope === "ROOM" ? groups.find((items) => items.includes(row))! : rows;
+        return templateValues(row, group, 0, context, photo);
+      },
+      { concurrency: 4, signal: context.signal, onProgress: requiresPhoto ? context.onPhotoProgress : undefined },
+    );
+    throwIfAborted(context.signal);
+    const byRow = new Map(rows.map((row, index) => [row, values[index]]));
+    return groups.flatMap((group) =>
+      renderCandidateGridPages(
+        grid,
+        group.map((row) => byRow.get(row)!),
+      ),
+    );
+  }
   if (template.usageScope === "CANDIDATE") {
     return boundedMap(
       rows,
       async (row, index) => {
         throwIfAborted(context.signal);
-        let photo = "";
-        if (requiresPhoto) {
-          const blob = await fetchExamineePhoto(
-            row.candidate.examineeNo,
-            context.token,
-            context.schedule,
-            context.signal,
-          ).catch((reason: unknown) => {
-            if (isAbortError(reason)) throw reason;
-            return null;
-          });
-          if (blob) photo = await blobToDataUrl(blob, context.signal);
-        }
+        const photo = requiresPhoto ? await candidatePhoto(row, context) : "";
         throwIfAborted(context.signal);
         return renderTemplateHtml(template.layout, templateValues(row, rows, index, context, photo));
       },
@@ -68,6 +78,31 @@ export async function buildOperationTemplatePages(
     );
   }
   return [renderTemplateHtml(template.layout, templateValues(rows[0], rows, 0, context, ""))];
+}
+
+function groupByRoom(rows: OperationRow[]) {
+  const groups = new Map<string, OperationRow[]>();
+  for (const row of rows) {
+    const key = JSON.stringify([row.candidate.buildingName, row.candidate.roomName]);
+    const group = groups.get(key) || [];
+    group.push(row);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+async function candidatePhoto(row: OperationRow, context: OperationTemplateContext) {
+  throwIfAborted(context.signal);
+  const blob = await fetchExamineePhoto(
+    row.candidate.examineeNo,
+    context.token,
+    context.schedule,
+    context.signal,
+  ).catch((reason: unknown) => {
+    if (isAbortError(reason)) throw reason;
+    return null;
+  });
+  return blob ? blobToDataUrl(blob, context.signal) : "";
 }
 
 function templateValues(
@@ -123,6 +158,7 @@ function templateValues(
     "candidate.groupName": candidate?.groupName || "",
     "candidate.buildingCode": candidate?.buildingCode || "",
     "candidate.buildingName": candidate?.buildingName || "",
+    "candidate.waitingRoomName": candidate?.waitingRoom || "",
     "candidate.roomCode": candidate?.roomCode || "",
     "candidate.roomName": candidate?.roomName || "",
     "candidate.seatNo": candidate?.seatNo || "",

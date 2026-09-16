@@ -188,7 +188,7 @@ describe("pseudonym schedule range rules", () => {
 
   it("keeps existing global-range assignments only when they remain inclusive", () => {
     const assignment = { assignmentId: 5, examineeNo: "10001", pseudonymNumber: "1001", ...schedule };
-    const matching = { assignmentMethod: "MATCHING" as const, rangeStart: 1001, rangeEnd: 1003, ranges: [] };
+    const matching = { assignmentMethod: "PREASSIGNED" as const, rangeStart: 1001, rangeEnd: 1003, ranges: [] };
     expect(() => assertExistingAssignmentsWithinProposedRanges([assignment], matching)).not.toThrow();
     expect(() =>
       assertExistingAssignmentsWithinProposedRanges([{ ...assignment, pseudonymNumber: "1003" }], matching),

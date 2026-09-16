@@ -180,5 +180,6 @@ export function useDeveloperSettingsController({ token, onProfileChange }: Optio
     closePasswordModal,
     savePassword,
     dismissNotice: () => setNotice(null),
+    dismissPasswordNotice: () => setPasswordNotice(null),
   };
 }

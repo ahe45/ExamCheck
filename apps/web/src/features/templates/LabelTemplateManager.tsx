@@ -67,6 +67,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [defaultCopies, setDefaultCopies] = useState<number | "">(1);
   const [layout, setLayout] = useState<LabelTemplateLayout>(() => cloneLabelLayout(defaultLabelLayout));
   const [selectedId, setSelectedId] = useState<string | null>("pseudonym");
   const [dirty, setDirty] = useState(false);
@@ -87,6 +88,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     setCode(template?.code || nextCode);
     setName(template?.name || "");
     setDescription(template?.description || "");
+    setDefaultCopies(template?.defaultCopies ?? 1);
     setLayout(cloneLabelLayout(nextLayout));
     setSelectedId(nextLayout.elements[0]?.id ?? null);
     setZplTemplate(template?.zplTemplate || "");
@@ -134,6 +136,10 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
       setNotice({ kind: "error", text: "라벨 양식명을 입력해 주세요." });
       return null;
     }
+    if (!Number.isInteger(defaultCopies) || Number(defaultCopies) < 1 || Number(defaultCopies) > 10) {
+      setNotice({ kind: "error", text: "기본 인쇄 매수는 1~10 사이의 정수로 입력해 주세요." });
+      return null;
+    }
     setBusy("save");
     setNotice(null);
     try {
@@ -141,6 +147,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
         code,
         name,
         description,
+        defaultCopies: Number(defaultCopies),
         layout,
         active: source?.active ?? true,
       });
@@ -157,7 +164,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     } finally {
       setBusy(null);
     }
-  }, [busy, code, description, layout, name, refresh, source?.active, token]);
+  }, [busy, code, description, defaultCopies, layout, name, refresh, source?.active, token]);
 
   useImperativeHandle(
     ref,
@@ -243,6 +250,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
         code: createUniqueLabelCode(templates),
         name: createUniqueLabelName(template.name, templates),
         description: template.description || "",
+        defaultCopies: template.defaultCopies ?? 1,
         layout: cloneLabelLayout(template.layout),
         active: false,
       });
@@ -392,7 +400,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                       <span>{busy === "copy" ? "복사 중…" : "복사"}</span>
                     </button>
                     <button
-                      className="exam-primary-button compact"
+                      className="exam-primary-button"
                       disabled={Boolean(busy)}
                       onClick={() => openTemplate(template)}
                     >
@@ -697,6 +705,23 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
               <option value={300}>300 dpi</option>
             </select>
           </label>
+
+          <label>
+            기본 인쇄 매수
+            <input
+              type="number"
+              min={1}
+              max={10}
+              step={1}
+              value={defaultCopies}
+              disabled={Boolean(busy)}
+              onChange={(event) => {
+                setDefaultCopies(event.target.value === "" ? "" : Number(event.target.value));
+                setDirty(true);
+              }}
+            />
+          </label>
+          <p className="label-property-empty">1~10매 · 사용자 화면에서 출력 매수를 변경할 수 있습니다.</p>
 
           <div className="label-property-divider" />
           <h3>선택 요소</h3>

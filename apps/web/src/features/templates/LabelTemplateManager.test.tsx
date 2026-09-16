@@ -101,6 +101,32 @@ describe("LabelTemplateManager", () => {
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("양식의 기본 인쇄 매수를 편집하고 다시 열면 저장한 매수를 표시한다", async () => {
+    apiMock.templates = [{ ...template, defaultCopies: 2 }];
+    render(<LabelTemplateManager token="token" />);
+    await openEditor();
+    const copies = screen.getByRole("spinbutton", { name: "기본 인쇄 매수" });
+    expect(copies).toHaveValue(2);
+    fireEvent.change(copies, { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() =>
+      expect(apiMock.saveLabelTemplate).toHaveBeenCalledWith("token", expect.objectContaining({ defaultCopies: 4 })),
+    );
+    await screen.findByText("기본 가번호 라벨 라벨 양식을 저장했습니다.");
+    fireEvent.click(screen.getByRole("button", { name: "양식 목록" }));
+    await openEditor();
+    expect(screen.getByRole("spinbutton", { name: "기본 인쇄 매수" })).toHaveValue(4);
+  });
+
+  it.each(["", "0", "11", "1.5"])("유효하지 않은 기본 인쇄 매수 %s는 저장하지 않는다", async (value) => {
+    render(<LabelTemplateManager token="token" />);
+    await openEditor();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "기본 인쇄 매수" }), { target: { value } });
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    expect(await screen.findByText("기본 인쇄 매수는 1~10 사이의 정수로 입력해 주세요.")).toBeVisible();
+    expect(apiMock.saveLabelTemplate).not.toHaveBeenCalled();
+  });
+
   it("편집기에서 문서 양식과 같은 데이터 태그 검색 UI를 제공한다", async () => {
     render(<LabelTemplateManager token="token" />);
     await openEditor();

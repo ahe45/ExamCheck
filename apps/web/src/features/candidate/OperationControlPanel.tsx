@@ -1,67 +1,61 @@
+import { ToastNotice } from "../../shared/components/ToastNotice";
 import type { FormEvent, RefObject } from "react";
-import { ConfirmButtonIcon } from "../../shared/components/ActionIcons";
-import { useToastAutoDismiss } from "../../shared/hooks/useToastAutoDismiss";
 import type { Examinee } from "../../shared/api/examinees";
 import type { AssignmentMode, PseudonymAssignment } from "../../shared/api/pseudonyms";
-import { assignmentActionLabel } from "./operation-view-model";
 import type { OperationNotice } from "./useOperationCandidateController";
 
 interface Props {
+  inputRef?: RefObject<HTMLInputElement | null>;
   previewRef: RefObject<HTMLElement | null>;
   input: string;
   searching: boolean;
+  processing?: boolean;
+  searchReady?: boolean;
   notice: OperationNotice | null;
   candidate: Examinee | null;
   useCandidatePhotos: boolean;
   photoUrl: string | null;
   selectedMode: AssignmentMode;
   assignment: PseudonymAssignment | null;
-  manualNumber: string;
-  canAssign: boolean;
-  assigning: boolean;
   onSearch(event: FormEvent): void;
   onInput(value: string): void;
   onReset(): void;
   onCloseNotice(): void;
-  onManualNumber(value: string): void;
-  onAssign(): void;
 }
 
 export function OperationControlPanel({
+  inputRef,
   previewRef,
   input,
   searching,
+  processing = false,
+  searchReady = true,
   notice,
   candidate,
   useCandidatePhotos,
   photoUrl,
   selectedMode,
   assignment,
-  manualNumber,
-  canAssign,
-  assigning,
   onSearch,
   onInput,
   onReset,
   onCloseNotice,
-  onManualNumber,
-  onAssign,
 }: Props) {
-  const toastLifecycle = useToastAutoDismiss({
-    enabled: Boolean(notice),
-    resetKey: notice ? `${notice.kind}:${notice.text}` : "",
-    onClose: onCloseNotice,
-  });
   return (
     <aside className="operator-control-panel">
       <form className="operator-lookup" onSubmit={onSearch}>
         <div className="operator-lookup-field">
           <div>
             <input
+              ref={inputRef}
               id="operator-examinee-no"
               aria-label="수험번호"
               autoFocus
               value={input}
+              readOnly={processing}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.repeat || event.nativeEvent.isComposing)) event.preventDefault();
+              }}
               onChange={(event) => onInput(event.target.value.replace(/\s/g, ""))}
               placeholder="수험번호 입력 또는 스캔"
             />
@@ -77,32 +71,14 @@ export function OperationControlPanel({
           </div>
           <button
             className="operator-search-button"
-            disabled={searching || !input.trim()}
+            disabled={searching || processing || !searchReady || !input.trim()}
             aria-label={searching ? "검색 중" : "수험자 검색"}
             title={searching ? "검색 중" : "수험자 검색"}
           >
             {searching ? <span className="operator-search-spinner" /> : <OperatorSearchIcon />}
           </button>
         </div>
-        {notice && (
-          <div className="operator-toast-region" aria-live={notice.kind === "error" ? "assertive" : "polite"}>
-            <div
-              className={`operator-toast ${notice.kind}${toastLifecycle.fading ? " is-fading" : ""}`}
-              role={notice.kind === "error" ? "alert" : "status"}
-              onMouseEnter={toastLifecycle.onMouseEnter}
-              onMouseLeave={toastLifecycle.onMouseLeave}
-            >
-              <span aria-hidden="true">{notice.kind === "success" ? "✓" : "!"}</span>
-              <div>
-                <strong>{notice.kind === "success" ? "처리 완료" : "확인 필요"}</strong>
-                <p>{notice.text}</p>
-              </div>
-              <button type="button" onClick={onCloseNotice} aria-label="알림 메시지 닫기">
-                ×
-              </button>
-            </div>
-          </div>
-        )}
+        {notice && <ToastNotice notice={notice} onClose={onCloseNotice} />}
       </form>
       <section className="operator-candidate-preview" ref={previewRef}>
         <dl>
@@ -120,7 +96,11 @@ export function OperationControlPanel({
           </div>
           <div>
             <dt>가번호</dt>
-            <dd>{assignment?.pseudonymNumber || candidate?.preassignedNumber || "-"}</dd>
+            <dd>
+              {assignment?.pseudonymNumber ||
+                (selectedMode === "PREASSIGNED" ? candidate?.preassignedNumber : null) ||
+                "-"}
+            </dd>
           </div>
           <div>
             <dt>지원전형</dt>
@@ -148,34 +128,6 @@ export function OperationControlPanel({
           </div>
         </div>
       </section>
-      {selectedMode === "MANUAL" && !assignment && (
-        <label className="operator-manual-field">
-          직접 입력 가번호
-          <input
-            value={manualNumber}
-            onChange={(event) => onManualNumber(event.target.value.replace(/\D/g, ""))}
-            placeholder="숫자만 입력"
-          />
-        </label>
-      )}
-      {selectedMode !== "RANDOM" && selectedMode !== "PREASSIGNED" && (
-        <section className="operator-primary-actions without-print">
-          <button
-            className="draw"
-            onClick={onAssign}
-            disabled={!canAssign || assigning || (selectedMode === "MANUAL" && !manualNumber)}
-          >
-            <ConfirmButtonIcon />
-            <span>
-              {assigning
-                ? "처리 중…"
-                : assignment
-                  ? `가번호 ${assignment.pseudonymNumber}`
-                  : assignmentActionLabel(selectedMode)}
-            </span>
-          </button>
-        </section>
-      )}
     </aside>
   );
 }

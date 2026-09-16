@@ -94,9 +94,16 @@ describe("TemplateEditorWorkspace lifecycle", () => {
     expect(lifecycleMock.mountProjectTemplateEditor).toHaveBeenCalledTimes(1);
     expect(editorMock.destroy).not.toHaveBeenCalled();
 
+    const editorRoot = view.container.querySelector<HTMLElement>(".template-editor-host")!;
+    const connectedDuringCleanup: boolean[] = [];
+    lifecycleMock.disposeTagPanel.mockImplementation(() => connectedDuringCleanup.push(editorRoot.isConnected));
+    editorMock.destroy.mockImplementation(() => connectedDuringCleanup.push(editorRoot.isConnected));
     view.unmount();
     expect(lifecycleMock.disposeTagPanel).toHaveBeenCalledTimes(1);
     expect(editorMock.destroy).toHaveBeenCalledTimes(1);
+    // Layout-dependent editor cleanup must finish before React removes the
+    // canvas. Detached geometry can recursively trigger object-flow changes.
+    expect(connectedDuringCleanup).toEqual([true, true]);
   });
 
   it("입력 라벨과 목록 이동을 제공하고 변경 전에는 저장 버튼을 비활성화한다", () => {

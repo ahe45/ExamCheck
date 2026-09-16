@@ -181,9 +181,44 @@ describe("PseudonymsService settings overview", () => {
 describe("PseudonymsService admission data actions", () => {
   const admin = { id: 1, loginId: "admin", role: "ADMIN" as const, admissionNames: [] };
 
+  it.each(["reset", "delete"] as const)(
+    "blocks %s before any data access when reset password is missing, wrong, or unconfigured",
+    async (action) => {
+      for (const scenario of ["unconfigured", "missing", "wrong"] as const) {
+        const connection = transactionConnection();
+        const repository = {
+          findHistoryResetPasswordForUpdate: vi
+            .fn()
+            .mockResolvedValue(scenario === "unconfigured" ? null : await hashPassword("reset-secret")),
+          findUserPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("login-password")),
+          listAdmissionOperationSchedules: vi.fn(),
+          lockAdmissionCandidateIds: vi.fn(),
+        };
+        const audit = { record: vi.fn() };
+        const service = admissionActionService(connection, repository, audit);
+        const input = {
+          examName: "2026년도 자격시험",
+          admissionName: "학생부교과",
+          schedules: [{ examDate: "2026-09-01", examTime: "09:00", periodName: "1교시" }],
+          password: scenario === "missing" ? undefined! : "login-password",
+        };
+        const request =
+          action === "reset" ? service.resetAdmissionOperations(input, admin) : service.deleteAdmission(input, admin);
+        await expect(request).rejects.toThrow(scenario === "unconfigured" ? "먼저 설정" : "초기화 비밀번호가 올바르지");
+        expect(repository.findUserPasswordForUpdate).not.toHaveBeenCalled();
+        expect(repository.listAdmissionOperationSchedules).not.toHaveBeenCalled();
+        expect(repository.lockAdmissionCandidateIds).not.toHaveBeenCalled();
+        expect(audit.record).not.toHaveBeenCalled();
+        expect(connection.commit).not.toHaveBeenCalled();
+        expect(connection.rollback).toHaveBeenCalledOnce();
+      }
+    },
+  );
+
   it("resets assignments, closure state, and range cursors only for selected schedules", async () => {
     const connection = transactionConnection();
     const repository = {
+      findHistoryResetPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("reset-password")),
       listAdmissionOperationSchedules: vi.fn().mockResolvedValue([
         {
           examDate: "2026-09-01",
@@ -205,7 +240,7 @@ describe("PseudonymsService admission data actions", () => {
 
     await expect(
       service.resetAdmissionOperations(
-        { examName: "2026년도 자격시험", admissionName: "학생부교과", schedules },
+        { examName: "2026년도 자격시험", admissionName: "학생부교과", schedules, password: "reset-password" },
         admin,
       ),
     ).resolves.toEqual({
@@ -235,10 +270,10 @@ describe("PseudonymsService admission data actions", () => {
     expect(connection.commit).toHaveBeenCalledOnce();
   });
 
-  it("verifies the current account password before deleting every admission-owned data set", async () => {
+  it("verifies the developer-configured reset password before deleting every admission-owned data set", async () => {
     const connection = transactionConnection();
     const repository = {
-      findUserPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("1234")),
+      findHistoryResetPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("1234")),
       lockAdmissionCandidateIds: vi.fn().mockResolvedValue([11, 12]),
       deleteAdmissionAssignments: vi.fn().mockResolvedValue(2),
       deleteAdmissionOperations: vi.fn().mockResolvedValue(1),
@@ -251,7 +286,7 @@ describe("PseudonymsService admission data actions", () => {
     const service = admissionActionService(connection, repository, audit);
 
     await expect(
-      service.deleteAdmission({ admissionName: "학생부교과", currentPassword: "1234" }, admin),
+      service.deleteAdmission({ admissionName: "학생부교과", password: "1234" }, admin),
     ).resolves.toMatchObject({
       deleted: true,
       admissionName: "학생부교과",
@@ -267,18 +302,18 @@ describe("PseudonymsService admission data actions", () => {
     expect(connection.commit).toHaveBeenCalledOnce();
   });
 
-  it("rolls back without deleting data when the current password is incorrect", async () => {
+  it("rolls back without deleting data when the reset password is incorrect", async () => {
     const connection = transactionConnection();
     const repository = {
-      findUserPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("correct-password")),
+      findHistoryResetPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("correct-password")),
       lockAdmissionCandidateIds: vi.fn(),
     };
     const audit = { record: vi.fn() };
     const service = admissionActionService(connection, repository, audit);
 
     await expect(
-      service.deleteAdmission({ admissionName: "학생부교과", currentPassword: "wrong-password" }, admin),
-    ).rejects.toThrow("현재 비밀번호가 올바르지 않습니다.");
+      service.deleteAdmission({ admissionName: "학생부교과", password: "wrong-password" }, admin),
+    ).rejects.toThrow("초기화 비밀번호가 올바르지 않습니다.");
 
     expect(repository.lockAdmissionCandidateIds).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
@@ -460,6 +495,7 @@ describe("pseudonym P0 transaction invariants", () => {
         if (sql.includes("FROM candidate_record cr") && sql.includes("cr.examinee_no = ?")) return [[candidate], []];
         if (sql.includes("INSERT IGNORE INTO pseudonym_operation")) return [{ affectedRows: 1 }, []];
         if (sql.includes("SELECT id, closed FROM pseudonym_operation")) return [[{ id: 3, closed: false }], []];
+        if (sql.includes("FROM pseudonym_time_range")) return [[], []];
         if (sql.includes("FROM pseudonym_setting"))
           return [
             [
@@ -515,7 +551,7 @@ describe("pseudonym P0 transaction invariants", () => {
     );
 
     expect(result.alreadyAssigned).toBe(true);
-    expect(executed).toHaveLength(7);
+    expect(executed).toHaveLength(8);
     expect(executed[0]).toContain("FROM system_profile");
     expect(executed[0]).toContain("FOR UPDATE");
     expect(executed[1]).toContain("FROM candidate_record cr");
@@ -524,9 +560,11 @@ describe("pseudonym P0 transaction invariants", () => {
     expect(executed[3]).toContain("FROM pseudonym_operation");
     expect(executed[3]).toContain("FOR UPDATE");
     expect(executed[4]).toContain("FROM pseudonym_setting");
-    expect(executed[5]).toContain("FROM candidate_record cr");
+    expect(executed[5]).toContain("FROM pseudonym_time_range");
     expect(executed[5]).toContain("FOR UPDATE");
-    expect(executed[6]).toContain("FROM pseudonym_assignment");
+    expect(executed[6]).toContain("FROM candidate_record cr");
+    expect(executed[6]).toContain("FOR UPDATE");
+    expect(executed[7]).toContain("FROM pseudonym_assignment");
   });
 
   it("materializes an open operation before acquiring its row lock", async () => {

@@ -43,6 +43,17 @@ export class DeveloperSettingsRepository {
     return rows[0] ?? null;
   }
 
+  async getHistoryResetPasswordConfigured() {
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      "SELECT history_reset_password_hash IS NOT NULL AS configured FROM system_profile WHERE id = 1",
+    );
+    return { configured: Boolean(rows[0]?.configured) };
+  }
+
+  updateHistoryResetPassword(connection: PoolConnection, passwordHash: string) {
+    return connection.execute("UPDATE system_profile SET history_reset_password_hash = ? WHERE id = 1", [passwordHash]);
+  }
+
   async getProfileForRead(executor: SqlExecutor): Promise<ProfileRow | null> {
     const [rows] = await executor.query<ProfileRow[]>(profileSelectSql);
     return rows[0] ?? null;

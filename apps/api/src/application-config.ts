@@ -1,4 +1,6 @@
 import { ValidationPipe, type INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
+import { JSON_BODY_LIMIT_BYTES } from "./common/http/request-body-limits.js";
 import { securityHeadersMiddleware } from "./config/http-security.js";
 import { configureHttpBoundary, REQUEST_ID_HEADER, type RequestLogWriter } from "./common/http/http-boundary.js";
 
@@ -32,6 +34,7 @@ export function configureApplication(app: INestApplication, options: Application
   });
   configureHttpBoundary(app, { requestLogWriter: options.requestLogWriter });
   app.use(securityHeadersMiddleware);
+  (app as NestExpressApplication).useBodyParser("json", { limit: JSON_BODY_LIMIT_BYTES });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   return app;
 }

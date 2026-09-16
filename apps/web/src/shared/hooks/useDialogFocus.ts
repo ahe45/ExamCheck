@@ -54,6 +54,22 @@ function handleDialogTab(event: KeyboardEvent) {
   const topLayer = dialogLayers.at(-1);
   if (!topLayer) return;
   const focusable = focusableElements(topLayer.container);
+  const toastViewport = document.querySelector<HTMLElement>("[data-app-toast-viewport]");
+  const toastControls = toastViewport ? focusableElements(toastViewport) : [];
+  if (toastControls.length) {
+    const controls = [...focusable, ...toastControls];
+    const activeIndex = controls.indexOf(document.activeElement as HTMLElement);
+    const nextIndex =
+      activeIndex < 0
+        ? event.shiftKey
+          ? controls.length - 1
+          : 0
+        : (activeIndex + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    controls[nextIndex].focus({ preventScroll: true });
+    return;
+  }
   if (!focusable.length) {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -131,6 +147,7 @@ function syncOutsideInteractivity() {
 }
 
 function hideOutsideElement(element: HTMLElement) {
+  if (element.matches("[data-app-toast-viewport], #examlist-toast-root")) return;
   outsideElementStates.set(element, {
     ariaHidden: element.getAttribute("aria-hidden"),
     inert: element.getAttribute("inert"),

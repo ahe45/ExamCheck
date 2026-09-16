@@ -5,7 +5,7 @@ import {
   getDataTagFormatType,
   normalizeDataTagFormat,
   renderDataTagFormatPreview,
-} from "examlist-template-editor";
+} from "./data-tag-formatting";
 import { normalizeTemplateDataTagKey } from "./template-data-projection";
 import type { TemplateEditorCommandDispatcher } from "./editor/template-editor-command-dispatcher";
 
@@ -61,7 +61,8 @@ export function bindDataTagFormatControls({
       error.hidden = !errorMessage;
       preview.textContent = errorMessage
         ? "올바른 형식을 입력해 주세요."
-        : renderDataTagFormatPreview(formatType, value) || "기본 형식으로 표시됩니다.";
+        : renderDataTagFormatPreview(formatType, value, activeToken?.dataset.templateTagExample) ||
+          "기본 형식으로 표시됩니다.";
       apply.disabled = Boolean(errorMessage);
       if (preset) {
         const matching = Array.from(preset.options).find((option) => option.value === value);
@@ -98,7 +99,11 @@ export function bindDataTagFormatControls({
     };
 
     preset?.addEventListener("change", () => {
-      if (!input || preset.value === "__custom__") return;
+      if (!input) return;
+      if (preset.value === "__custom__") {
+        input.focus();
+        return;
+      }
       input.value = preset.value;
       syncFeedback();
     });
@@ -126,17 +131,27 @@ export function bindDataTagFormatControls({
     open(token);
   };
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (!overlay) return;
     if (event.key === "Escape" && overlay) {
       event.preventDefault();
+      event.stopImmediatePropagation();
       close();
+    }
+    if (event.key === "Tab") {
+      const controls = Array.from(overlay.querySelectorAll<HTMLElement>("button:not(:disabled), input, select"));
+      const index = controls.indexOf(document.activeElement as HTMLElement);
+      const next = index < 0 ? 0 : (index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      controls[next]?.focus();
     }
   };
 
   rootElement.addEventListener("click", handleClick, true);
-  document.addEventListener("keydown", handleKeyDown);
+  document.addEventListener("keydown", handleKeyDown, true);
   return () => {
     rootElement.removeEventListener("click", handleClick, true);
-    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("keydown", handleKeyDown, true);
     close();
   };
 }
@@ -144,18 +159,17 @@ export function bindDataTagFormatControls({
 function renderModal({ formatType, formatValue, label }: { formatType: string; formatValue: string; label: string }) {
   const options = getDataTagFormatOptions(formatType);
   const guides = getDataTagFormatTokenGuides(formatType);
-  const hasPreset = options.some((option) => option.value === formatValue);
   return `
     <section class="examcheck-data-tag-format-modal">
       <header>
         <div><p>데이터 태그 서식</p><h2 id="examcheckDataTagFormatTitle">${escapeMarkup(label)}</h2></div>
-        <button type="button" data-data-tag-format-close aria-label="데이터 태그 서식 닫기">×</button>
+        <button type="button" class="exam-modal-close" data-data-tag-format-close aria-label="데이터 태그 서식 닫기">×</button>
       </header>
       <div class="examcheck-data-tag-format-body">
         <label class="examcheck-data-tag-format-field">
           <span>표시 형식</span>
           <select data-data-tag-format-preset>
-            ${!hasPreset && formatValue ? '<option value="__custom__">직접 입력</option>' : ""}
+            <option value="__custom__">직접 입력</option>
             ${options
               .map(
                 (option) =>
@@ -167,7 +181,7 @@ function renderModal({ formatType, formatValue, label }: { formatType: string; f
         <label class="examcheck-data-tag-format-field">
           <span>직접 입력</span>
           <input data-data-tag-format-input type="text" maxlength="60" autocomplete="off" spellcheck="false"
-            value="${escapeMarkup(formatValue)}" placeholder="${formatType === "time" ? "HH:mm" : "YYYY.MM.DD (ddd)"}" />
+            value="${escapeMarkup(formatValue)}" placeholder="${formatType === "time" ? "HH:mm" : formatType === "datetime" ? "YYYY.MM.DD HH:mm" : "YYYY.MM.DD (ddd)"}" />
         </label>
         <div class="examcheck-data-tag-format-preview">
           <span>예시 결과</span><strong data-data-tag-format-preview></strong>

@@ -1,0 +1,52 @@
+diff --git a/src/dom/document-sanitizer.js b/src/dom/document-sanitizer.js
+index a90fda4..57df53e 100644
+--- a/src/dom/document-sanitizer.js
++++ b/src/dom/document-sanitizer.js
+@@ -84,6 +84,8 @@ const allowedStyleProperties = new Set([
+   "row-gap",
+   "table-layout",
+   "text-align",
++  "text-align-last",
++  "text-justify",
+   "text-decoration",
+   "text-decoration-line",
+   "text-decoration-color",
+diff --git a/src/extensions/examlist/client/features/template-editor/document-editor-sanitizer.js b/src/extensions/examlist/client/features/template-editor/document-editor-sanitizer.js
+index 8ee3284..91c1d74 100644
+--- a/src/extensions/examlist/client/features/template-editor/document-editor-sanitizer.js
++++ b/src/extensions/examlist/client/features/template-editor/document-editor-sanitizer.js
+@@ -79,6 +79,8 @@ const allowedStyleProperties = new Set([
+   "row-gap",
+   "table-layout",
+   "text-align",
++  "text-align-last",
++  "text-justify",
+   "text-decoration",
+   "top",
+   "vertical-align",
+diff --git a/src/runtime/template-editor-runtime-foundation.bundle.js b/src/runtime/template-editor-runtime-foundation.bundle.js
+index 055fe84..802876f 100644
+--- a/src/runtime/template-editor-runtime-foundation.bundle.js
++++ b/src/runtime/template-editor-runtime-foundation.bundle.js
+@@ -11270,6 +11270,8 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+ 
+         targetBlocks.forEach((blockElement) => {
+           blockElement.style.textAlign = textAlignValue;
++          blockElement.style.textAlignLast = textAlignValue === "justify" ? "justify" : "auto";
++          blockElement.style.setProperty("text-justify", textAlignValue === "justify" ? "inter-character" : "auto");
+         });
+ 
+         if (shouldSyncAfterStyle) {
+diff --git a/src/runtime/template-editor-runtime-objects.bundle.js b/src/runtime/template-editor-runtime-objects.bundle.js
+index 499567d..6371277 100644
+--- a/src/runtime/template-editor-runtime-objects.bundle.js
++++ b/src/runtime/template-editor-runtime-objects.bundle.js
+@@ -6437,6 +6437,8 @@ import "./template-editor-runtime-foundation.bundle.js";
+           command === "justifyCenter" ? "center" : command === "justifyRight" ? "right" : command === "justifyFull" ? "justify" : "left";
+         getTemplateEditorTableTextStyleTargets(targetCells).forEach((element) => {
+           element.style.textAlign = textAlignValue;
++          element.style.textAlignLast = textAlignValue === "justify" ? "justify" : "auto";
++          element.style.setProperty("text-justify", textAlignValue === "justify" ? "inter-character" : "auto");
+         });
+       } else if (command === "insertUnorderedList") {
+         const shouldApplyList = !targetCells.every((cell) => getTemplateEditorCellUnorderedList(cell));

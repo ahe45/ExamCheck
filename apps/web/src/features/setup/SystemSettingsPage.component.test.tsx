@@ -178,3 +178,55 @@ describe("SystemSettingsPage optimistic save", () => {
     );
   });
 });
+
+it.each(["DRAW", "MATCHING"] as const)(
+  "%s 방식에서 자동 생성된 범위를 표시하고 변경 없이 저장할 수 있다",
+  async (assignmentMethod) => {
+    const candidate = {
+      date: "2026-10-30",
+      time: "10:00",
+      period: "오전",
+      admission: "학생부교과 면접",
+      unit: "유아교육과",
+      major: "",
+      building: "사범관",
+      room: "면접고사실",
+    };
+    candidateApi.fetchCandidates.mockResolvedValue([candidate, candidate]);
+    pseudonymApi.fetchPseudonymSetting.mockResolvedValue({ ...setting, version: 0, assignmentMethod });
+    pseudonymApi.updatePseudonymSetting.mockImplementation(async (_token, input) => ({
+      ...setting,
+      ...input,
+      version: 1,
+    }));
+    const ref = createRef<SystemSettingsPageHandle>();
+    const onDirtyChange = vi.fn();
+    const onSaveStateChange = vi.fn();
+    render(
+      <SystemSettingsPage
+        ref={ref}
+        token="admin-token"
+        admissionName="학생부교과 면접"
+        embedded
+        onDirtyChange={onDirtyChange}
+        onSaveStateChange={onSaveStateChange}
+      />,
+    );
+    await waitFor(() => expect(onSaveStateChange).toHaveBeenLastCalledWith({ canSave: true, saving: false }));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(screen.getByRole("heading", { name: "날짜·시간별 가번호 범위" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: /시작 번호/ })).toBeEnabled();
+    await act(async () => {
+      expect(await ref.current?.save()).toBe(true);
+    });
+    expect(pseudonymApi.updatePseudonymSetting).toHaveBeenCalledWith(
+      "admin-token",
+      expect.objectContaining({
+        expectedVersion: 0,
+        assignmentMethod,
+        ranges: [expect.objectContaining({ ...candidate, rangeStart: 1001, rangeEnd: 1002 })],
+      }),
+    );
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  },
+);

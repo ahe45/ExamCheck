@@ -1,0 +1,37 @@
+diff --git a/src/runtime/template-editor-runtime-foundation.bundle.js b/src/runtime/template-editor-runtime-foundation.bundle.js
+index 70ad49d..fd52e4d 100644
+--- a/src/runtime/template-editor-runtime-foundation.bundle.js
++++ b/src/runtime/template-editor-runtime-foundation.bundle.js
+@@ -8929,6 +8929,22 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+     state,
+     syncTemplateEditorContent,
+   }) {
++    function removeEmptyInlineInsertionPlaceholder(range, surface) {
++      if (!range?.collapsed) return;
++      const start = range.startContainer.nodeType === Node.ELEMENT_NODE
++        ? range.startContainer : range.startContainer.parentElement;
++      const host = start?.closest?.("p, div, td, th, li");
++      if (!host || !surface.contains(host)) return;
++      if (String(host.textContent || "").replace(/[\u00a0\u200b\ufeff]/g, " ").trim()) return;
++      const descendants = Array.from(host.querySelectorAll("*"));
++      if (descendants.some(element => !element.matches("br, span, b, strong, i, em, u, s, strike, font") ||
++        element.matches("[contenteditable='false'], [data-template-tag-value], .template-generated-object"))) return;
++      const breaks = host.querySelectorAll("br");
++      // One BR in an otherwise empty host is the browser's caret placeholder.
++      // Multiple BRs represent intentional spacing and must remain intact.
++      if (breaks.length === 1) breaks[0].remove();
++    }
++
+     function insertTemplateHtml(html, { preserveTablePresentation = false } = {}) {
+       const templateEditorSurface = getTemplateEditorSurface();
+ 
+@@ -9021,6 +9037,9 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+         }
+       }
+ 
++      if (fragment.childNodes.length === 1 && fragment.firstElementChild?.matches(".template-token[data-template-tag-value]")) {
++        removeEmptyInlineInsertionPlaceholder(insertionRange, templateEditorSurface);
++      }
+       insertionRange.deleteContents();
+       insertionRange.insertNode(fragment);
+       restoreTemplateEditorInsertionTableGeometrySnapshot(tableGeometrySnapshot);

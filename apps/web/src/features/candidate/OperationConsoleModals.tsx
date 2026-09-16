@@ -1,3 +1,5 @@
+import { ToastNotice } from "../../shared/components/ToastNotice";
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import type { OperationSchedule } from "../../shared/api/examinees";
 import type { FormTemplate } from "../../shared/api/form-templates";
 import { CancelButtonIcon, ConfirmButtonIcon } from "../../shared/components/ActionIcons";
@@ -42,9 +44,7 @@ export function OperationScheduleMismatchModal({ mismatch, onClose }: ScheduleMi
             <p>SCHEDULE INFORMATION</p>
             <h2 id="operator-schedule-alert-title">다른 교시에 배정된 수험생입니다.</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="교시 안내창 닫기">
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} aria-label="교시 안내창 닫기" />
         </header>
         <div className="operator-schedule-alert-candidate">
           <span>조회 수험생</span>
@@ -94,6 +94,8 @@ export function OperationScheduleMismatchModal({ mismatch, onClose }: ScheduleMi
 }
 
 interface OperationFinishModalProps {
+  reopening?: boolean;
+  deleteAbsenteeInfoOnReopen?: boolean;
   schedule: OperationSchedule;
   rows: OperationRow[];
   labelPrintingEnabled: boolean;
@@ -104,6 +106,8 @@ interface OperationFinishModalProps {
 }
 
 export function OperationFinishModal({
+  reopening = false,
+  deleteAbsenteeInfoOnReopen = false,
   schedule,
   rows,
   labelPrintingEnabled,
@@ -137,12 +141,12 @@ export function OperationFinishModal({
             <OperatorFinishIcon />
           </span>
           <div>
-            <p>OPERATION CLOSE</p>
-            <h2 id="operator-finish-title">가번호 등록을 마감하시겠습니까?</h2>
+            <p>{reopening ? "OPERATION REOPEN" : "OPERATION CLOSE"}</p>
+            <h2 id="operator-finish-title">
+              {reopening ? "등록 마감을 취소하시겠습니까?" : "가번호 등록을 마감하시겠습니까?"}
+            </h2>
           </div>
-          <button type="button" onClick={onClose} disabled={closing} aria-label="마감 확인창 닫기">
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} disabled={closing} aria-label="마감 확인창 닫기" />
         </header>
         <div className="operator-finish-summary">
           <div>
@@ -162,13 +166,23 @@ export function OperationFinishModal({
             </strong>
           </div>
           <div>
-            <span>마감 정책</span>
+            <span>{reopening ? "마감 취소 정책" : "마감 정책"}</span>
             <strong>
-              {autoAssignAbsenteesOnClose ? "미등록 수험생을 결시 처리하고 가번호 자동 부여" : "현재 등록 상태로 마감"}
+              {reopening
+                ? deleteAbsenteeInfoOnReopen
+                  ? "마감 시 자동 부여된 결시자 가번호 삭제"
+                  : "기존 가번호 부여 내역 유지"
+                : autoAssignAbsenteesOnClose
+                  ? "미등록 수험생을 결시 처리하고 가번호 자동 부여"
+                  : "현재 등록 상태로 마감"}
             </strong>
           </div>
         </div>
-        <p className="operator-finish-warning">마감 후에는 이 교시에서 가번호를 추가로 부여할 수 없습니다.</p>
+        <p className="operator-finish-warning">
+          {reopening
+            ? "마감을 취소하면 이 교시에서 가번호 등록을 다시 진행할 수 있습니다. 라벨 출력이력은 유지됩니다."
+            : "마감 후에는 이 교시에서 가번호를 추가로 부여할 수 없습니다."}
+        </p>
         <footer>
           <button type="button" onClick={onClose} disabled={closing}>
             <CancelButtonIcon />
@@ -176,7 +190,9 @@ export function OperationFinishModal({
           </button>
           <button type="button" className="primary" onClick={onConfirm} disabled={closing}>
             <OperatorFinishIcon />
-            <span>{closing ? "마감 처리 중…" : "등록 완료(마감)"}</span>
+            <span>
+              {closing ? (reopening ? "마감 취소 중…" : "마감 처리 중…") : reopening ? "마감 취소" : "운영 마감"}
+            </span>
           </button>
         </footer>
       </section>
@@ -191,10 +207,7 @@ interface OperationPrintModalProps {
   loading: boolean;
   generating: boolean;
   progress: OperationPrintProgress | null;
-  signatureFields: ReadonlyArray<{ key: TemplateSignatureKey; label: string }>;
-  signatureNames: TemplateSignatureNames;
   onSelect(templateCode: string): void;
-  onSignatureNameChange(key: TemplateSignatureKey, value: string): void;
   onClose(): void;
   onGenerate(): void;
 }
@@ -206,10 +219,7 @@ export function OperationPrintModal({
   loading,
   generating,
   progress,
-  signatureFields,
-  signatureNames,
   onSelect,
-  onSignatureNameChange,
   onClose,
   onGenerate,
 }: OperationPrintModalProps) {
@@ -237,9 +247,7 @@ export function OperationPrintModal({
             <p>FORM PRINT</p>
             <h2 id="operator-print-title">인쇄 양식 선택</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label={generating ? "PDF 생성 취소" : "인쇄창 닫기"}>
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} aria-label={generating ? "PDF 생성 취소" : "인쇄창 닫기"} />
         </header>
         <div className="operator-print-context">
           <span>{schedule.admissionName}</span>
@@ -296,32 +304,6 @@ export function OperationPrintModal({
             </div>
           )}
         </div>
-        {signatureFields.length > 0 && (
-          <section className="operator-print-signature-inputs" aria-labelledby="operator-print-signature-title">
-            <header>
-              <strong id="operator-print-signature-title">서명자명 입력</strong>
-              <span>양식에 사용된 서명 태그에 입력한 이름이 PDF에 반영됩니다.</span>
-            </header>
-            <div>
-              {signatureFields.map((field) => (
-                <label key={field.key}>
-                  <span>{field.label}</span>
-                  <input
-                    type="text"
-                    value={signatureNames[field.key]}
-                    maxLength={100}
-                    autoComplete="off"
-                    disabled={generating}
-                    required
-                    placeholder={`${field.label} 이름을 입력하세요.`}
-                    aria-label={`${field.label} 이름`}
-                    onChange={(event) => onSignatureNameChange(field.key, event.target.value)}
-                  />
-                </label>
-              ))}
-            </div>
-          </section>
-        )}
         <footer>
           <button type="button" onClick={onClose}>
             <CancelButtonIcon />
@@ -338,6 +320,95 @@ export function OperationPrintModal({
           </button>
         </footer>
       </section>
+    </div>
+  );
+}
+
+export function OperationSignatureModal({
+  templateName,
+  fields,
+  names,
+  error,
+  onCloseError,
+  onChange,
+  onClose,
+  onConfirm,
+}: {
+  templateName: string;
+  fields: ReadonlyArray<{ key: TemplateSignatureKey; label: string }>;
+  names: TemplateSignatureNames;
+  error: string | null;
+  onCloseError?(): void;
+  onChange(key: TemplateSignatureKey, value: string): void;
+  onClose(): void;
+  onConfirm(): void;
+}) {
+  const dialogRef = useDialogFocus<HTMLFormElement>();
+  return (
+    <div
+      className="operator-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <form
+        ref={dialogRef}
+        className="operator-print-modal operator-signature-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="operator-signature-title"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onConfirm();
+        }}
+      >
+        <header>
+          <span>
+            <OperatorPrintIcon />
+          </span>
+          <div>
+            <p>FORM PRINT</p>
+            <h2 id="operator-signature-title">서명자명 입력</h2>
+          </div>
+          <ModalCloseButton onClick={onClose} aria-label="서명자명 입력창 닫기" />
+        </header>
+        <div className="operator-print-context">
+          <strong>{templateName}</strong>
+          <small>PDF에 표시할 이름을 입력해 주세요.</small>
+        </div>
+        <section className="operator-print-signature-inputs">
+          <div>
+            {fields.map((field, index) => (
+              <label key={field.key}>
+                <span>{field.label}</span>
+                <input
+                  type="text"
+                  value={names[field.key]}
+                  maxLength={100}
+                  autoComplete="off"
+                  required
+                  data-dialog-autofocus={index === 0 ? "true" : undefined}
+                  placeholder={`${field.label} 이름을 입력하세요.`}
+                  aria-label={`${field.label} 이름`}
+                  onChange={(event) => onChange(field.key, event.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+          {error && <ToastNotice notice={{ kind: "error", text: error }} onClose={onCloseError} />}
+        </section>
+        <footer>
+          <button type="button" onClick={onClose}>
+            <CancelButtonIcon />
+            <span>취소</span>
+          </button>
+          <button type="submit" className="primary">
+            <OperatorPrintIcon />
+            <span>PDF 생성</span>
+          </button>
+        </footer>
+      </form>
     </div>
   );
 }

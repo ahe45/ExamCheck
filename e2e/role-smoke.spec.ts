@@ -48,7 +48,7 @@ test.describe("역할별 읽기 전용 smoke", () => {
     await expect(page).toHaveURL(/\/operation$/);
     await expect(page.getByRole("textbox", { name: "수험번호" })).toBeVisible();
     await expect(page.getByRole("button", { name: "교시 변경" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "등록 완료(마감)" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "운영 마감" })).toBeVisible();
 
     const operatorLayout = await page.evaluate(() => {
       const controlPanel = document.querySelector<HTMLElement>(".operator-control-panel");

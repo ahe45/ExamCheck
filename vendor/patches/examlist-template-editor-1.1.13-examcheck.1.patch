@@ -1,0 +1,41 @@
+--- a/src/runtime/template-editor-runtime-foundation.bundle.js
++++ b/src/runtime/template-editor-runtime-foundation.bundle.js
+@@ -11261,11 +11261,27 @@
+-    function snapshotTemplateTokenStyles(tokenTargets) {
+-      return getConnectedTemplateTokenTargets(tokenTargets).map((tokenElement) => ({
+-        tokenElement,
+-        styleAttribute: tokenElement.getAttribute("style") || "",
+-      }));
+-    }
+-
+-    function restoreTemplateTokenStyles(tokenStyleSnapshot, syncOptions = {}) {
+-      const connectedSnapshot = Array.isArray(tokenStyleSnapshot)
+-        ? tokenStyleSnapshot.filter(({ tokenElement }) => getConnectedTemplateTokenTargets([tokenElement]).length > 0)
+-        : [];
++    function snapshotTemplateTokenStyles(tokenTargets) {
++      const surface = getTemplateEditorSurface();
++      const tokens = Array.from(surface.querySelectorAll(".template-token[data-template-tag-value]"));
++      return getConnectedTemplateTokenTargets(tokenTargets).map((tokenElement) => ({
++        tokenElement,
++        surface,
++        tokenIndex: tokens.indexOf(tokenElement),
++        tagValue: tokenElement.dataset.templateTagValue,
++        styleAttribute: tokenElement.getAttribute("style") || "",
++      }));
++    }
++
++    function restoreTemplateTokenStyles(tokenStyleSnapshot, syncOptions = {}) {
++      const surface = getTemplateEditorSurface();
++      const tokens = Array.from(surface?.querySelectorAll(".template-token[data-template-tag-value]") || []);
++      // Native text formatting and normalization may replace token nodes. Resolve
++      // the same token in the same editing surface before restoring its styles.
++      const connectedSnapshot = Array.isArray(tokenStyleSnapshot)
++        ? tokenStyleSnapshot.flatMap((snapshot) => {
++            const tokenElement = getConnectedTemplateTokenTargets([snapshot.tokenElement]).length > 0
++              ? snapshot.tokenElement
++              : snapshot.surface === surface ? tokens[snapshot.tokenIndex] : null;
++            return tokenElement && tokenElement.dataset.templateTagValue === snapshot.tagValue
++              ? [{ tokenElement, styleAttribute: snapshot.styleAttribute }]
++              : [];
++          })
++        : [];

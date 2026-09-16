@@ -1,0 +1,256 @@
+diff --git a/src/runtime/template-editor-runtime-bootstrap.bundle.js b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+index 14bdb4a..42884bb 100644
+--- a/src/runtime/template-editor-runtime-bootstrap.bundle.js
++++ b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+@@ -5,6 +5,7 @@
+  */
+ 
+ import "./template-editor-runtime-objects.bundle.js";
++import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+ 
+ /* Source: client/template-editor-runtime/template-editor-runtime-core.js */
+ (function (globalScope, factory) {
+@@ -324,6 +325,7 @@ import "./template-editor-runtime-objects.bundle.js";
+     handleTemplateEditorTableObjectPointerDown,
+     handleTemplateEditorTablePointerDown,
+     handleTemplatePageSettingChange,
++    insertTemplateHtml,
+     insertTemplateImage,
+     ownerDocument,
+     ownerWindow,
+@@ -785,11 +787,92 @@ import "./template-editor-runtime-objects.bundle.js";
+       updateTemplateTableControls();
+     }
+ 
++    function getClipboardSelectedTable(event) {
++      const surface = getTemplateEditorSurface();
++      const table = state.templateEditor.selectedTableElement;
++      const target = isElement(event.target) ? event.target : null;
++      if (target?.closest("input, textarea, select, button") ||
++          !(table instanceof ownerWindow.HTMLTableElement) || !surface?.contains(table)) {
++        return null;
++      }
++      return table;
++    }
++
++    function prepareClipboardTable(table) {
++      for (const element of [table, ...table.querySelectorAll("*")]) {
++        element.removeAttribute("id");
++        element.removeAttribute("data-template-object-flow-id");
++        element.classList.remove("is-selected-table-object", "is-moving-table-object", "is-active-cell", "is-selected-cell");
++      }
++      // Placement belongs to the destination. Keep authored table/cell geometry.
++      for (const property of ["position", "left", "top", "right", "bottom", "z-index"]) {
++        table.style.removeProperty(property);
++      }
++      return table;
++    }
++
++    function handleCopy(event) {
++      const selectedTable = getClipboardSelectedTable(event);
++      if (!selectedTable || !event.clipboardData) return;
++      const table = prepareClipboardTable(selectedTable.cloneNode(true));
++      const originals = [selectedTable, ...selectedTable.querySelectorAll("td, th")];
++      const copies = [table, ...table.querySelectorAll("td, th")];
++      originals.forEach((element, index) => {
++        const style = ownerWindow.getComputedStyle(element);
++        for (const property of ["font-family", "font-size", "font-weight", "font-style", "color", "line-height", "text-align"]) {
++          copies[index].style.setProperty(property, style.getPropertyValue(property));
++        }
++      });
++      table.setAttribute("data-template-table-clipboard", "true");
++      event.clipboardData.setData("text/html", sanitizeTemplateEditorHtml(table.outerHTML, ownerDocument));
++      event.clipboardData.setData("text/plain", Array.from(selectedTable.rows)
++        .map(row => Array.from(row.cells).map(cell => cell.innerText || cell.textContent || "").join("\t")).join("\n"));
++      event.preventDefault();
++    }
++
+     function handlePaste(event) {
+-      if (event.target === getTemplateEditorSurface()) {
+-        ownerWindow.setTimeout(() => {
+-          syncTemplateEditorContent();
+-        }, 0);
++      const surface = getTemplateEditorSurface();
++      const target = isElement(event.target) ? event.target : null;
++      const selectedTable = getClipboardSelectedTable(event);
++      if (!surface || target?.closest("input, textarea, select, button") ||
++          (!surface.contains(target) && !selectedTable)) return;
++      const clipboardHtml = event.clipboardData?.getData("text/html") || "";
++      // Only intercept whole tables copied by this editor; ordinary text paste
++      // continues to use the browser's contenteditable behavior.
++      if (clipboardHtml.includes("data-template-table-clipboard")) {
++        const template = ownerDocument.createElement("template");
++        template.innerHTML = sanitizeTemplateEditorHtml(clipboardHtml, ownerDocument);
++        const table = template.content.querySelector('table[data-template-table-clipboard="true"]');
++        if (table) {
++          event.preventDefault();
++          prepareClipboardTable(table).removeAttribute("data-template-table-clipboard");
++          if (selectedTable) {
++            const range = ownerDocument.createRange();
++            range.setStartAfter(selectedTable);
++            range.collapse(true);
++            const selection = ownerWindow.getSelection();
++            selection.removeAllRanges();
++            selection.addRange(range);
++            state.templateEditor.savedRange = range.cloneRange();
++          }
++          const selection = ownerWindow.getSelection();
++          const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
++          const root = surface.querySelector(":scope > .template-doc") || surface;
++          const blank = root.children.length === 1 ? root.firstElementChild : null;
++          if (range?.collapsed && (range.startContainer === root || range.startContainer === surface) &&
++              blank?.matches("p") && !blank.textContent.trim() && !blank.querySelector(":not(br)")) {
++            range.selectNodeContents(blank);
++            range.collapse(true);
++            state.templateEditor.savedRange = range.cloneRange();
++          }
++          clearTemplateEditorTableObjectSelection();
++          clearTemplateEditorTableSelection();
++          insertTemplateHtml(table.outerHTML, { preserveTablePresentation: true });
++          return;
++        }
++      }
++      if (event.target === surface) {
++        ownerWindow.setTimeout(() => syncTemplateEditorContent(), 0);
+       }
+     }
+ 
+@@ -854,6 +937,7 @@ import "./template-editor-runtime-objects.bundle.js";
+       addListener(getTemplateEditorModal(), "beforeinput", handleBeforeInput);
+       addListener(getTemplateEditorModal(), "input", handleInput);
+       addListener(getTemplateEditorModal(), "compositionend", handleCompositionEnd);
++      addListener(getTemplateEditorModal(), "copy", handleCopy);
+       addListener(getTemplateEditorModal(), "paste", handlePaste);
+       addListener(getTemplateEditorModal(), "dragstart", handleDragStart);
+       addListener(getTemplateEditorModal(), "pointermove", updateTemplateEditorImageHoverState);
+@@ -2098,6 +2182,7 @@ import "./template-editor-runtime-objects.bundle.js";
+         handleTemplateEditorTableObjectPointerDown,
+         handleTemplateEditorTablePointerDown,
+         handleTemplatePageSettingChange,
++        insertTemplateHtml,
+         insertTemplateImage,
+         ownerDocument,
+         ownerWindow,
+diff --git a/src/runtime/template-editor-runtime-foundation.bundle.js b/src/runtime/template-editor-runtime-foundation.bundle.js
+index fd27023..ce52b06 100644
+--- a/src/runtime/template-editor-runtime-foundation.bundle.js
++++ b/src/runtime/template-editor-runtime-foundation.bundle.js
+@@ -8371,7 +8371,7 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+     return false;
+   }
+ 
+-  function fitTemplateEditorTablesToCandidateBlock(fragment, blockElement, { insertionRange = null, setStatus } = {}) {
++  function fitTemplateEditorTablesToCandidateBlock(fragment, blockElement, { insertionRange = null, preservePresentation = false, setStatus } = {}) {
+     if (!blockElement || !fragment?.querySelectorAll) {
+       return true;
+     }
+@@ -8383,6 +8383,17 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+     }
+ 
+     const availableSize = getTemplateEditorCandidateBlockTableAvailableSize(blockElement, { insertionRange });
++    if (preservePresentation) {
++      // Pasting preserves authored proportions, padding and text styles. Do not
++      // silently turn a copied table into an evenly distributed/minimum-size grid.
++      const fits = tableElements.filter(table => !table.parentElement?.closest("table")).every(table => {
++        const width = parseTemplateEditorCssLengthToPoints(table.style.width, 0) * CSS_PIXELS_PER_POINT;
++        const height = parseTemplateEditorCssLengthToPoints(table.style.height, 0) * CSS_PIXELS_PER_POINT;
++        return width <= availableSize.width && height <= availableSize.height;
++      });
++      if (!fits) setStatus?.("표를 붙여넣을 공간이 부족합니다. 데이터 블록 크기를 키워주세요.", "warning");
++      return fits;
++    }
+     const didFitAllTables = tableElements.every((tableElement) =>
+       fitTemplateEditorTableToCandidateBlock(tableElement, blockElement, { availableSize, setStatus }),
+     );
+@@ -8916,7 +8927,7 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+     state,
+     syncTemplateEditorContent,
+   }) {
+-    function insertTemplateHtml(html) {
++    function insertTemplateHtml(html, { preserveTablePresentation = false } = {}) {
+       const templateEditorSurface = getTemplateEditorSurface();
+ 
+       if (!templateEditorSurface) {
+@@ -8963,7 +8974,15 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+           insertionCandidateBlock,
+           {
+             insertionRange,
+-            setStatus: setTemplateEditorStatus,
++            preservePresentation: preserveTablePresentation,
++            setStatus: (message, type) => {
++              setTemplateEditorStatus(message, type);
++              if (preserveTablePresentation) {
++                templateEditorSurface.dispatchEvent(new CustomEvent("template-editor-paste-error", {
++                  bubbles: true, detail: { message },
++                }));
++              }
++            },
+           },
+         )
+       ) {
+@@ -8978,7 +8997,9 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+       if (!insertionCell) {
+         fitTemplateEditorImagesToCandidateBlock(fragment, insertionCandidateBlock);
+       }
+-      applyTemplateEditorInsertedTokenContextStyle(fragment, insertionRange, insertionCell, templateEditorSurface);
++      if (!preserveTablePresentation) {
++        applyTemplateEditorInsertedTokenContextStyle(fragment, insertionRange, insertionCell, templateEditorSurface);
++      }
+       const tableGeometrySnapshot = createTemplateEditorInsertionTableGeometrySnapshot(fragment, insertionCell);
+       const insertedFlowTable = !insertionCell && !insertionCandidateBlock
+         ? Array.from(fragment.childNodes || []).find((node) => node instanceof HTMLTableElement) || null
+diff --git a/src/dom/document-sanitizer.js b/src/dom/document-sanitizer.js
+index 2631f2d..a90fda4 100644
+--- a/src/dom/document-sanitizer.js
++++ b/src/dom/document-sanitizer.js
+@@ -47,9 +47,11 @@ const allowedStyleProperties = new Set([
+   "border-style",
+   "border-top",
+   "border-width",
++  "box-sizing",
+   "color",
+   "column-gap",
+   "display",
++  "font-family",
+   "font-size",
+   "font-style",
+   "font-weight",
+@@ -70,6 +72,7 @@ const allowedStyleProperties = new Set([
+   "max-height",
+   "max-width",
+   "min-height",
++  "min-width",
+   "object-fit",
+   "object-position",
+   "padding",
+@@ -82,6 +85,9 @@ const allowedStyleProperties = new Set([
+   "table-layout",
+   "text-align",
+   "text-decoration",
++  "text-decoration-line",
++  "text-decoration-color",
++  "text-decoration-style",
+   "top",
+   "vertical-align",
+   "width",
+@@ -123,6 +129,7 @@ const allowedDataAttributes = new Set([
+   "data-candidate-block-template-role",
+   "data-candidate-block-variant",
+   "data-template-cell-only-row-layout",
++  "data-template-table-clipboard",
+   "data-template-page-height-px",
+   "data-template-page-margin-bottom",
+   "data-template-page-margin-left",
+diff --git a/types/index.d.ts b/types/index.d.ts
+index 4ea7040..cfb3f0c 100644
+--- a/types/index.d.ts
++++ b/types/index.d.ts
+@@ -212,7 +212,7 @@ export interface TemplateEditorRuntimeApi {
+   destroy: () => void;
+   getHtml: () => string;
+   handleImageResizeStart: (event: Event) => unknown;
+-  insertHtml: (html: string) => unknown;
++  insertHtml: (html: string, options?: { preserveTablePresentation?: boolean }) => unknown;
+   insertImage: (file: File) => unknown;
+   insertImageSource: (...args: unknown[]) => unknown;
+   insertTag: (tag: string) => unknown;

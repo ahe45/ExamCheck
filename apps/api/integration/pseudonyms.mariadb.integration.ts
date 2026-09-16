@@ -33,6 +33,146 @@ afterAll(async () => {
 });
 
 describe("pseudonym MariaDB transaction integration", () => {
+  it("matching enforces the candidate schedule range rather than the admission-wide bounds", async () => {
+    const examName = "IT_MATCHING_RANGES";
+    await seedSchedule(harness.pool, examName, [
+      { examineeNo: "IT-MATCH-01", name: "매칭 일" },
+      { examineeNo: "IT-MATCH-02", name: "매칭 이" },
+      { examineeNo: "IT-MATCH-03", name: "매칭 삼" },
+    ]);
+    await harness.pool.execute(
+      "UPDATE candidate_record SET building_name = '다른 건물' WHERE examinee_no = 'IT-MATCH-03'",
+    );
+    const service = new PseudonymsService(harness.pool);
+    const firstRange = sequentialSetting(examName, 2001, 2002).ranges[0]!;
+    const setting = {
+      ...baseSetting(examName),
+      ranges: [firstRange, { ...firstRange, building: "다른 건물", rangeStart: 4001, rangeEnd: 4001 }],
+    };
+    await expect(service.updateSetting({ ...setting, ranges: [] }, actor)).rejects.toThrow("모든 시험 조건");
+    const saved = await service.updateSetting(setting, actor);
+    for (const manualNumber of ["2000", "2003", "4001"]) {
+      await expect(
+        service.assign({ ...assignInput("IT-MATCH-01"), mode: "MANUAL", manualNumber }, actor),
+      ).rejects.toThrow("2001부터 2002 사이");
+    }
+    const [before] = await harness.pool.query<Array<RowDataPacket & { count: number }>>(
+      "SELECT COUNT(*) AS count FROM pseudonym_assignment WHERE exam_name = ?",
+      [examName],
+    );
+    expect(Number(before[0]!.count)).toBe(0);
+    expect(
+      await service.assign({ ...assignInput("IT-MATCH-01"), mode: "MANUAL", manualNumber: "02001" }, actor),
+    ).toMatchObject({ pseudonymNumber: "02001" });
+    expect(
+      await service.assign({ ...assignInput("IT-MATCH-02"), mode: "MANUAL", manualNumber: "2002" }, actor),
+    ).toMatchObject({ pseudonymNumber: "2002" });
+    expect(
+      await service.assign({ ...assignInput("IT-MATCH-03"), mode: "MANUAL", manualNumber: "4001" }, actor),
+    ).toMatchObject({ pseudonymNumber: "4001" });
+    await expect(
+      service.updateSetting(
+        {
+          ...setting,
+          expectedVersion: saved.version,
+          ranges: [{ ...firstRange, rangeStart: 2002, rangeEnd: 2003 }, setting.ranges[1]!],
+        },
+        actor,
+      ),
+    ).rejects.toThrow("기존 가번호 02001");
+  });
+
+  it("saves an edited sequential number, validates bounds and duplicates, and advances from the saved number", async () => {
+    const examName = "IT_SEQUENTIAL_EDIT";
+    await seedSchedule(harness.pool, examName, [
+      { examineeNo: "IT-EDIT-01", name: "수정 일" },
+      { examineeNo: "IT-EDIT-02", name: "수정 이" },
+      { examineeNo: "IT-EDIT-03", name: "수정 삼" },
+    ]);
+    const service = new PseudonymsService(harness.pool);
+    await service.updateSetting(sequentialSetting(examName, 1001, 1003), actor);
+    const first = assignInput("IT-EDIT-01");
+    const second = assignInput("IT-EDIT-02");
+    expect(await service.previewSequential(first, actor)).toEqual({ pseudonymNumber: "1001" });
+    expect(await service.assign({ ...first, manualNumber: "01002", expectedNumber: "1001" }, actor)).toMatchObject({
+      mode: "SEQUENTIAL",
+      pseudonymNumber: "01002",
+    });
+    expect(await service.previewSequential(second, actor)).toEqual({ pseudonymNumber: "1003" });
+    for (const manualNumber of ["1000", "1004"]) {
+      await expect(service.assign({ ...second, manualNumber, expectedNumber: "1003" }, actor)).rejects.toThrow(
+        "1001부터 1003 사이",
+      );
+    }
+    await expect(service.assign({ ...second, manualNumber: "1002", expectedNumber: "1003" }, actor)).rejects.toThrow(
+      "이미 사용 중",
+    );
+    await expect(service.assign({ ...second, manualNumber: "", expectedNumber: "1003" }, actor)).rejects.toThrow(
+      "가번호를 입력",
+    );
+    expect(await readRange(harness.pool, examName)).toMatchObject({ nextSequence: 1003 });
+    expect(await service.assign({ ...second, manualNumber: "1003", expectedNumber: "1003" }, actor)).toMatchObject({
+      mode: "SEQUENTIAL",
+      pseudonymNumber: "1003",
+    });
+    expect(await service.previewSequential(assignInput("IT-EDIT-03"), actor)).toEqual({ pseudonymNumber: "1001" });
+  });
+
+  it("previews without consuming a number and rejects stale previews before saving", async () => {
+    const examName = "IT_SEQUENTIAL_PREVIEW";
+    await seedSchedule(harness.pool, examName, [
+      { examineeNo: "IT-PREVIEW-01", name: "예정 일" },
+      { examineeNo: "IT-PREVIEW-02", name: "예정 이" },
+    ]);
+    const service = new PseudonymsService(harness.pool);
+    const setting = sequentialSetting(examName, 17, 18);
+    setting.ranges = setting.ranges.map((range) => ({ ...range, displayWidth: 4 }));
+    await service.updateSetting(setting, actor);
+    const first = assignInput("IT-PREVIEW-01");
+    const second = assignInput("IT-PREVIEW-02");
+    expect(await service.previewSequential(first, actor)).toEqual({ pseudonymNumber: "0017" });
+    expect(await service.previewSequential(second, actor)).toEqual({ pseudonymNumber: "0017" });
+    expect(await readRange(harness.pool, examName)).toMatchObject({ nextSequence: 17 });
+    const [rows] = await harness.pool.execute<Array<RowDataPacket & { count: number }>>(
+      "SELECT COUNT(*) AS count FROM pseudonym_assignment WHERE exam_name = ?",
+      [examName],
+    );
+    expect(Number(rows[0].count)).toBe(0);
+    expect(await service.assign({ ...first, expectedNumber: "0017" }, actor)).toMatchObject({
+      pseudonymNumber: "0017",
+    });
+    await expect(service.assign({ ...second, expectedNumber: "0017" }, actor)).rejects.toThrow("예정 가번호가 변경");
+    expect(await readRange(harness.pool, examName)).toMatchObject({ nextSequence: 18 });
+    expect(await service.previewSequential(second, actor)).toEqual({ pseudonymNumber: "0018" });
+    expect(await service.assign({ ...second, expectedNumber: "0018" }, actor)).toMatchObject({
+      pseudonymNumber: "0018",
+    });
+    expect(await service.previewSequential(first, actor)).toEqual({ pseudonymNumber: "0017" });
+  });
+
+  it("draws after persisting the displayed initial ranges for an admission that only had fallback settings", async () => {
+    const examName = "2026년도 자격시험";
+    await seedSchedule(harness.pool, examName, [{ examineeNo: "IT-INITIAL-DRAW", name: "초기 범위 검증" }]);
+    const service = new PseudonymsService(harness.pool);
+    const initial = await service.getSetting(examName, schedule.admissionName, actor);
+    expect(initial.version).toBe(0);
+    expect(initial.ranges).toEqual([]);
+    await expect(service.assign({ ...assignInput("IT-INITIAL-DRAW"), mode: "RANDOM" }, actor)).rejects.toThrow(
+      "가번호 범위를 설정",
+    );
+    await service.updateSetting(
+      {
+        ...sequentialSetting(examName, initial.rangeStart, initial.rangeStart),
+        assignmentMethod: "DRAW",
+        expectedVersion: initial.version,
+      },
+      actor,
+    );
+    expect(await service.assign({ ...assignInput("IT-INITIAL-DRAW"), mode: "RANDOM" }, actor)).toMatchObject({
+      mode: "RANDOM",
+      pseudonymNumber: String(initial.rangeStart),
+    });
+  });
   it("reports version zero for a fallback and creates an exact admission setting at version one", async () => {
     const service = new PseudonymsService(harness.pool);
     const fallback = await service.getSetting("2026년도 자격시험", "신규 전형", actor);
@@ -107,11 +247,8 @@ describe("pseudonym MariaDB transaction integration", () => {
     await seedSchedule(harness.pool, examName, [{ examineeNo: "IT-LOCK-01", name: "잠금 수험생" }]);
     await new PseudonymsService(harness.pool).updateSetting(
       {
-        ...baseSetting(examName),
-        rangeStart: 3001,
-        rangeEnd: 3001,
+        ...sequentialSetting(examName, 3001, 3001),
         assignmentMethod: "MATCHING",
-        ranges: [],
       },
       actor,
     );
@@ -242,11 +379,8 @@ describe("pseudonym MariaDB transaction integration", () => {
     await seedSchedule(harness.pool, examName, [{ examineeNo: "IT-REOPEN-01", name: "재개 경합 수험생" }]);
     await new PseudonymsService(harness.pool).updateSetting(
       {
-        ...baseSetting(examName),
-        rangeStart: 6001,
-        rangeEnd: 6001,
+        ...sequentialSetting(examName, 6001, 6001),
         assignmentMethod: "MATCHING",
-        ranges: [],
       },
       actor,
     );

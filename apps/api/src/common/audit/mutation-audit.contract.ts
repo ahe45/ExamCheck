@@ -1,6 +1,24 @@
 import { isValidRequestId } from "../http/request-context.js";
 
 export interface MutationAuditDetailsByEvent {
+  HISTORY_RESET_PASSWORD_CHANGED: Record<never, never>;
+  CANDIDATE_HISTORY_DELETED: {
+    candidateRecordId: number;
+    mode: "LABEL" | "ASSIGNMENT";
+    resetPrintCount: number;
+    deletedAssignmentCount: number;
+    clearedPreassigned: boolean;
+  };
+  OPERATION_HISTORY_RESET: {
+    examName: string;
+    admissionName: string;
+    examDate: string;
+    examTime: string;
+    periodName: string;
+    mode: "LABEL" | "ASSIGNMENT";
+    resetPrintCount: number;
+    deletedAssignmentCount: number;
+  };
   ACCOUNT_CREATED: {
     userId: number;
     loginId: string;
@@ -235,6 +253,24 @@ const safeFileName: FieldRule = (value) =>
   });
 
 const EVENT_CONTRACTS = {
+  HISTORY_RESET_PASSWORD_CHANGED: fields({}),
+  CANDIDATE_HISTORY_DELETED: fields({
+    candidateRecordId: positiveInteger,
+    mode: oneOf("LABEL", "ASSIGNMENT"),
+    resetPrintCount: nonNegativeInteger,
+    deletedAssignmentCount: nonNegativeInteger,
+    clearedPreassigned: booleanValue,
+  }),
+  OPERATION_HISTORY_RESET: fields({
+    examName: identifier,
+    admissionName: identifier,
+    examDate: date,
+    examTime: time,
+    periodName: shortIdentifier,
+    mode: oneOf("LABEL", "ASSIGNMENT"),
+    resetPrintCount: nonNegativeInteger,
+    deletedAssignmentCount: nonNegativeInteger,
+  }),
   ACCOUNT_CREATED: fields({
     userId: positiveInteger,
     loginId: string({ min: 1, max: 100 }),

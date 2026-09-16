@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ListButtonIcon, PreviewButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
 import { fetchAdminFormTemplates, saveFormTemplate, type FormTemplate } from "../../shared/api/form-templates";
 import type {
@@ -32,6 +32,8 @@ import {
 import { TemplateNotice, type TemplateNoticeValue } from "./TemplateNotice";
 import { syncTemplateEditorPreservingCanvasSelection } from "./template-editor-selection-sync";
 import { openTemplatePrintWindow, renderTemplateHtml } from "./template-renderer";
+import { formatProjectDataTagSampleValue } from "./editor/examlist-template-formatting";
+import { getDataTagFormatType } from "./data-tag-formatting";
 
 export interface TemplateEditorWorkspaceHandle {
   save(): Promise<boolean>;
@@ -99,7 +101,9 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       [],
     );
 
-    useEffect(() => {
+    // The imperative editor reads layout while disposing its controls. Clean it
+    // up before React detaches the canvas and its geometry becomes zero.
+    useLayoutEffect(() => {
       const root = rootRef.current;
       const activeDraft = draftRef.current;
       if (!root || !activeDraft) return;
@@ -115,13 +119,21 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
         permissions: { canManageTemplates: true },
         generatedObjectSourceKey: "candidate.examNo",
         previewData: buildSampleValues(editorDataTags),
-        getTemplateEditorTagDisplay: ({ definition, iconMarkup, label }) => {
-          const example = String(definition?.example || "").trim();
+        getTemplateEditorTagDisplay: ({ definition, iconMarkup, label, formatValue, formatType }) => {
+          const example = formatProjectDataTagSampleValue(
+            definition || "",
+            definition?.example,
+            formatValue,
+            formatType,
+          );
           return {
             hideIcons: !viewOptionsRef.current.showIcons,
             iconMarkup,
             sampleDisplay: viewOptionsRef.current.showSampleData,
             text: viewOptionsRef.current.showSampleData && example ? example : label,
+            title: [label, example, getDataTagFormatType(definition || "") ? "클릭하여 표시 형식 변경" : ""]
+              .filter(Boolean)
+              .join(" · "),
           };
         },
         adapters: {
@@ -197,12 +209,12 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
         onOpenSettings: () => setShowTagSettings(true),
       });
       return () => {
+        transactions.dispose();
         disposeTagPanel();
         disposeEditorControls();
         disposeDataBlock();
         pageProperties.dispose();
         disposeCanvas();
-        transactions.dispose();
         editor.destroy();
         if (editorRef.current === editor) editorRef.current = null;
       };

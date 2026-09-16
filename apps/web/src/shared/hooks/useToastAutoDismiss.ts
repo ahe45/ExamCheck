@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEventHandler } from "react";
+import { useCallback, useEffect, useRef, useState, type FocusEventHandler, type MouseEventHandler } from "react";
 
 export const TOAST_VISIBLE_DURATION_MS = 3_000;
 export const TOAST_FADE_DURATION_MS = 320;
@@ -15,6 +15,8 @@ export function useToastAutoDismiss({
   fading: boolean;
   onMouseEnter: MouseEventHandler<HTMLElement>;
   onMouseLeave: MouseEventHandler<HTMLElement>;
+  onFocus: FocusEventHandler<HTMLElement>;
+  onBlur: FocusEventHandler<HTMLElement>;
 } {
   const [fading, setFading] = useState(false);
   const onCloseRef = useRef(onClose);
@@ -23,6 +25,8 @@ export function useToastAutoDismiss({
   const deadlineRef = useRef(0);
   const remainingRef = useRef(TOAST_VISIBLE_DURATION_MS);
   const fadingRef = useRef(false);
+  const hoveredRef = useRef(false);
+  const focusedRef = useRef(false);
 
   useEffect(() => {
     onCloseRef.current = onClose;
@@ -75,7 +79,7 @@ export function useToastAutoDismiss({
     };
   }, [clearDismissTimer, clearFadeTimer, enabled, resetKey, scheduleDismiss]);
 
-  const onMouseEnter: MouseEventHandler<HTMLElement> = () => {
+  const pause = () => {
     if (!enabled) return;
     if (fadingRef.current) {
       clearFadeTimer();
@@ -90,10 +94,29 @@ export function useToastAutoDismiss({
     }
   };
 
-  const onMouseLeave: MouseEventHandler<HTMLElement> = () => {
-    if (!enabled) return;
+  const resume = () => {
+    if (!enabled || hoveredRef.current || focusedRef.current) return;
     scheduleDismiss(remainingRef.current > 0 ? remainingRef.current : TOAST_VISIBLE_DURATION_MS);
   };
 
-  return { fading, onMouseEnter, onMouseLeave };
+  return {
+    fading,
+    onMouseEnter: () => {
+      hoveredRef.current = true;
+      pause();
+    },
+    onMouseLeave: () => {
+      hoveredRef.current = false;
+      resume();
+    },
+    onFocus: () => {
+      focusedRef.current = true;
+      pause();
+    },
+    onBlur: (event) => {
+      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+      focusedRef.current = false;
+      resume();
+    },
+  };
 }

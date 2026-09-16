@@ -1,0 +1,51 @@
+diff --git a/src/runtime/template-editor-runtime-objects.bundle.js b/src/runtime/template-editor-runtime-objects.bundle.js
+index d830dc7..240b969 100644
+--- a/src/runtime/template-editor-runtime-objects.bundle.js
++++ b/src/runtime/template-editor-runtime-objects.bundle.js
+@@ -368,7 +368,13 @@ import "./template-editor-runtime-foundation.bundle.js";
+       return cells;
+     }
+ 
+-    function getTemplateEditorCellOnlyMeasurementScale(measuredSize, configuredSize) {
++    function getTemplateEditorCellOnlyMeasurementScale(measuredSize, configuredSize, table) {
++      const focusBlock = table?.closest?.("[data-candidate-block-instance].is-candidate-block-focus-editor");
++      if (focusBlock) {
++        const style = window.getComputedStyle(focusBlock);
++        const scale = Number.parseFloat(style.getPropertyValue("--examlist-candidate-block-focus-editor-scale") || style.getPropertyValue("--examlist-candidate-block-focus-scale"));
++        if (Number.isFinite(scale) && scale > 0) return scale;
++      }
+       const measured = Number(measuredSize) || 0;
+       const configured = Number(configuredSize) || 0;
+ 
+@@ -400,7 +406,7 @@ import "./template-editor-runtime-foundation.bundle.js";
+         0,
+       );
+       const configuredReferenceWidth = (hasConfiguredPixelTableWidth && configuredTableWidth) || configuredColumnWidth || 0;
+-      const measurementScale = getTemplateEditorCellOnlyMeasurementScale(measuredTargetRowWidth, configuredReferenceWidth);
++      const measurementScale = getTemplateEditorCellOnlyMeasurementScale(measuredTargetRowWidth, configuredReferenceWidth, table);
+       const tableWidth = Math.max(
+         TEMPLATE_EDITOR_TABLE_MIN_SIZE * targetCells.length,
+         Math.round(
+@@ -1166,7 +1172,13 @@ import "./template-editor-runtime-foundation.bundle.js";
+       return cells;
+     }
+ 
+-    function getTemplateEditorCellOnlyMeasurementScale(measuredSize, configuredSize) {
++    function getTemplateEditorCellOnlyMeasurementScale(measuredSize, configuredSize, table) {
++      const focusBlock = table?.closest?.("[data-candidate-block-instance].is-candidate-block-focus-editor");
++      if (focusBlock) {
++        const style = window.getComputedStyle(focusBlock);
++        const scale = Number.parseFloat(style.getPropertyValue("--examlist-candidate-block-focus-editor-scale") || style.getPropertyValue("--examlist-candidate-block-focus-scale"));
++        if (Number.isFinite(scale) && scale > 0) return scale;
++      }
+       const measured = Number(measuredSize) || 0;
+       const configured = Number(configuredSize) || 0;
+ 
+@@ -1219,6 +1231,7 @@ import "./template-editor-runtime-foundation.bundle.js";
+       const measurementScale = getTemplateEditorCellOnlyMeasurementScale(
+         measuredTargetColumnHeight,
+         hasConfiguredPixelTableHeight ? configuredTableHeight : 0,
++        table,
+       );
+       const tableHeight = Math.max(
+         TEMPLATE_EDITOR_TABLE_MIN_SIZE * targetCells.length,

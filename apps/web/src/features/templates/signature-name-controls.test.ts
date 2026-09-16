@@ -5,6 +5,36 @@ import { describe, expect, it, vi } from "vitest";
 import { bindSignatureNameControls } from "./signature-name-controls";
 
 describe("signature name controls", () => {
+  it("writes toggles and tag removal to the current page after editor synchronization replaces it", async () => {
+    const panel = document.createElement("aside");
+    const surface = document.createElement("div");
+    surface.innerHTML = '<span data-template-tag-value="signature.author">작성자</span>';
+    const initialPage = { id: "page", settings: { signatureNames: { enabled: false } } };
+    let currentPage = structuredClone(initialPage);
+    const saved: boolean[] = [];
+    const dispose = bindSignatureNameControls({
+      pagePropertiesHost: panel,
+      selectedPage: initialPage,
+      getCurrentPage: () => currentPage,
+      surfaceElement: surface,
+      onDirty: () => saved.push(currentPage.settings.signatureNames.enabled),
+    });
+    const input = panel.querySelector<HTMLInputElement>("input")!;
+    for (const enabled of [true, false, true]) {
+      currentPage = structuredClone(currentPage);
+      input.checked = enabled;
+      fireEvent.change(input);
+      expect(currentPage.settings.signatureNames.enabled).toBe(enabled);
+    }
+    currentPage = structuredClone(currentPage);
+    surface.replaceChildren();
+    await waitFor(() => expect(input).toBeDisabled());
+    expect(currentPage.settings.signatureNames.enabled).toBe(false);
+    expect(saved).toEqual([true, false, true, false]);
+    expect(initialPage.settings.signatureNames.enabled).toBe(false);
+    dispose();
+  });
+
   it("enables the switch only while a signature tag exists on the canvas", async () => {
     const panel = document.createElement("aside");
     panel.innerHTML = '<section class="examlist-page-number-field"></section>';

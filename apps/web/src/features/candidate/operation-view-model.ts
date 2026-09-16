@@ -51,8 +51,8 @@ export function operationColumnsFor(labelPrintingEnabled: boolean): OperationCol
 }
 
 export function assignmentFromExaminee(candidate: Examinee): PseudonymAssignment | null {
-  const pseudonymNumber = candidate.assignedNumber || candidate.preassignedNumber;
-  const mode = candidate.assignmentMode || (candidate.preassignedNumber ? "PREASSIGNED" : null);
+  const pseudonymNumber = candidate.assignedNumber;
+  const mode = candidate.assignmentMode;
   if (!pseudonymNumber || !mode) return null;
   return {
     id: 0,

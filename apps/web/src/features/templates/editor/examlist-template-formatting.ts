@@ -1,4 +1,4 @@
-import { formatDataTagSampleValue } from "examlist-template-editor/core";
+import { formatTemplateDataTagValue } from "../data-tag-formatting";
 import type { DataTagDefinition } from "../../../shared/templates/template-editor-contracts";
 
 export function formatProjectDataTagSampleValue(
@@ -7,5 +7,5 @@ export function formatProjectDataTagSampleValue(
   formatValue?: string,
   explicitFormatType?: string,
 ): string {
-  return formatDataTagSampleValue(definitionOrKey, value, formatValue, explicitFormatType);
+  return formatTemplateDataTagValue(definitionOrKey, value, formatValue, explicitFormatType);
 }

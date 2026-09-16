@@ -104,22 +104,24 @@ export function AssignmentMethodSection({
                   disabled={assignmentMethod !== "DRAW"}
                   onChange={onAutoDrawEnabledChange}
                 />
-                {autoDrawEnabled && (
-                  <label className={`auto-draw-delay-field ${assignmentMethod !== "DRAW" ? "disabled" : ""}`}>
-                    <span>지연시간</span>
+                <label className="auto-draw-delay-field">
+                  <span>지연시간</span>
+                  <div className="auto-draw-delay-control">
                     <input
+                      aria-label="지연시간(초)"
                       type="number"
                       min="1"
                       max="60"
+                      step="1"
                       value={autoDrawDelaySeconds}
-                      disabled={assignmentMethod !== "DRAW"}
+                      disabled={assignmentMethod !== "DRAW" || !autoDrawEnabled}
                       onChange={(event) =>
                         onAutoDrawDelaySecondsChange(Math.min(60, Math.max(1, Number(event.target.value) || 1)))
                       }
                     />
-                    <em>초</em>
-                  </label>
-                )}
+                    <em aria-hidden="true">초</em>
+                  </div>
+                </label>
               </div>
             )}
             {method.value === "PREASSIGNED" && (
@@ -148,7 +150,6 @@ export function AssignmentMethodSection({
                       </option>
                     ))}
                   </select>
-                  <small>이 전형의 라벨 출력에 사용할 양식을 선택합니다.</small>
                 </label>
               </div>
             )}
@@ -247,8 +248,8 @@ export function ScheduleRangeSection({
           <div>
             <h3>날짜·시간별 가번호 범위</h3>
             <p>
-              {assignmentMethod === "DRAW" ? "추첨" : "순차부여"}에 사용할 범위이며 종료 번호는 실제 등록 수험생 수에
-              맞춰 자동 계산됩니다.
+              {assignmentMethod === "DRAW" ? "추첨" : assignmentMethod === "MATCHING" ? "매칭" : "순차부여"}에 사용할
+              범위이며 종료 번호는 실제 등록 수험생 수에 맞춰 자동 계산됩니다.
             </p>
           </div>
         </div>

@@ -7,6 +7,8 @@ import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import { DeveloperSettingsPage } from "./DeveloperSettingsPage";
 
 const developerSettingsApi = vi.hoisted(() => ({
+  fetchHistoryResetPassword: vi.fn(),
+  updateHistoryResetPassword: vi.fn(),
   changeDeveloperPassword: vi.fn(),
   fetchDeveloperSettings: vi.fn(),
   removeDeveloperLogo: vi.fn(),
@@ -36,6 +38,8 @@ const developerUser = {
 
 beforeEach(() => {
   Object.values(developerSettingsApi).forEach((mock) => mock.mockReset());
+  developerSettingsApi.fetchHistoryResetPassword.mockResolvedValue({ configured: false });
+  developerSettingsApi.updateHistoryResetPassword.mockResolvedValue({ configured: true });
   developerSettingsApi.fetchDeveloperSettings.mockResolvedValue({ ...initialProfile });
   developerSettingsApi.updateDeveloperSettings.mockResolvedValue({ ...initialProfile });
   developerSettingsApi.changeDeveloperPassword.mockResolvedValue({ changed: true });
@@ -166,9 +170,32 @@ describe("DeveloperSettingsPage number uniqueness policy", () => {
     await act(async () => {
       resolvePassword({ changed: true });
     });
-    expect(await within(dialog).findByRole("status")).toHaveTextContent("개발자 계정 비밀번호가 변경되었습니다.");
+    expect(await screen.findByRole("status")).toHaveTextContent("개발자 계정 비밀번호가 변경되었습니다.");
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "개발자 비밀번호 변경" })).not.toBeInTheDocument());
   });
+});
+
+it("saves a separate history reset password after matching confirmation", async () => {
+  render(<DeveloperSettingsPage token="developer-token" user={developerUser} />);
+  await screen.findByRole("heading", { name: "초기화 비밀번호 설정" });
+  const password = screen.getByLabelText("새 초기화 비밀번호");
+  const confirmation = screen.getByLabelText("초기화 비밀번호 확인");
+  fireEvent.change(password, { target: { value: "new-secret" } });
+  fireEvent.change(confirmation, { target: { value: "mismatch" } });
+  fireEvent.click(screen.getByRole("button", { name: "비밀번호 저장" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("일치하지");
+  expect(developerSettingsApi.updateHistoryResetPassword).not.toHaveBeenCalled();
+  fireEvent.change(confirmation, { target: { value: "new-secret" } });
+  fireEvent.click(screen.getByRole("button", { name: "비밀번호 저장" }));
+  await waitFor(() =>
+    expect(developerSettingsApi.updateHistoryResetPassword).toHaveBeenCalledExactlyOnceWith(
+      "developer-token",
+      "new-secret",
+    ),
+  );
+  expect(await screen.findByText("초기화 비밀번호를 저장했습니다.")).toBeInTheDocument();
+  expect(password).toHaveValue("");
+  expect(confirmation).toHaveValue("");
 });

@@ -1,4 +1,4 @@
-import { IsBoolean, IsObject, IsOptional, IsString, Length, Matches } from "class-validator";
+import { IsBoolean, IsInt, Min, Max, IsObject, IsOptional, IsString, Length, Matches } from "class-validator";
 
 export class LabelTemplateCodeParamDto {
   @IsString()
@@ -21,6 +21,12 @@ export class SaveLabelTemplateDto {
   @IsString()
   @Length(0, 500)
   description?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  defaultCopies?: number;
 
   @IsObject()
   layout!: Record<string, unknown>;

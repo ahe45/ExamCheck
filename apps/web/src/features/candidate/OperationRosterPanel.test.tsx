@@ -18,55 +18,76 @@ const assignment: PseudonymAssignment = {
 };
 
 describe("OperationRosterPanel", () => {
-  it("그리드 작업 버튼을 지정된 순서로 표시한다", () => {
-    const printLabel = vi.fn();
-    const { container } = render(
-      <OperationRosterPanel
-        rows={[]}
-        allRows={[]}
-        columns={operationColumnsFor(true)}
-        context={{ operationClosed: false, labelPrintingEnabled: true }}
-        grid={{ sort: null, filters: {}, cycleSort: vi.fn(), openFilter: vi.fn() }}
-        state={{
-          operationStatusLoaded: true,
-          operationClosed: false,
-          closingOperation: false,
-          rosterRefreshing: false,
-          exportingExcel: false,
-          labelPrintingEnabled: true,
-          printerDiagnostic: {
-            status: "READY",
-            printer: { id: "GT800", name: "접수처 프린터", connection: "USB" },
-            message: "접수처 프린터를 사용할 수 있습니다.",
-          },
-          printerDiagnosticBusy: false,
-          assignment,
-          printing: false,
-        }}
-        actions={{
-          printLabel,
-          openCloseConfirm: vi.fn(),
-          openPrint: vi.fn(),
-          refresh: vi.fn(),
-          download: vi.fn(),
-          select: vi.fn(),
-        }}
-      />,
-    );
+  it.each([false, true])(
+    "그리드 작업 버튼을 표시하고 출력 완료 여부(%s)에 따라 라벨 출력을 제한한다",
+    (labelAlreadyPrinted) => {
+      const printLabel = vi.fn();
+      const setLabelCopies = vi.fn();
+      const { container } = render(
+        <OperationRosterPanel
+          rows={[]}
+          allRows={[]}
+          columns={operationColumnsFor(true)}
+          context={{ operationClosed: false, labelPrintingEnabled: true }}
+          grid={{ sort: null, filters: {}, cycleSort: vi.fn(), openFilter: vi.fn() }}
+          state={{
+            operationStatusLoaded: true,
+            operationClosed: false,
+            closingOperation: false,
+            rosterRefreshing: false,
+            exportingExcel: false,
+            labelPrintingEnabled: true,
+            printerDiagnostic: {
+              status: "READY",
+              printer: { id: "GT800", name: "접수처 프린터", connection: "USB" },
+              message: "접수처 프린터를 사용할 수 있습니다.",
+            },
+            printerDiagnosticBusy: false,
+            assignment,
+            printing: false,
+            labelCopies: 3,
+            labelCopiesValid: true,
+            labelAlreadyPrinted,
+          }}
+          actions={{
+            recheckPrinter: vi.fn(),
+            printLabel,
+            setLabelCopies,
+            openCloseConfirm: vi.fn(),
+            openPrint: vi.fn(),
+            refresh: vi.fn(),
+            download: vi.fn(),
+            select: vi.fn(),
+          }}
+        />,
+      );
 
-    const buttons = Array.from(
-      container.querySelectorAll<HTMLButtonElement>(".operator-roster-heading > div:last-child > button"),
-    );
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      "라벨 출력",
-      "등록 완료(마감)",
-      "인쇄",
-      "새로고침",
-      "다운로드",
-    ]);
-    expect(buttons[0]).toHaveClass("operator-roster-label-button");
-    expect(container.querySelector(".operator-printer-status")?.textContent).toContain("프린터 연결 정상");
-    fireEvent.click(buttons[0]!);
-    expect(printLabel).toHaveBeenCalledOnce();
-  });
+      const buttons = Array.from(
+        container.querySelectorAll<HTMLButtonElement>(".operator-roster-heading > div:last-child > button"),
+      );
+      expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+        "라벨 출력",
+        "운영 마감",
+        "인쇄",
+        "",
+        "",
+        "",
+      ]);
+      expect(buttons[3]).toHaveAccessibleName("새로고침");
+      expect(buttons[4]).toHaveAccessibleName("삭제");
+      expect(buttons[4]).toBeDisabled();
+      expect(buttons[5]).toHaveAccessibleName("다운로드");
+      expect(buttons[0]).toHaveClass("operator-roster-label-button");
+      expect(container.querySelector(".operator-printer-status")?.textContent).toContain("연결됨");
+      const copiesInput = container.querySelector<HTMLInputElement>("input[type=number]")!;
+      expect(copiesInput).toHaveValue(3);
+      fireEvent.change(copiesInput, { target: { value: "4" } });
+      expect(setLabelCopies).toHaveBeenCalledWith(4);
+      fireEvent.click(buttons[0]!);
+      if (labelAlreadyPrinted) {
+        expect(buttons[0]).toBeDisabled();
+        expect(printLabel).not.toHaveBeenCalled();
+      } else expect(printLabel).toHaveBeenCalledOnce();
+    },
+  );
 });

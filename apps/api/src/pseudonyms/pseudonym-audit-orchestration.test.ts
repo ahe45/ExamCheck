@@ -1,3 +1,4 @@
+import { scheduleKey } from "./pseudonym-domain.js";
 import { BadRequestException } from "@nestjs/common";
 import type { Pool, PoolConnection } from "mysql2/promise";
 import { describe, expect, it, vi } from "vitest";
@@ -174,6 +175,21 @@ function createAssignmentFixture() {
     ensureOperation: vi.fn().mockResolvedValue(undefined),
     lockOperation: vi.fn().mockResolvedValue({ id: 7, closed: false }),
     findSetting: vi.fn().mockResolvedValue(settingRow()),
+    listTimeRangesForUpdate: vi.fn().mockResolvedValue([
+      {
+        ...settingRow(),
+        scheduleKey: scheduleKey({
+          date: candidate.examDate!,
+          time: candidate.examTime!,
+          period: candidate.period!,
+          admission: candidate.admission!,
+          unit: candidate.unit!,
+          major: candidate.major!,
+          building: candidate.building!,
+          room: candidate.room!,
+        }),
+      },
+    ]),
     findAssignmentForUpdate: vi.fn().mockResolvedValue(undefined),
     loadReservedNumbers: vi.fn().mockResolvedValue(new Set<number>()),
     findPreassignedOwner: vi.fn().mockResolvedValue(null),

@@ -1,0 +1,84 @@
+diff --git a/src/runtime/template-editor-runtime-objects.bundle.js b/src/runtime/template-editor-runtime-objects.bundle.js
+index 240b969..b616816 100644
+--- a/src/runtime/template-editor-runtime-objects.bundle.js
++++ b/src/runtime/template-editor-runtime-objects.bundle.js
+@@ -9743,6 +9743,8 @@ function getFlowObjectMetrics(objectElement, documentElement, geometry = {}, min
+     clearTemplateEditorTableSelection,
+     focusTemplateEditorCell,
+     getTemplateEditorCellSplitConfig,
++    getTemplateEditorActiveTableSelection,
++    getTemplateEditorSurface,
+     handleTemplateEditorInsert,
+     handleTemplateEditorTokenDeletion,
+     handleTemplateTableAction,
+@@ -10286,6 +10288,46 @@ function getFlowObjectMetrics(objectElement, documentElement, geometry = {}, min
+       return true;
+     }
+ 
++    function clearSelectedTemplateEditorCellContents(event) {
++      if (event.isComposing || (event.key !== "Backspace" && event.key !== "Delete")) {
++        return false;
++      }
++
++      const surface = getTemplateEditorSurface();
++      const selection = getTemplateEditorActiveTableSelection();
++      const target = event.target instanceof ownerWindow.Element ? event.target : null;
++      if (!surface || !selection?.selectedCells?.length || target?.closest("input, textarea, select, button")) {
++        return false;
++      }
++      if (!shell.surfaceElement.contains(ownerDocument.activeElement)) {
++        return false;
++      }
++      const cells = Array.from(new Set(selection.selectedCells)).filter(
++        (cell) => surface.contains(cell) && cell.closest("table") === selection.table,
++      );
++      if (!cells.length) {
++        return false;
++      }
++
++      event.preventDefault();
++      event.stopPropagation();
++      clearTemplateEditorTableObjectSelection();
++      releaseTemplateEditorTableSelectionSession({ keepSelection: true });
++      cells.forEach((cell) => cell.replaceChildren(ownerDocument.createElement("br")));
++
++      // Replace any stale text/object range with a caret inside the retained table.
++      const range = ownerDocument.createRange();
++      range.selectNodeContents(cells[0]);
++      range.collapse(true);
++      surface.focus({ preventScroll: true });
++      const nativeSelection = ownerWindow.getSelection();
++      nativeSelection.removeAllRanges();
++      nativeSelection.addRange(range);
++      state.templateEditor.savedRange = range.cloneRange();
++      syncTemplateEditorContent({ preserveSelection: true, normalizeTables: false });
++      return true;
++    }
++
+     function deleteSelectedTemplateEditorTable(event) {
+       if (event.key !== "Backspace" && event.key !== "Delete") {
+         return false;
+@@ -10413,6 +10455,10 @@ function getFlowObjectMetrics(objectElement, documentElement, geometry = {}, min
+         return;
+       }
+ 
++      if (!isModifierPressed && !event.altKey && clearSelectedTemplateEditorCellContents(event)) {
++        return;
++      }
++
+       if (!isModifierPressed && deleteSelectedTemplateEditorTable(event)) {
+         return;
+       }
+diff --git a/src/runtime/template-editor-runtime-bootstrap.bundle.js b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+index 3142756..29181e0 100644
+--- a/src/runtime/template-editor-runtime-bootstrap.bundle.js
++++ b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+@@ -2114,6 +2114,8 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+         clearTemplateEditorTableSelection,
+         focusTemplateEditorCell,
+         getTemplateEditorCellSplitConfig,
++        getTemplateEditorActiveTableSelection,
++        getTemplateEditorSurface,
+         handleTemplateEditorInsert,
+         handleTemplateEditorTokenDeletion,
+         handleTemplateTableAction,

@@ -50,6 +50,8 @@ const schedule: OperationSchedule = {
   buildingNames: ["본관"],
   candidateCount: 30,
   assignedCount: 2,
+  printedCount: 0,
+  labelPrintingEnabled: false,
 };
 
 describe("useAppSession", () => {
@@ -84,6 +86,8 @@ describe("useAppSession", () => {
     expect(JSON.parse(sessionStorage.getItem(OPERATION_SCHEDULE_KEY) || "null").schedule).toMatchObject({
       candidateCount: 31,
       assignedCount: 3,
+      printedCount: 0,
+      labelPrintingEnabled: false,
     });
     expect(navigate).not.toHaveBeenCalled();
   });

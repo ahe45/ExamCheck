@@ -1,3 +1,4 @@
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import { CancelButtonIcon, ConfirmButtonIcon } from "../../shared/components/ActionIcons";
 import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
 import type { BulkRangeCriterion, BulkRangeMode } from "./system-settings-domain";
@@ -46,9 +47,7 @@ export function BulkRangeModal({
             <p>가번호 범위</p>
             <h2 id="bulk-range-title">일괄 설정</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="닫기">
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </header>
         <div className="bulk-range-modal-body">
           <label className="bulk-start-field">

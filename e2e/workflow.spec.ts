@@ -192,10 +192,10 @@ test.describe("FHD 변경 작업 흐름", () => {
     });
     expect(token).not.toBe("");
 
-    await page.getByRole("button", { name: "등록 완료(마감)", exact: true }).click();
+    await page.getByRole("button", { name: "운영 마감", exact: true }).click();
     const finishDialog = page.getByRole("alertdialog", { name: "가번호 등록을 마감하시겠습니까?" });
-    await finishDialog.getByRole("button", { name: "등록 완료(마감)", exact: true }).click();
-    await expect(page.getByRole("button", { name: "등록 마감 완료" })).toBeDisabled();
+    await finishDialog.getByRole("button", { name: "운영 마감", exact: true }).click();
+    await expect(page.getByRole("button", { name: "마감 취소" })).toBeEnabled();
 
     const printButton = page.getByRole("button", { name: "인쇄", exact: true });
     await expect(printButton).toBeEnabled();

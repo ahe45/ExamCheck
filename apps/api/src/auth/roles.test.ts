@@ -41,7 +41,7 @@ describe("RolesGuard", () => {
 
   it("rejects a role without the required permission", () => {
     const reflector = {
-      getAllAndOverride: vi.fn((key: string) => (key === PERMISSIONS_KEY ? ["operation.reopen"] : undefined)),
+      getAllAndOverride: vi.fn((key: string) => (key === PERMISSIONS_KEY ? ["settings.manage"] : undefined)),
     } as unknown as Reflector;
     const operator: AuthenticatedUser = {
       id: 2,

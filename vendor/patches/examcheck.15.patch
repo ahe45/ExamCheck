@@ -1,0 +1,80 @@
+diff --git a/src/runtime/template-editor-runtime-bootstrap.bundle.js b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+index 29181e0..8f5b1aa 100644
+--- a/src/runtime/template-editor-runtime-bootstrap.bundle.js
++++ b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+@@ -745,14 +745,34 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+       undoTemplateEditorHistory();
+     }
+ 
+-    function handleCompositionEnd(event) {
+-      if (event.target !== getTemplateEditorSurface()) {
+-        return;
+-      }
++    let composingSurface = null;
++    let compositionSyncTimer = 0;
+ 
+-      ownerWindow.setTimeout(() => {
++    function cancelCompositionSync() {
++      ownerWindow.clearTimeout(compositionSyncTimer);
++      compositionSyncTimer = 0;
++    }
++
++    function handleCompositionStart(event) {
++      if (event.target !== getTemplateEditorSurface()) return;
++      cancelCompositionSync();
++      composingSurface = event.target;
++      state.templateEditor.isComposing = true;
++    }
++
++    function handleCompositionEnd(event) {
++      if (event.target !== composingSurface && event.target !== getTemplateEditorSurface()) return;
++      const surface = event.target;
++      composingSurface = null;
++      state.templateEditor.isComposing = false;
++      cancelCompositionSync();
++      compositionSyncTimer = ownerWindow.setTimeout(() => {
++        compositionSyncTimer = 0;
++        // A Korean IME may already be composing the next syllable when the
++        // previous composition's deferred callback runs. Never replace its DOM.
++        if (state.templateEditor.isComposing || !surface.isConnected || surface !== getTemplateEditorSurface()) return;
+         syncTemplateEditorContent(
+-          getTemplateEditorSurface()?.dataset.templateEditorAllowOverflowSync === "true" ? { allowOverflow: true } : undefined,
++          surface.dataset.templateEditorAllowOverflowSync === "true" ? { allowOverflow: true } : undefined,
+         );
+       }, 0);
+     }
+@@ -945,7 +965,13 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+       addListener(getTemplateEditorModal(), "change", handleChange);
+       addListener(getTemplateEditorModal(), "beforeinput", handleBeforeInput);
+       addListener(getTemplateEditorModal(), "input", handleInput);
+-      addListener(getTemplateEditorModal(), "compositionend", handleCompositionEnd);
++      addListener(getTemplateEditorModal(), "compositionstart", handleCompositionStart, true);
++      addListener(getTemplateEditorModal(), "compositionend", handleCompositionEnd, true);
++      disposers.push(() => {
++        cancelCompositionSync();
++        state.templateEditor.isComposing = false;
++        composingSurface = null;
++      });
+       addListener(ownerDocument, "copy", handleCopy, true);
+       addListener(getTemplateEditorModal(), "paste", handlePaste);
+       addListener(getTemplateEditorModal(), "dragstart", handleDragStart);
+@@ -1815,6 +1841,7 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+       }
+ 
+       function syncTemplateEditorContent(optionsForSync = {}) {
++        if (state.templateEditor.isComposing) return;
+         const modalEditorController = getCandidateBlockModalEditorController();
+         const modalSurfaceElement = modalEditorController?.getActiveSurface?.() || null;
+         const syncOptions = modalSurfaceElement instanceof HTMLElement
+diff --git a/src/runtime/template-editor-runtime-objects.bundle.js b/src/runtime/template-editor-runtime-objects.bundle.js
+index b616816..a0c0ceb 100644
+--- a/src/runtime/template-editor-runtime-objects.bundle.js
++++ b/src/runtime/template-editor-runtime-objects.bundle.js
+@@ -10414,6 +10414,7 @@ function getFlowObjectMetrics(objectElement, documentElement, geometry = {}, min
+     }
+ 
+     function handleKeydown(event) {
++      if (event.isComposing || state.templateEditor.isComposing) return;
+       const isSurfaceTarget = event.target === shell.surfaceElement || shell.surfaceElement.contains(event.target);
+       const isModifierPressed = event.ctrlKey || event.metaKey;
+       const normalizedKey = String(event.key || "").toLowerCase();

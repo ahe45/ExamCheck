@@ -59,13 +59,6 @@ export class PrintJobsService {
       if (printPolicy?.assignmentMethod !== "PREASSIGNED" || !printPolicy.printPreassignedLabel) {
         throw new ForbiddenException("사전부여 방식에서 라벨 출력 사용이 설정된 전형만 라벨을 출력할 수 있습니다.");
       }
-      const existingJob = await this.repository.findByIdempotencyKey(connection, user.id, idempotencyKey);
-      if (existingJob) {
-        assertMatchingPrintJobRequest(existingJob.requestFingerprint, requestFingerprint);
-        await connection.commit();
-        return existingJob.response;
-      }
-
       const candidate = await this.repository.findCandidateForUpdate(connection, {
         examineeNo: input.examineeNo.trim(),
         examDate: input.examDate,
@@ -74,6 +67,18 @@ export class PrintJobsService {
         admissionName,
       });
       if (!candidate) throw new NotFoundException("가번호가 부여된 수험생을 찾을 수 없습니다.");
+      if (await this.repository.hasPrintedLabel(connection, candidate.candidateRecordId)) {
+        throw new ConflictException("이미 출력된 수험생은 라벨을 재출력할 수 없습니다.");
+      }
+
+      const existingJob = await this.repository.findByIdempotencyKey(connection, user.id, idempotencyKey);
+      if (existingJob) {
+        assertMatchingPrintJobRequest(existingJob.requestFingerprint, requestFingerprint);
+        if (existingJob.response.status !== "READY")
+          throw new ConflictException("이미 처리된 출력 작업은 다시 전송할 수 없습니다.");
+        await connection.commit();
+        return existingJob.response;
+      }
 
       const template = await this.repository.findActiveLabelTemplate(connection, printPolicy.labelTemplateId);
       if (!template) throw new NotFoundException("이 전형에 사용할 수 있는 라벨 양식이 없습니다.");
@@ -107,6 +112,7 @@ export class PrintJobsService {
         "candidate.absent": candidate.absent ? "결시" : "응시",
         "candidate.photo": "",
         "candidate.buildingName": candidate.buildingName,
+        "candidate.waitingRoomName": candidate.waitingRoom || "",
         "candidate.roomName": candidate.roomName,
         "candidate.seatNo": candidate.seatNo,
         "candidate.opt1": candidate.opt1,
@@ -155,6 +161,8 @@ export class PrintJobsService {
         const existingJob = await this.repository.findByIdempotencyKey(connection, user.id, idempotencyKey);
         if (existingJob) {
           assertMatchingPrintJobRequest(existingJob.requestFingerprint, requestFingerprint);
+          if (existingJob.response.status !== "READY")
+            throw new ConflictException("이미 처리된 출력 작업은 다시 전송할 수 없습니다.");
           return existingJob.response;
         }
       }

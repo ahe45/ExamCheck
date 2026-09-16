@@ -1,3 +1,4 @@
+import { findActiveLabelTemplate } from "../label-templates/active-label-template.js";
 import { Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
@@ -28,6 +29,7 @@ export interface PrintCandidateRecord {
   majorName: string;
   buildingName: string;
   roomName: string;
+  waitingRoom: string;
   seatNo: string;
   groupName: string;
   opt1: string;
@@ -102,6 +104,17 @@ interface PrintJobResponseRow extends RowDataPacket {
 
 @Injectable()
 export class PrintJobsRepository {
+  async hasPrintedLabel(executor: SqlExecutor, candidateRecordId: number): Promise<boolean> {
+    const [rows] = await executor.execute<RowDataPacket[]>(
+      `SELECT id FROM print_job
+       WHERE candidate_record_id = ? AND label_type = 'PSEUDONYM_LABEL'
+         AND status = 'SENT' AND sent_at IS NOT NULL
+       LIMIT 1 FOR UPDATE`,
+      [candidateRecordId],
+    );
+    return rows.length > 0;
+  }
+
   async findAssignedExamName(
     executor: SqlExecutor,
     schedule: PrintJobScheduleKey,
@@ -179,6 +192,7 @@ export class PrintJobsRepository {
               cr.admission AS admissionName, cr.admission_code AS admissionCode,
               cr.unit_name AS unitName, cr.major AS majorName,
               cr.building_name AS buildingName, cr.room_name AS roomName,
+              cr.waiting_room AS waitingRoom,
               COALESCE(cr.designated_sort, '') AS seatNo, cr.group_name AS groupName,
               cr.opt1, cr.opt2, cr.opt3, cr.label_barcode AS labelBarcode,
               cr.temporary_no AS preassignedNumber,
@@ -218,16 +232,7 @@ export class PrintJobsRepository {
     executor: SqlExecutor,
     labelTemplateId: number | null,
   ): Promise<LabelTemplateRecord | null> {
-    const [rows] = await executor.execute<Array<RowDataPacket & LabelTemplateRecord>>(
-      `SELECT id, zpl_template AS zplTemplate, layout_json AS layout
-       FROM label_template
-       WHERE active = TRUE
-         AND (? IS NULL OR id = ?)
-       ORDER BY CASE WHEN code = 'PSEUDONYM_LABEL' THEN 0 ELSE 1 END, id
-       LIMIT 1`,
-      [labelTemplateId, labelTemplateId],
-    );
-    return rows[0] ?? null;
+    return findActiveLabelTemplate(executor, labelTemplateId);
   }
 
   async findEnabledWorkstationId(executor: SqlExecutor, workstationCode: string): Promise<number | null> {

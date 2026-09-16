@@ -1,3 +1,4 @@
+import { ToastNotice } from "../../shared/components/ToastNotice";
 import { useCallback, useEffect, useState } from "react";
 import { downloadCandidateData, fetchCandidates, type CandidateRecord } from "../../shared/api/candidates";
 import { DownloadButtonIcon, RefreshButtonIcon, UploadButtonIcon } from "../../shared/components/ActionIcons";
@@ -83,16 +84,8 @@ export function CandidateDataPage({ token }: Props) {
             </button>
           </div>
         </header>
-        {notice && (
-          <p className="candidate-page-notice success" role="status">
-            {notice}
-          </p>
-        )}
-        {error && !uploadOpen && (
-          <p className="candidate-page-notice error" role="alert">
-            {error}
-          </p>
-        )}
+        {notice && <ToastNotice notice={{ kind: "success", text: notice }} onClose={() => setNotice(null)} />}
+        {error && !uploadOpen && <ToastNotice notice={{ kind: "error", text: error }} onClose={() => setError(null)} />}
         <CandidateDataGrid loading={loading} rows={rows} />
       </article>
 

@@ -7,7 +7,7 @@ export const formTemplateDataTags = {
         { key: "system.title", label: "시스템명", type: "string", example: "가번호 관리 시스템" },
         { key: "school.name", label: "학교명", type: "string", example: "한국대학교" },
         { key: "candidate.admissionYear", label: "학년도", type: "string", example: "2026" },
-        { key: "system.printedAt", label: "출력일시", type: "string", example: "2026-09-12 09:30" },
+        { key: "system.printedAt", label: "출력일시", type: "datetime", example: "2026-09-12 09:30" },
       ],
     },
     {
@@ -48,6 +48,7 @@ export const formTemplateDataTags = {
       label: "고사장 정보",
       tags: [
         { key: "candidate.buildingName", label: "고사건물명", type: "string", example: "사범관" },
+        { key: "candidate.waitingRoomName", label: "대기실명", type: "string", example: "101호 대기실" },
         { key: "candidate.roomName", label: "고사실명", type: "string", example: "면접고사실" },
         { key: "candidate.seatNo", label: "지정정렬", type: "string", example: "1" },
       ],

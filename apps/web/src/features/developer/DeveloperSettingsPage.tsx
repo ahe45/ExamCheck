@@ -3,6 +3,7 @@ import type { AuthUser } from "../../shared/api/auth";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import { ToastNotice } from "../../shared/components/ToastNotice";
 import { DeveloperPasswordModal } from "./DeveloperPasswordModal";
+import { HistoryResetPasswordSection } from "./HistoryResetPasswordSection";
 import { DeveloperSettingsFormHeader, DeveloperSystemProfileSection } from "./DeveloperSystemProfileSection";
 import { DeveloperUniquenessPolicySection } from "./DeveloperUniquenessPolicySection";
 import { formatDeveloperSettingsUpdatedAt } from "./developer-settings-model";
@@ -76,6 +77,7 @@ function DeveloperSettingsContent({ token, user, onProfileChange }: Props) {
             </span>
           </footer>
         </form>
+        <HistoryResetPasswordSection token={token} />
       </div>
 
       {controller.passwordModalOpen && (
@@ -84,6 +86,7 @@ function DeveloperSettingsContent({ token, user, onProfileChange }: Props) {
           password={controller.password}
           saving={controller.passwordSaving}
           notice={controller.passwordNotice}
+          onCloseNotice={controller.dismissPasswordNotice}
           onPasswordChange={controller.updatePassword}
           onClose={controller.closePasswordModal}
           onSave={() => void controller.savePassword()}

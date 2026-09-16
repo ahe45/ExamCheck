@@ -40,6 +40,8 @@ export function useOperationPrint(options: Options) {
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<OperationPrintProgress | null>(null);
   const [signatureNames, setSignatureNames] = useState(emptyTemplateSignatureNames);
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [signatureError, setSignatureError] = useState<string | null>(null);
   const generationControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -49,6 +51,8 @@ export function useOperationPrint(options: Options) {
     setGenerating(false);
     setProgress(null);
     setSignatureNames(emptyTemplateSignatureNames());
+    setSignatureOpen(false);
+    setSignatureError(null);
     setOpen(false);
   }, [options.scheduleKey]);
 
@@ -93,17 +97,40 @@ export function useOperationPrint(options: Options) {
 
   async function generate() {
     const template = templates.find((item) => item.code === selectedTemplateCode);
-    if (!template || generating) return;
+    if (!template || generating || generationControllerRef.current) return;
+    if (getRequiredTemplateSignatureFields(template.layout).length) {
+      setSignatureError(null);
+      setSignatureOpen(true);
+      return;
+    }
+    await generatePdf();
+  }
+
+  async function confirmSignatures() {
+    if (!signatureOpen) return;
+    await generatePdf();
+  }
+
+  function closeSignatures() {
+    setSignatureOpen(false);
+    setSignatureError(null);
+    setSignatureNames(emptyTemplateSignatureNames());
+  }
+
+  async function generatePdf() {
+    const template = templates.find((item) => item.code === selectedTemplateCode);
+    if (!template || generating || generationControllerRef.current) return;
     const missingSignature = getRequiredTemplateSignatureFields(template.layout).find(
       (field) => !signatureNames[field.key].trim(),
     );
     if (missingSignature) {
-      options.onNotice({ kind: "error", text: `${missingSignature.label} 이름을 입력해 주세요.` });
+      setSignatureError(`${missingSignature.label} 이름을 입력해 주세요.`);
       return;
     }
+    setSignatureOpen(false);
+    setSignatureError(null);
     const requestScheduleKey = options.scheduleKey;
     const controller = new AbortController();
-    generationControllerRef.current?.abort(new DOMException("새 PDF 생성을 시작했습니다.", "AbortError"));
     generationControllerRef.current = controller;
     setGenerating(true);
     setProgress({ label: "출력 데이터를 준비하고 있습니다.", completed: 0, total: Math.max(options.rows.length, 1) });
@@ -170,14 +197,18 @@ export function useOperationPrint(options: Options) {
     setGenerating(false);
     setProgress(null);
     setSignatureNames(emptyTemplateSignatureNames());
+    setSignatureOpen(false);
+    setSignatureError(null);
     setOpen(false);
   }
 
   function updateSignatureName(key: TemplateSignatureKey, value: string) {
+    setSignatureError(null);
     setSignatureNames((current) => ({ ...current, [key]: value }));
   }
 
   function selectTemplate(templateCode: string) {
+    closeSignatures();
     setSelectedTemplateCode(templateCode);
     setSignatureNames(emptyTemplateSignatureNames());
   }
@@ -201,6 +232,11 @@ export function useOperationPrint(options: Options) {
       templates.find((item) => item.code === selectedTemplateCode)?.layout || "",
     ),
     signatureNames,
+    signatureOpen,
+    signatureError,
+    dismissSignatureError: () => setSignatureError(null),
+    confirmSignatures,
+    closeSignatures,
     setSelectedTemplateCode: selectTemplate,
     updateSignatureName,
     show,

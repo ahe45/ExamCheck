@@ -20,6 +20,7 @@ function examinee(overrides: Partial<Examinee> = {}): Examinee {
     examName: "2026년도 자격시험",
     examDate: "2026-10-30",
     roomName: "101호",
+    waitingRoom: "201호 대기실",
     seatNo: "1",
     labelBarcode: "1162001",
     preassignedNumber: null,
@@ -115,7 +116,14 @@ describe("operation view model", () => {
   });
 
   it("업로드된 사전 가번호를 별도 불러오기 없이 등록 가번호로 표시한다", () => {
-    const [row] = toOperationRows([examinee({ preassignedNumber: "0821", preassignedAvailable: true })]);
+    const [row] = toOperationRows([
+      examinee({
+        preassignedNumber: "0821",
+        preassignedAvailable: true,
+        assignedNumber: "0821",
+        assignmentMode: "PREASSIGNED",
+      }),
+    ]);
 
     expect(row.assignment).toMatchObject({ pseudonymNumber: "0821", mode: "PREASSIGNED", alreadyAssigned: true });
     expect(operationRowValue(row, "pseudonymNumber", openRegistration)).toBe("0821");
@@ -125,7 +133,13 @@ describe("operation view model", () => {
 
   it("라벨 출력 방식은 등록일시 대신 실제 출력일시를 표시한다", () => {
     const [row] = toOperationRows([
-      examinee({ preassignedNumber: "0821", preassignedAvailable: true, lastPrintedAt: "2026-08-28T10:11:12" }),
+      examinee({
+        preassignedNumber: "0821",
+        preassignedAvailable: true,
+        assignedNumber: "0821",
+        assignmentMode: "PREASSIGNED",
+        lastPrintedAt: "2026-08-28T10:11:12",
+      }),
     ]);
     const context = { operationClosed: false, labelPrintingEnabled: true };
 

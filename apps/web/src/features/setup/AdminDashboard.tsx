@@ -1,3 +1,4 @@
+import { ToastNotice } from "../../shared/components/ToastNotice";
 import { useState, type CSSProperties } from "react";
 import { ConfirmButtonIcon, RefreshButtonIcon } from "../../shared/components/ActionIcons";
 import {
@@ -41,11 +42,7 @@ export function AdminDashboard({
           </button>
         </div>
       </header>
-      {error && (
-        <p className="admin-inline-notice error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && !loading && <ToastNotice notice={{ kind: "error", text: error }} />}
       <div className="admission-dashboard-content">
         <section className="admission-dashboard-overview">
           <AdmissionSummaryPanel statistics={statistics} />

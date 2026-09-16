@@ -850,6 +850,7 @@
 .operator-roster-heading {
   --operator-roster-control-height: clamp(40px, calc(40px + (100vh - 1000px) * 0.045), 54px);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
@@ -866,8 +867,9 @@
   gap: 14px;
   min-width: 0;
 }
-.operator-roster-heading > .operator-roster-stats {
+.operator-roster-heading > div.operator-roster-stats {
   flex: 1;
+  min-width: 330px;
   align-items: center;
   gap: 8px;
 }
@@ -906,19 +908,22 @@
 }
 .operator-roster-heading > div:last-child {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   flex: none;
+  max-width: 100%;
   gap: 8px;
 }
 .operator-printer-status {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 30px;
-  padding: 6px 9px;
+  min-height: 0;
+  height: 100%;
+  padding: 0 9px;
   color: #65758b;
   border: 1px solid #dfe5ed;
-  border-radius: 999px;
+  border-radius: 7px;
   background: #f8fafc;
   font-size: var(--operator-fs-10);
   font-weight: 800;
@@ -935,16 +940,12 @@
 }
 .operator-printer-status.ready {
   color: #17745f;
-  border-color: #bfe2d6;
-  background: #eefaf6;
 }
 .operator-printer-status.ready > i {
   box-shadow: 0 0 0 3px rgba(23, 116, 95, 0.12);
 }
 .operator-printer-status.error {
   color: #b24b42;
-  border-color: #edcbc7;
-  background: #fff6f5;
 }
 .operator-printer-status.error > i {
   box-shadow: 0 0 0 3px rgba(178, 75, 66, 0.1);
@@ -1006,11 +1007,11 @@
   background: linear-gradient(135deg, #3970ee, #2d63f5);
   box-shadow: 0 7px 14px rgba(45, 99, 245, 0.16);
 }
-.operator-roster-heading button.operator-operation-close-button.closed:disabled {
-  color: #176b5f;
-  border-color: #bfe2d6;
-  background: #e7f6f1;
-  opacity: 1;
+.operator-roster-heading button.operator-operation-close-button.closed {
+  color: #9a550c;
+  border-color: #e9be80;
+  background: #fff4df;
+  box-shadow: none;
 }
 .operator-roster-heading button.operator-template-print-button {
   color: #2c5fd7;
@@ -1038,12 +1039,23 @@
   border-color: #91cabb;
   background: #e8f7f2;
 }
+.operator-roster-heading button.operator-delete-button,
+.operator-roster-heading button.operator-refresh-button,
+.operator-roster-heading button.operator-download-button {
+  width: var(--operator-roster-control-height);
+  min-width: var(--operator-roster-control-height);
+  padding: 0;
+}
 .operator-roster-heading button.operator-roster-label-button {
   color: #fff;
-  border-color: #2d63f5;
-  background: #2d63f5;
+  border-color: #147d73;
+  background: #147d73;
   font-weight: 800;
-  box-shadow: 0 7px 14px rgba(45, 99, 245, 0.16);
+  box-shadow: 0 7px 14px rgba(20, 125, 115, 0.16);
+}
+.operator-roster-heading button.operator-roster-label-button:hover:not(:disabled) {
+  border-color: #10665e;
+  background: #10665e;
 }
 .operator-roster-heading button.operator-roster-label-button:disabled {
   color: #8b98aa;
@@ -1199,23 +1211,6 @@
   color: #182237;
   font-size: 21px;
 }
-.operator-schedule-alert-modal > header > button {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  min-height: 0;
-  padding: 0;
-  color: #738097;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  font-size: 25px;
-}
-.operator-schedule-alert-modal > header > button:hover {
-  color: #b46b0c;
-  background: #fff5e5;
-}
 .operator-schedule-alert-candidate {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -1363,25 +1358,6 @@
   color: #182237;
   font-size: 21px;
 }
-.operator-finish-modal > header > button,
-.operator-print-modal > header > button {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  min-height: 0;
-  padding: 0;
-  color: #738097;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  font-size: 25px;
-}
-.operator-finish-modal > header > button:hover,
-.operator-print-modal > header > button:hover {
-  color: #2d63f5;
-  background: #eef3ff;
-}
 .operator-finish-summary {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1428,6 +1404,10 @@
 }
 .operator-finish-modal > footer button,
 .operator-print-modal > footer button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   min-width: 100px;
   min-height: 42px;
   padding: 10px 16px;
@@ -1437,6 +1417,17 @@
   background: #fff;
   font-size: 12px;
   font-weight: 800;
+}
+.operator-finish-modal > footer button svg,
+.operator-print-modal > footer button svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .operator-finish-modal > footer button.primary,
 .operator-print-modal > footer button.primary {
@@ -1518,6 +1509,10 @@
   border-radius: 12px;
   background: #f4f7ff;
 }
+.operator-signature-modal { width: min(520px, calc(100vw - 32px)); }
+.operator-signature-modal .operator-print-signature-inputs label > span { font-size: 13px; }
+.operator-signature-modal .operator-print-signature-inputs input { font-size: 14px; }
+.operator-print-signature-inputs > p[role="alert"] { margin: 0; color: #b42318; font-size: 13px; }
 .operator-print-signature-inputs > header {
   display: grid;
   gap: 3px;
@@ -2105,18 +2100,6 @@
   font-size: 30px;
   letter-spacing: -0.03em;
 }
-.operator-draw-popover > header button {
-  width: 44px;
-  height: 44px;
-  min-height: 0;
-  padding: 0;
-  color: #7e8ba0;
-  border: 0;
-  border-radius: 12px;
-  background: #f2f5f9;
-  font-size: 28px;
-  line-height: 1;
-}
 .operator-draw-number {
   position: relative;
   display: grid;
@@ -2134,6 +2117,33 @@
   line-height: 1;
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
+}
+.operator-draw-number > .operator-assignment-number-input {
+  width: 100%;
+  min-width: 0;
+  height: 220px;
+  padding: 20px;
+  border: 0;
+  border-radius: 20px;
+  outline: none;
+  background: transparent;
+  color: #2458da;
+  font-family: inherit;
+  font-size: 76px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+.operator-draw-number:has(.operator-assignment-number-input):focus-within {
+  border-color: #3566f5;
+  box-shadow: 0 0 0 3px rgba(53, 102, 245, 0.16);
+}
+.operator-assignment-number-input::placeholder {
+  color: #8d9bb6;
+  font-size: 36px;
+  letter-spacing: 0;
 }
 .operator-draw-popover.rolling .operator-draw-number > span {
   animation: operator-number-roll 0.15s ease-in-out infinite alternate;
@@ -2202,17 +2212,32 @@
 }
 .operator-draw-action,
 .operator-draw-confirm {
-  min-height: 64px;
+  min-height: 128px;
   color: #fff;
   border: 0;
   border-radius: 15px;
   background: linear-gradient(135deg, #3970ee, #2d63f5);
-  font-size: 18px;
+  font-size: 36px;
   font-weight: 900;
   box-shadow: 0 12px 26px rgba(45, 99, 245, 0.23);
 }
 .operator-draw-action:disabled {
   opacity: 0.62;
+}
+.operator-draw-action svg,
+.operator-draw-confirm svg {
+  width: 32px;
+  height: 32px;
+}
+.operator-draw-shortcut {
+  margin-left: 8px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 700;
 }
 .operator-draw-popover.complete .operator-draw-number {
   border-color: #bce3d6;
@@ -2283,4 +2308,146 @@
   .operator-control-panel {
     overflow-y: auto;
   }
+}
+.operator-label-copies,
+.operator-printer-control {
+  display: grid;
+  grid-template-rows: 14px minmax(0, 1fr);
+  height: var(--operator-roster-control-height);
+  gap: 2px;
+  color: var(--text-secondary, #526580);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+.operator-printer-control {
+  width: max-content;
+  grid-template-columns: minmax(0, 1fr);
+}
+.operator-roster-heading button.operator-printer-status {
+  box-sizing: border-box;
+  contain: inline-size;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 4px;
+  gap: 4px;
+  border-radius: 7px;
+  background: #f8fafc;
+  font-size: var(--operator-fs-10);
+  color: #65758b;
+}
+.operator-roster-heading button.operator-printer-status.ready {
+  color: #17745f;
+}
+.operator-roster-heading button.operator-printer-status.error {
+  color: #b24b42;
+}
+.operator-roster-heading button.operator-printer-status:not(:disabled):hover {
+  border-color: #a7bfff;
+  background: #f0f5ff;
+}
+.operator-roster-heading button.operator-printer-status:focus-visible {
+  outline: 2px solid #a7bfff;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .operator-printer-status.checking > i {
+    animation: none;
+  }
+}
+
+.operator-label-copies input {
+  width: 68px;
+  height: 100%;
+  min-height: 0;
+  padding: 0 8px;
+  border: 1px solid #cdd8e7;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-size: 16px;
+  text-align: center;
+}
+
+.operator-label-copies input:focus-visible {
+  outline: 2px solid #a7bfff;
+  outline-offset: 2px;
+}
+
+.operator-label-copies input[aria-invalid="true"] {
+  border-color: #c84242;
+}
+
+.operator-label-copies input::-webkit-inner-spin-button {
+  opacity: 1;
+}
+
+.operation-history-reset-modal > header {
+  grid-template-columns: minmax(0, 1fr) 38px;
+}
+.operation-history-reset-modal > form {
+  overflow-y: auto;
+}
+.history-reset-password-label {
+  display: grid;
+  gap: 8px;
+  margin: 20px 24px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.history-reset-password-label input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #d3ddeb;
+  border-radius: 9px;
+  font-size: 15px;
+}
+.history-reset-error {
+  margin: 16px 24px;
+  color: #c03535 !important;
+  font-size: 14px;
+}
+.operation-history-reset-modal form > footer {
+  display: flex;
+  justify-content: end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid #dce3ed;
+}
+.operation-history-reset-modal form > footer button {
+  min-height: 42px;
+  padding: 10px 18px;
+  border: 1px solid #d3ddeb;
+  border-radius: 9px;
+  background: #fff;
+  color: #425574;
+  font-weight: 700;
+}
+.operation-history-reset-modal form > footer button.primary {
+  background: #c33b42;
+  border-color: #c33b42;
+  color: #fff;
+}
+
+.operator-roster-heading button.operator-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #b33a39;
+  border-color: #ebc7c7;
+  background: #fff6f6;
+}
+.operator-roster-heading button.operator-delete-button:hover:not(:disabled) {
+  border-color: #d99c9c;
+  background: #ffebeb;
+}
+.operator-roster-heading button.operator-operation-close-button.closed:hover:not(:disabled) {
+  border-color: #d7a35f;
+  background: #ffebc7;
 }

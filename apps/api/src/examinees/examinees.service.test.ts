@@ -116,7 +116,10 @@ describe("ExamineesService admission authorization", () => {
     expect(sql).toContain("cr.room_name AS roomName");
     expect(sql).toContain("COALESCE(cr.designated_sort");
     expect(sql).toContain("NULLIF(cr.temporary_no");
-    expect(sql).toContain("COALESCE(pa.pseudonym_no, NULLIF(cr.temporary_no, '')) AS assignedNumber");
+    expect(sql).toContain("COALESCE(pa.pseudonym_no, CASE WHEN");
+    expect(sql).toContain(
+      "COALESCE(admission_setting.assignment_method, default_setting.assignment_method) = 'PREASSIGNED'",
+    );
     expect(sql).not.toContain("e.name");
     expect(sql).not.toContain("e.exam_date");
     expect(sql).not.toContain("e.room_name");

@@ -16,7 +16,11 @@ import { CurrentUser } from "../auth/current-user.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { RequirePermissions } from "../auth/permissions.js";
 import { RolesGuard } from "../auth/roles.js";
-import { ChangeDeveloperPasswordDto, UpdateDeveloperSettingsDto } from "./developer-settings.dto.js";
+import {
+  ChangeDeveloperPasswordDto,
+  UpdateDeveloperSettingsDto,
+  UpdateHistoryResetPasswordDto,
+} from "./developer-settings.dto.js";
 import { DeveloperSettingsService } from "./developer-settings.service.js";
 
 interface LogoFile {
@@ -35,6 +39,16 @@ export class DeveloperSettingsController {
   @Get()
   get(@CurrentUser() user: AuthenticatedUser) {
     return this.settingsService.getForUser(user);
+  }
+
+  @Get("history-reset-password")
+  getHistoryResetPassword() {
+    return this.settingsService.getHistoryResetPassword();
+  }
+
+  @Put("history-reset-password")
+  updateHistoryResetPassword(@Body() input: UpdateHistoryResetPasswordDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.settingsService.updateHistoryResetPassword(input.newPassword, user);
   }
 
   @Put()

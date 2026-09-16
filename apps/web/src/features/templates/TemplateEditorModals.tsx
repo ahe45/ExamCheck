@@ -1,3 +1,4 @@
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import { useState } from "react";
 import {
   CancelButtonIcon,
@@ -41,9 +42,7 @@ export function TemplateInformationModal({ draft, onChange, onClose }: TemplateI
             <p>양식 설정</p>
             <h2 id="template-information-title">양식 정보</h2>
           </div>
-          <button aria-label="닫기" onClick={onClose}>
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </header>
         <div className="template-information-fields">
           <label className="wide-field">
@@ -113,9 +112,7 @@ export function DataTagSettingsModal({ catalog, onClose, onSave }: DataTagSettin
       >
         <header>
           <h2 id="data-tag-settings-title">데이터 태그 설정</h2>
-          <button onClick={onClose} aria-label="닫기">
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </header>
         <div className="tag-settings-groups">
           {groups.map((group) => (

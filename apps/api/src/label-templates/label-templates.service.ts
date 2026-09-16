@@ -51,6 +51,7 @@ export class LabelTemplatesService {
         templateId = Number(existing.id);
         await this.repository.update(connection, templateId, {
           name,
+          defaultCopies: input.defaultCopies ?? Number(existing.defaultCopies ?? 1),
           description: input.description,
           layout,
           zplTemplate,
@@ -60,6 +61,7 @@ export class LabelTemplatesService {
         templateId = await this.repository.insert(connection, {
           code,
           name,
+          defaultCopies: input.defaultCopies ?? 1,
           description: input.description,
           layout,
           zplTemplate,

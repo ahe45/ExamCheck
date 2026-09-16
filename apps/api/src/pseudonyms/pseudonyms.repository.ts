@@ -1,3 +1,4 @@
+import { findActiveLabelTemplate } from "../label-templates/active-label-template.js";
 import { Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { AdmissionAccessPredicate } from "../authorization/admission-policy.js";
@@ -150,6 +151,13 @@ interface PseudonymPolicyRow extends RowDataPacket {
 
 @Injectable()
 export class PseudonymsRepository {
+  async findLabelPrintDefaults(executor: SqlExecutor, labelTemplateId: number | null) {
+    const template = await findActiveLabelTemplate(executor, labelTemplateId);
+    return template
+      ? { templateId: Number(template.id), templateName: template.name, copies: Number(template.defaultCopies) }
+      : null;
+  }
+
   async findSetting(
     executor: SqlExecutor,
     examName: string,
@@ -260,6 +268,89 @@ export class PseudonymsRepository {
       assignedCount: Number(row.assignedCount),
       closed: Boolean(row.closed),
     }));
+  }
+
+  async findHistoryResetPasswordForUpdate(executor: SqlExecutor): Promise<string | null> {
+    const [rows] = await executor.execute<RowDataPacket[]>(
+      "SELECT history_reset_password_hash AS passwordHash FROM system_profile WHERE id = 1 FOR UPDATE",
+    );
+    return rows[0]?.passwordHash ?? null;
+  }
+
+  async lockHistoryCandidates(executor: SqlExecutor, scope: PseudonymOperationScopeInput) {
+    const [rows] = await executor.execute<RowDataPacket[]>(
+      "SELECT cr.id FROM candidate_record cr WHERE " + historyCandidatePredicate + " ORDER BY cr.id FOR UPDATE",
+      historyScopeParams(scope),
+    );
+    return rows;
+  }
+
+  async lockHistoryCandidate(
+    executor: SqlExecutor,
+    scope: PseudonymOperationScopeInput,
+    candidateRecordId: number,
+    examineeNo: string,
+  ) {
+    const [rows] = await executor.execute<RowDataPacket[]>(
+      `SELECT cr.id FROM candidate_record cr WHERE ${historyCandidatePredicate}
+       AND cr.id = ? AND cr.examinee_no = ? FOR UPDATE`,
+      [...historyScopeParams(scope), candidateRecordId, examineeNo],
+    );
+    return rows.length > 0;
+  }
+
+  async deleteCandidateHistory(
+    executor: SqlExecutor,
+    candidateRecordId: number,
+    mode: "LABEL" | "ASSIGNMENT",
+    clearPreassigned: boolean,
+  ) {
+    const [pending] = await executor.execute<RowDataPacket[]>(
+      `SELECT id FROM print_job WHERE candidate_record_id = ? AND label_type = 'PSEUDONYM_LABEL'
+       AND status IN ('CREATED', 'READY', 'DISPATCHING') AND (expires_at IS NULL OR expires_at > NOW()) LIMIT 1 FOR UPDATE`,
+      [candidateRecordId],
+    );
+    if (pending.length) return null;
+    if (mode === "LABEL") {
+      const [result] = await executor.execute<ResultSetHeader>(
+        `UPDATE print_job SET status = 'CANCELLED', sent_at = NULL, dispatched_at = NULL
+         WHERE candidate_record_id = ? AND label_type = 'PSEUDONYM_LABEL' AND status <> 'CANCELLED'`,
+        [candidateRecordId],
+      );
+      return { resetPrintCount: Number(result.affectedRows), deletedAssignmentCount: 0, clearedPreassigned: false };
+    }
+    const [result] = await executor.execute<ResultSetHeader>(
+      "DELETE FROM pseudonym_assignment WHERE candidate_record_id = ?",
+      [candidateRecordId],
+    );
+    if (clearPreassigned)
+      await executor.execute("UPDATE candidate_record SET temporary_no = '' WHERE id = ?", [candidateRecordId]);
+    return {
+      resetPrintCount: 0,
+      deletedAssignmentCount: Number(result.affectedRows),
+      clearedPreassigned: clearPreassigned,
+    };
+  }
+
+  async hasPendingSchedulePrintJobs(executor: SqlExecutor, scope: PseudonymOperationScopeInput) {
+    const [rows] = await executor.execute<RowDataPacket[]>(
+      `SELECT pj.id FROM print_job pj INNER JOIN candidate_record cr ON cr.id = pj.candidate_record_id
+       WHERE ${historyCandidatePredicate} AND pj.label_type = 'PSEUDONYM_LABEL'
+         AND pj.status IN ('CREATED', 'READY', 'DISPATCHING') AND (pj.expires_at IS NULL OR pj.expires_at > NOW())
+       LIMIT 1 FOR UPDATE`,
+      historyScopeParams(scope),
+    );
+    return rows.length > 0;
+  }
+
+  async resetSchedulePrintHistory(executor: SqlExecutor, scope: PseudonymOperationScopeInput) {
+    const [result] = await executor.execute<ResultSetHeader>(
+      `UPDATE print_job pj INNER JOIN candidate_record cr ON cr.id = pj.candidate_record_id
+       SET pj.status = 'CANCELLED', pj.sent_at = NULL, pj.dispatched_at = NULL
+       WHERE ${historyCandidatePredicate} AND pj.label_type = 'PSEUDONYM_LABEL' AND pj.status <> 'CANCELLED'`,
+      historyScopeParams(scope),
+    );
+    return Number(result.affectedRows);
   }
 
   async deleteScheduleAssignments(
@@ -949,6 +1040,12 @@ const lockOperationSql = `SELECT id, closed FROM pseudonym_operation
 
 function operationParams(input: PseudonymOperationScopeInput) {
   return [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName];
+}
+
+const historyCandidatePredicate =
+  "cr.exam_name = ? AND cr.admission = ? AND cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?";
+function historyScopeParams(scope: PseudonymOperationScopeInput) {
+  return [scope.examName, scope.admissionName, scope.examDate, scope.examTime, scope.periodName];
 }
 
 function rangeDisplayWidth(start: number, end: number) {

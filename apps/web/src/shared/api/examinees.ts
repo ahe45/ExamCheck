@@ -9,6 +9,7 @@ export interface Examinee {
   examName: string;
   examDate: string;
   roomName: string;
+  waitingRoom: string;
   seatNo: string;
   labelBarcode: string;
   preassignedNumber: string | null;
@@ -46,6 +47,8 @@ export const operationScheduleSchema = z.object({
   buildingNames: z.array(z.string()),
   candidateCount: z.number().int().nonnegative(),
   assignedCount: z.number().int().nonnegative(),
+  printedCount: z.number().int().nonnegative(),
+  labelPrintingEnabled: z.boolean(),
 });
 export type OperationSchedule = z.infer<typeof operationScheduleSchema>;
 

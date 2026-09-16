@@ -1,5 +1,5 @@
-import { BadRequestException, Inject, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
-import type { Pool } from "mysql2/promise";
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import type { Pool, PoolConnection } from "mysql2/promise";
 import { verifyPassword } from "../auth/password.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import {
@@ -21,10 +21,12 @@ import { applyOperationRosterQuery, PSEUDONYM_ROSTER_EXPORT_MAX_ROWS } from "./p
 import { PseudonymsRepository } from "./pseudonyms.repository.js";
 import type {
   AssignPseudonymDto,
+  DeleteCandidateHistoryDto,
   DeleteAdmissionDto,
   ExportPseudonymRosterDto,
   PseudonymOperationScopeDto,
   ResetAdmissionOperationsDto,
+  ResetOperationHistoryDto,
   UpdatePseudonymSettingDto,
 } from "./pseudonyms.dto.js";
 
@@ -87,6 +89,10 @@ export class PseudonymsService {
     return this.rosterExporter.build(applyOperationRosterQuery(rows, input.query), { labelPrintingEnabled });
   }
 
+  previewSequential(input: AssignPseudonymDto, user: AuthenticatedUser) {
+    return this.assignPseudonym.execute(input, user, true);
+  }
+
   async getSetting(examName: string, admissionName: string, user: AuthenticatedUser) {
     if (!admissionName?.trim()) throw new BadRequestException("설정할 전형명을 선택해 주세요.");
     admissionName = assertAdmissionAccess(user, admissionName, {
@@ -95,7 +101,8 @@ export class PseudonymsService {
     const setting = await this.repository.findSetting(this.pool, examName, admissionName.trim(), { forUpdate: false });
     if (!setting) throw new NotFoundException("이 시험의 가번호 범위가 설정되지 않았습니다.");
     const ranges = await this.repository.listTimeRanges(this.pool, setting.id, admissionName.trim());
-    return settingResponse(setting, ranges, admissionName.trim());
+    const labelPrintDefaults = await this.repository.findLabelPrintDefaults(this.pool, setting.labelTemplateId ?? null);
+    return { ...settingResponse(setting, ranges, admissionName.trim()), labelPrintDefaults };
   }
 
   async getSettingsOverview(examName: string, user: AuthenticatedUser) {
@@ -145,6 +152,89 @@ export class PseudonymsService {
     return this.repository.listAdmissionOperationSchedules(this.pool, examName, admissionName);
   }
 
+  async deleteCandidateHistory(input: DeleteCandidateHistoryDto, user: AuthenticatedUser) {
+    const admissionName = assertAdmissionAccess(user, input.admissionName);
+    const scope = { ...input, examName: input.examName.trim(), admissionName };
+    return withTransaction(this.pool, async (connection) => {
+      await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
+      await this.repository.ensureOperation(connection, scope);
+      await this.repository.lockOperation(connection, scope);
+      const setting = await this.repository.findSetting(connection, scope.examName, admissionName, { forUpdate: true });
+      if (!setting) throw new NotFoundException("전형 설정을 찾을 수 없습니다.");
+      const mode =
+        setting.assignmentMethod === "PREASSIGNED" && Boolean(setting.printPreassignedLabel) ? "LABEL" : "ASSIGNMENT";
+      if (mode !== input.mode)
+        throw new ConflictException("전형 설정이 변경되었습니다. 새로고침 후 다시 시도해 주세요.");
+      if (!(await this.repository.lockHistoryCandidate(connection, scope, input.candidateRecordId, input.examineeNo))) {
+        throw new NotFoundException("선택한 전형·교시의 수험생을 찾을 수 없습니다.");
+      }
+      const result = await this.repository.deleteCandidateHistory(
+        connection,
+        input.candidateRecordId,
+        mode,
+        setting.assignmentMethod === "PREASSIGNED",
+      );
+      if (!result) throw new ConflictException("진행 중인 라벨 출력 작업이 있습니다. 출력 완료 후 다시 시도해 주세요.");
+      await this.audit.record(connection, {
+        eventType: "CANDIDATE_HISTORY_DELETED",
+        actorUserId: user.id,
+        details: { candidateRecordId: input.candidateRecordId, mode, ...result },
+      });
+      return { mode, ...result };
+    });
+  }
+
+  async resetOperationHistory(input: ResetOperationHistoryDto, user: AuthenticatedUser) {
+    const admissionName = assertAdmissionAccess(user, input.admissionName);
+    const scope = { ...input, examName: input.examName.trim(), admissionName };
+    return withTransaction(this.pool, async (connection) => {
+      await this.verifyHistoryResetPassword(connection, input.password);
+      const setting = await this.repository.findSetting(connection, scope.examName, admissionName, { forUpdate: true });
+      if (!setting) throw new NotFoundException("전형 설정을 찾을 수 없습니다.");
+      const mode =
+        setting.assignmentMethod === "PREASSIGNED" && Boolean(setting.printPreassignedLabel) ? "LABEL" : "ASSIGNMENT";
+      if (mode !== input.mode)
+        throw new ConflictException("전형 설정이 변경되었습니다. 새로고침 후 다시 시도해 주세요.");
+      await this.repository.ensureOperation(connection, scope);
+      await this.repository.lockOperation(connection, scope);
+      if (!(await this.repository.lockHistoryCandidates(connection, scope)).length) {
+        throw new NotFoundException("선택한 교시에 수험생이 없습니다.");
+      }
+      if (await this.repository.hasPendingSchedulePrintJobs(connection, scope)) {
+        throw new ConflictException("진행 중인 라벨 출력 작업이 있습니다. 출력 완료 후 다시 시도해 주세요.");
+      }
+      let resetPrintCount = 0;
+      let deletedAssignmentCount = 0;
+      if (mode === "LABEL") {
+        resetPrintCount = await this.repository.resetSchedulePrintHistory(connection, scope);
+      } else {
+        deletedAssignmentCount = await this.repository.deleteScheduleAssignments(
+          connection,
+          scope.examName,
+          admissionName,
+          [scope],
+        );
+        await this.repository.resetScheduleRangeSequences(connection, scope.examName, admissionName, [scope], user.id);
+      }
+      await this.repository.deleteScheduleOperations(connection, scope.examName, admissionName, [scope]);
+      await this.audit.record(connection, {
+        eventType: "OPERATION_HISTORY_RESET",
+        actorUserId: user.id,
+        details: {
+          examName: scope.examName,
+          admissionName,
+          examDate: scope.examDate,
+          examTime: scope.examTime,
+          periodName: scope.periodName,
+          mode,
+          resetPrintCount,
+          deletedAssignmentCount,
+        },
+      });
+      return { mode, resetPrintCount, deletedAssignmentCount };
+    });
+  }
+
   async resetAdmissionOperations(input: ResetAdmissionOperationsDto, user: AuthenticatedUser) {
     const examName = input.examName.trim();
     if (!examName) throw new BadRequestException("시험명을 확인해 주세요.");
@@ -154,6 +244,7 @@ export class PseudonymsService {
     const schedules = uniqueSchedules(input.schedules);
 
     return withTransaction(this.pool, async (connection) => {
+      await this.verifyHistoryResetPassword(connection, input.password);
       const availableSchedules = await this.repository.listAdmissionOperationSchedules(
         connection,
         examName,
@@ -212,11 +303,7 @@ export class PseudonymsService {
     });
 
     return withTransaction(this.pool, async (connection) => {
-      const passwordHash = await this.repository.findUserPasswordForUpdate(connection, user.id);
-      if (passwordHash === undefined) throw new NotFoundException("현재 로그인한 계정을 찾을 수 없습니다.");
-      if (!passwordHash || !(await verifyPassword(input.currentPassword, passwordHash))) {
-        throw new UnauthorizedException("현재 비밀번호가 올바르지 않습니다.");
-      }
+      await this.verifyHistoryResetPassword(connection, input.password);
 
       const candidateIds = await this.repository.lockAdmissionCandidateIds(connection, admissionName);
       if (!candidateIds.length) throw new NotFoundException("삭제할 전형을 찾을 수 없습니다.");
@@ -255,6 +342,14 @@ export class PseudonymsService {
       });
       return result;
     });
+  }
+
+  private async verifyHistoryResetPassword(connection: PoolConnection, password: string) {
+    const passwordHash = await this.repository.findHistoryResetPasswordForUpdate(connection);
+    if (!passwordHash) throw new BadRequestException("개발자 메뉴에서 초기화 비밀번호를 먼저 설정해 주세요.");
+    if (!password || !(await verifyPassword(password, passwordHash))) {
+      throw new BadRequestException("초기화 비밀번호가 올바르지 않습니다.");
+    }
   }
 
   async getOperationStatus(input: PseudonymOperationScopeDto, user: AuthenticatedUser) {

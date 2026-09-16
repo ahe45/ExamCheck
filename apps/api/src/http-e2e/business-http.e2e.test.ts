@@ -151,6 +151,28 @@ describe("business controller HTTP boundaries", () => {
     expect(candidateImport).toHaveBeenCalledWith(expect.any(Buffer), "all", "signed-preview-ticket", administrator.id);
   });
 
+  it("saves a template larger than the default 100 KB JSON parser limit without truncation", async () => {
+    const html = "<table>" + "<tr><td>수험생 데이터 태그와 표 서식</td></tr>".repeat(6000) + "</table>";
+    const input = { ...templateInput(), layout: { documentHtml: html } };
+    expect(Buffer.byteLength(JSON.stringify(input))).toBeGreaterThan(100 * 1024);
+    const response = await jsonRequest("/form-templates/ROOM_LIST", "PUT", input, tokenFor(requireUser(1)));
+    expect(response.status).toBe(200);
+    expect(templateSave).toHaveBeenCalledWith(expect.objectContaining(input), requireUser(1));
+  });
+
+  it("explains oversized template requests with 413 and a size limit instead of an internal error", async () => {
+    const input = { ...templateInput(), layout: { documentHtml: "x".repeat(10 * 1024 * 1024) } };
+    const response = await jsonRequest("/form-templates/ROOM_LIST", "PUT", input, tokenFor(requireUser(1)));
+    expect(response.status).toBe(413);
+    const body = await response.json();
+    expect(body).toMatchObject({ statusCode: 413, code: "PAYLOAD_TOO_LARGE" });
+    expect(body.message).toContain("10 MB");
+    expect(body.message).toContain("크기를 줄여");
+    expect(body).not.toHaveProperty("body");
+    expect(body).not.toHaveProperty("stack");
+    expect(templateSave).not.toHaveBeenCalled();
+  });
+
   it("allows the dedicated preview-ticket header through browser CORS preflight", async () => {
     const response = await fetch(`${baseUrl}/candidates/import`, {
       method: "OPTIONS",

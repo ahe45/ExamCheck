@@ -265,7 +265,7 @@ function InstallationCard({ item, token }: { item: InstallationCheck; token: str
             <span>{downloading ? "다운로드 준비 중…" : download.label}</span>
           </button>
         )}
-        {error && <small className="download-error">{error}</small>}
+        {error && <ToastNotice notice={{ kind: "error", text: error }} onClose={() => setError(null)} />}
       </div>
     </article>
   );

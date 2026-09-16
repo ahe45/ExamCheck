@@ -8,6 +8,7 @@ export interface LabelTemplateRecord {
   code: string;
   name: string;
   description: string | null;
+  defaultCopies: number;
   zplTemplate: string;
   layout: LabelTemplateLayout;
   active: boolean;
@@ -20,6 +21,7 @@ interface LabelTemplateRow extends RowDataPacket {
   code: string;
   name: string;
   description: string | null;
+  defaultCopies: number;
   zplTemplate: string;
   layout: string | LabelTemplateLayout | null;
   active: number | boolean;
@@ -50,6 +52,7 @@ export class LabelTemplatesRepository {
       code: string;
       name: string;
       description?: string;
+      defaultCopies: number;
       zplTemplate: string;
       layout: LabelTemplateLayout;
       active: boolean;
@@ -58,14 +61,15 @@ export class LabelTemplatesRepository {
   ): Promise<number> {
     const [result] = await executor.execute<ResultSetHeader>(
       `INSERT INTO label_template
-        (code, name, description, zpl_template, layout_json, active, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (code, name, description, zpl_template, layout_json, default_copies, active, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.code,
         input.name,
         input.description?.trim() || null,
         input.zplTemplate,
         JSON.stringify(input.layout),
+        input.defaultCopies,
         input.active,
         input.createdBy,
       ],
@@ -79,6 +83,7 @@ export class LabelTemplatesRepository {
     input: {
       name: string;
       description?: string;
+      defaultCopies: number;
       zplTemplate: string;
       layout: LabelTemplateLayout;
       active: boolean;
@@ -86,13 +91,14 @@ export class LabelTemplatesRepository {
   ): Promise<void> {
     const [result] = await executor.execute<ResultSetHeader>(
       `UPDATE label_template
-       SET name = ?, description = ?, zpl_template = ?, layout_json = ?, active = ?
+       SET name = ?, description = ?, zpl_template = ?, layout_json = ?, default_copies = ?, active = ?
        WHERE id = ?`,
       [
         input.name,
         input.description?.trim() || null,
         input.zplTemplate,
         JSON.stringify(input.layout),
+        input.defaultCopies,
         input.active,
         id,
       ],
@@ -131,7 +137,7 @@ export class LabelTemplatesRepository {
 }
 
 const selectSql = `SELECT template.id, template.code, template.name, template.description,
-  template.zpl_template AS zplTemplate, template.layout_json AS layout, template.active,
+  template.default_copies AS defaultCopies, template.zpl_template AS zplTemplate, template.layout_json AS layout, template.active,
   template.created_at AS createdAt, creator.login_id AS createdByLoginId
  FROM label_template template
  INNER JOIN app_user creator ON creator.id = template.created_by`;
@@ -146,6 +152,7 @@ function toRecord(row: LabelTemplateRow): LabelTemplateRecord {
     code: row.code,
     name: row.name,
     description: row.description,
+    defaultCopies: Number(row.defaultCopies ?? 1),
     zplTemplate: row.zplTemplate,
     layout:
       typeof row.layout === "string"

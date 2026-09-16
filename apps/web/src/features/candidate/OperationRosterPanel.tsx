@@ -1,9 +1,10 @@
 import type { MouseEvent } from "react";
-import { RefreshButtonIcon } from "../../shared/components/ActionIcons";
+import { DeleteButtonIcon, RefreshButtonIcon } from "../../shared/components/ActionIcons";
 import { ClientGridHeaderCell } from "../../shared/components/ClientGridHeaderCell";
 import type { GridFilters, GridSort } from "../../shared/hooks/useClientDataGrid";
 import type { PseudonymAssignment } from "../../shared/api/pseudonyms";
 import type { PrinterDiagnostic } from "../printer/printer.types";
+import { OperationPrinterStatus } from "./OperationPrinterStatus";
 import {
   operationRosterStats,
   operationRowValue,
@@ -21,6 +22,8 @@ interface RosterGridProps {
 }
 
 interface RosterState {
+  canDeleteHistory?: boolean;
+  deletingHistory?: boolean;
   operationStatusLoaded: boolean;
   operationClosed: boolean;
   closingOperation: boolean;
@@ -31,14 +34,21 @@ interface RosterState {
   printerDiagnosticBusy: boolean;
   assignment: PseudonymAssignment | null;
   printing: boolean;
+  labelCopies: number | "";
+  labelCopiesValid: boolean;
+  labelAlreadyPrinted?: boolean;
+  labelTemplateName?: string;
 }
 
 interface RosterActions {
+  recheckPrinter(): void;
+  deleteHistory?(): void;
   refresh(): void;
   openCloseConfirm(): void;
   openPrint(): void;
   download(): void;
   printLabel(): void;
+  setLabelCopies(value: number | ""): void;
   select(examineeNo: string): void;
 }
 
@@ -86,24 +96,47 @@ export function OperationRosterPanel({
         <div>
           {state.labelPrintingEnabled && (
             <>
-              <span
-                className={`operator-printer-status ${state.printerDiagnosticBusy ? "checking" : printerReady ? "ready" : "error"}`}
-                role="status"
-                aria-live="polite"
-                title={state.printerDiagnostic.message}
-              >
-                <i aria-hidden="true" />
-                {state.printerDiagnosticBusy
-                  ? "프린터 확인 중"
-                  : printerReady
-                    ? "프린터 연결 정상"
-                    : "프린터 연결 확인 필요"}
-              </span>
+              <label className="operator-label-copies" title={state.labelTemplateName}>
+                <span>출력 매수</span>
+                <input
+                  type="number"
+                  aria-label="라벨 출력 매수"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={state.labelCopies}
+                  disabled={state.printing}
+                  aria-invalid={!state.labelCopiesValid}
+                  title="1~10매"
+                  onChange={(event) =>
+                    actions.setLabelCopies(event.target.value === "" ? "" : Number(event.target.value))
+                  }
+                />
+              </label>
+              <OperationPrinterStatus
+                diagnostic={state.printerDiagnostic}
+                busy={state.printerDiagnosticBusy}
+                printing={state.printing}
+                onRecheck={actions.recheckPrinter}
+              />
               <button
                 className="operator-roster-label-button"
                 onClick={actions.printLabel}
-                disabled={!state.assignment || state.printing || !printerReady}
-                title={printerReady ? "선택한 수험생의 라벨 출력" : state.printerDiagnostic.message}
+                disabled={
+                  !state.assignment ||
+                  state.printing ||
+                  state.deletingHistory ||
+                  !printerReady ||
+                  !state.labelCopiesValid ||
+                  state.labelAlreadyPrinted
+                }
+                title={
+                  state.labelAlreadyPrinted
+                    ? "이미 출력된 수험생은 라벨을 재출력할 수 없습니다."
+                    : printerReady
+                      ? "선택한 수험생의 라벨 출력"
+                      : state.printerDiagnostic.message
+                }
               >
                 <OperatorPrintIcon />
                 {state.printing ? "전송 중…" : "라벨 출력"}
@@ -113,16 +146,17 @@ export function OperationRosterPanel({
           <button
             className={`operator-operation-close-button ${state.operationClosed ? "closed" : ""}`}
             onClick={actions.openCloseConfirm}
-            disabled={!state.operationStatusLoaded || state.operationClosed || state.closingOperation}
+            disabled={!state.operationStatusLoaded || state.closingOperation || state.deletingHistory}
+            title={state.operationClosed ? "마감 취소" : "운영 마감"}
           >
             <OperatorFinishIcon />
-            {state.operationClosed ? "등록 마감 완료" : "등록 완료(마감)"}
+            {state.operationClosed ? "마감 취소" : "운영 마감"}
           </button>
           <button
             className="operator-template-print-button"
             onClick={actions.openPrint}
             disabled={!state.operationStatusLoaded || !state.operationClosed}
-            title={state.operationClosed ? "인쇄 양식 선택" : "등록 완료(마감) 후 사용할 수 있습니다."}
+            title={state.operationClosed ? "인쇄 양식 선택" : "운영 마감 후 사용할 수 있습니다."}
           >
             <OperatorPrintIcon />
             인쇄
@@ -130,20 +164,33 @@ export function OperationRosterPanel({
           <button
             className="operator-refresh-button"
             onClick={actions.refresh}
-            disabled={state.rosterRefreshing}
-            title="가번호 등록 현황 새로고침"
+            disabled={state.rosterRefreshing || state.deletingHistory}
+            aria-label="새로고침"
+            aria-busy={state.rosterRefreshing}
+            title={state.rosterRefreshing ? "갱신 중…" : "가번호 등록 현황 새로고침"}
           >
             <RefreshButtonIcon />
-            {state.rosterRefreshing ? "갱신 중…" : "새로고침"}
+          </button>
+          <button
+            type="button"
+            className="operator-delete-button"
+            onClick={actions.deleteHistory}
+            disabled={!state.canDeleteHistory || state.deletingHistory}
+            aria-label="삭제"
+            aria-busy={state.deletingHistory}
+            title={state.labelPrintingEnabled ? "선택한 수험생의 라벨 출력이력 삭제" : "선택한 수험생의 가번호 삭제"}
+          >
+            <DeleteButtonIcon />
           </button>
           <button
             className="operator-download-button"
             onClick={actions.download}
             disabled={state.exportingExcel}
-            title="현재 그리드 엑셀 다운로드"
+            aria-label="다운로드"
+            aria-busy={state.exportingExcel}
+            title={state.exportingExcel ? "생성 중…" : "현재 그리드 엑셀 다운로드"}
           >
             <OperatorDownloadIcon />
-            {state.exportingExcel ? "생성 중…" : "다운로드"}
           </button>
         </div>
       </header>

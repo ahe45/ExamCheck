@@ -9,11 +9,13 @@ import { normalizeTemplateDataTagKey } from "./template-data-projection";
 export function bindSignatureNameControls({
   pagePropertiesHost,
   selectedPage,
+  getCurrentPage = () => selectedPage,
   surfaceElement,
   onDirty,
 }: {
   pagePropertiesHost: HTMLElement;
   selectedPage: TemplateEditorPage;
+  getCurrentPage?(): TemplateEditorPage | null;
   surfaceElement: HTMLElement;
   onDirty(): void;
 }) {
@@ -35,6 +37,13 @@ export function bindSignatureNameControls({
   else pagePropertiesHost.append(section);
 
   const input = section.querySelector<HTMLInputElement>("[data-examcheck-signature-name-setting]");
+  const writeEnabled = (enabled: boolean) => {
+    // Editor synchronization replaces page objects. Resolve the current page
+    // when changing settings instead of writing to the initial panel snapshot.
+    const page = getCurrentPage();
+    if (!page || page.id !== selectedPage.id) return;
+    writeTemplateSignatureNameInputEnabled(page, enabled);
+  };
   const hasSignatureTag = () => {
     const usedKeys = Array.from(surfaceElement.querySelectorAll<HTMLElement>("[data-template-tag-value]"), (element) =>
       normalizeTemplateDataTagKey(element.dataset.templateTagValue || ""),
@@ -49,13 +58,13 @@ export function bindSignatureNameControls({
     section.title = available ? "" : "캔버스에 작성자 또는 확인자 데이터 태그를 먼저 추가해 주세요.";
     if (!available && input.checked) {
       input.checked = false;
-      writeTemplateSignatureNameInputEnabled(selectedPage, false);
+      writeEnabled(false);
       if (markDirty) onDirty();
     }
   };
   const apply = () => {
     if (!input || input.disabled) return;
-    writeTemplateSignatureNameInputEnabled(selectedPage, input.checked);
+    writeEnabled(input.checked);
     onDirty();
   };
   const observer = new MutationObserver(() => syncAvailability(true));

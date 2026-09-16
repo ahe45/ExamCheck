@@ -33,6 +33,8 @@ const schedule: OperationSchedule = {
   buildingNames: ["본관"],
   candidateCount: 1,
   assignedCount: 1,
+  printedCount: 0,
+  labelPrintingEnabled: false,
 };
 const systemProfile: DeveloperSettings = {
   schoolName: "한국대학교",
@@ -129,15 +131,25 @@ describe("useOperationPrint", () => {
 
     await act(async () => result.current.show());
     expect(result.current.signatureFields.map((field) => field.label)).toEqual(["작성자", "확인자"]);
+    expect(result.current.signatureOpen).toBe(false);
     await act(async () => result.current.generate());
     expect(mocks.buildOperationTemplatePages).not.toHaveBeenCalled();
-    expect(onNotice).toHaveBeenLastCalledWith({ kind: "error", text: "작성자 이름을 입력해 주세요." });
+    expect(result.current.signatureOpen).toBe(true);
+    expect(result.current.signatureError).toBeNull();
+    act(() => result.current.closeSignatures());
+    expect(result.current.open).toBe(true);
+    expect(result.current.signatureOpen).toBe(false);
+    await act(async () => result.current.confirmSignatures());
+    expect(mocks.buildOperationTemplatePages).not.toHaveBeenCalled();
+    await act(async () => result.current.generate());
+    await act(async () => result.current.confirmSignatures());
+    expect(result.current.signatureError).toBe("작성자 이름을 입력해 주세요.");
 
     act(() => {
       result.current.updateSignatureName("signature.author", " 김작성 ");
       result.current.updateSignatureName("signature.reviewer", " 이확인 ");
     });
-    await act(async () => result.current.generate());
+    await act(async () => result.current.confirmSignatures());
 
     expect(mocks.buildOperationTemplatePages).toHaveBeenCalledWith(
       signatureTemplate,
@@ -146,6 +158,8 @@ describe("useOperationPrint", () => {
         signatureNames: { "signature.author": "김작성", "signature.reviewer": "이확인" },
       }),
     );
+    expect(result.current.signatureOpen).toBe(false);
+    expect(result.current.open).toBe(false);
   });
 
   it("aborts an in-flight PDF generation when the modal is closed", async () => {

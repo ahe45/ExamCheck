@@ -1,3 +1,4 @@
+import { ToastNotice } from "../../shared/components/ToastNotice";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AuthUser } from "../../shared/api/auth";
 import { fetchOperationSchedules, type OperationSchedule } from "../../shared/api/examinees";
@@ -68,11 +69,7 @@ export function OperationSchedulePage({
         </div>
       </header>
       <main className="operation-select-main operation-date-section-list">
-        {error && (
-          <p className="operation-select-notice error" role="alert">
-            {error}
-          </p>
-        )}
+        {error && <ToastNotice notice={{ kind: "error", text: error }} onClose={() => setError(null)} />}
         {loading ? (
           <section className="operation-select-empty">
             <p>운영 일정을 불러오는 중입니다.</p>
@@ -101,7 +98,11 @@ export function OperationSchedulePage({
                 </header>
                 <div className="operation-schedule-grid">
                   {dateSchedules.map((schedule) => {
-                    const rate = schedule.candidateCount ? (schedule.assignedCount / schedule.candidateCount) * 100 : 0;
+                    const completedCount = schedule.labelPrintingEnabled
+                      ? schedule.printedCount
+                      : schedule.assignedCount;
+                    const completedLabel = schedule.labelPrintingEnabled ? "출력 완료" : "부여 완료";
+                    const rate = schedule.candidateCount ? (completedCount / schedule.candidateCount) * 100 : 0;
                     return (
                       <button
                         className="operation-schedule-card"
@@ -132,10 +133,17 @@ export function OperationSchedulePage({
                               대상자 <b>{schedule.candidateCount.toLocaleString()}명</b>
                             </span>
                             <span>
-                              부여 완료 <b>{schedule.assignedCount.toLocaleString()}명</b>
+                              {completedLabel} <b>{completedCount.toLocaleString()}명</b>
                             </span>
                           </p>
-                          <div className="operation-schedule-progress">
+                          <div
+                            className="operation-schedule-progress"
+                            role="progressbar"
+                            aria-label={`${schedule.periodName} ${completedLabel}`}
+                            aria-valuemin={0}
+                            aria-valuemax={schedule.candidateCount}
+                            aria-valuenow={completedCount}
+                          >
                             <i style={{ width: `${rate}%` }} />
                           </div>
                         </div>

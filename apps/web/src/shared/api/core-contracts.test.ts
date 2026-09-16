@@ -43,12 +43,16 @@ describe("core API runtime contracts", () => {
             buildingNames: ["본관"],
             candidateCount: 30,
             assignedCount: 2,
+            printedCount: 1,
+            labelPrintingEnabled: true,
           },
         ]),
       ),
     );
 
-    await expect(fetchOperationSchedules("token")).resolves.toHaveLength(1);
+    await expect(fetchOperationSchedules("token")).resolves.toMatchObject([
+      { assignedCount: 2, printedCount: 1, labelPrintingEnabled: true },
+    ]);
   });
 
   it("rejects malformed schedule counters instead of trusting a cast", async () => {
@@ -64,6 +68,8 @@ describe("core API runtime contracts", () => {
             buildingNames: ["본관"],
             candidateCount: "30",
             assignedCount: 2,
+            printedCount: 0,
+            labelPrintingEnabled: false,
           },
         ]),
       ),

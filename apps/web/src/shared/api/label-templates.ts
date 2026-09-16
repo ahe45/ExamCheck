@@ -30,6 +30,7 @@ export interface LabelTemplate {
   code: string;
   name: string;
   description: string | null;
+  defaultCopies: number;
   zplTemplate: string;
   layout: LabelTemplateLayout;
   active: boolean;
@@ -38,6 +39,7 @@ export interface LabelTemplate {
 }
 
 export interface SaveLabelTemplateInput {
+  defaultCopies: number;
   code: string;
   name: string;
   description: string;

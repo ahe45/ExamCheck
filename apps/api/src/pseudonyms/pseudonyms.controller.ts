@@ -6,12 +6,14 @@ import { RequirePermissions } from "../auth/permissions.js";
 import { RolesGuard } from "../auth/roles.js";
 import {
   AssignPseudonymDto,
+  DeleteCandidateHistoryDto,
   DeleteAdmissionDto,
   ExportPseudonymRosterDto,
   PseudonymOperationScopeDto,
   PseudonymSettingQueryDto,
   PseudonymSettingsOverviewQueryDto,
   ResetAdmissionOperationsDto,
+  ResetOperationHistoryDto,
   UpdatePseudonymSettingDto,
 } from "./pseudonyms.dto.js";
 import { PseudonymsService } from "./pseudonyms.service.js";
@@ -56,6 +58,12 @@ export class PseudonymsController {
     return this.pseudonymsService.deleteAdmission(input, user);
   }
 
+  @Post("assignments/preview")
+  @RequirePermissions("pseudonym.assign")
+  previewSequential(@Body() input: AssignPseudonymDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pseudonymsService.previewSequential(input, user);
+  }
+
   @Post("assignments")
   @RequirePermissions("pseudonym.assign")
   assign(@Body() input: AssignPseudonymDto, @CurrentUser() user: AuthenticatedUser) {
@@ -80,6 +88,18 @@ export class PseudonymsController {
   @RequirePermissions("operation.close")
   closeOperation(@Body() input: PseudonymOperationScopeDto, @CurrentUser() user: AuthenticatedUser) {
     return this.pseudonymsService.closeOperation(input, user);
+  }
+
+  @Delete("operations/candidate-history")
+  @RequirePermissions("pseudonym.assign")
+  deleteCandidateHistory(@Body() input: DeleteCandidateHistoryDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pseudonymsService.deleteCandidateHistory(input, user);
+  }
+
+  @Post("operations/reset-history")
+  @RequirePermissions("pseudonym.assign")
+  resetOperationHistory(@Body() input: ResetOperationHistoryDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pseudonymsService.resetOperationHistory(input, user);
   }
 
   @Post("operations/reopen")

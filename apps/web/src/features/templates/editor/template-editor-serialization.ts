@@ -53,6 +53,16 @@ export function serializeTemplateEditorHtml(html: string): string {
   const parsed = new DOMParser().parseFromString(`<body>${source}</body>`, "text/html");
   const root = parsed.body;
 
+  root.querySelectorAll(".template-token-caret").forEach((guard) => {
+    const walker = parsed.createTreeWalker(guard, NodeFilter.SHOW_TEXT);
+    let text: Node | null;
+    while ((text = walker.nextNode())) text.textContent = text.textContent?.replace(/\u200B/gu, "") || "";
+    guard.classList.remove("template-token-caret");
+    if (!guard.classList.length) guard.removeAttribute("class");
+    if (!guard.textContent && !guard.children.length) guard.remove();
+    else if (!guard.attributes.length) guard.replaceWith(...guard.childNodes);
+  });
+
   root.querySelectorAll(transientSelectors).forEach((element) => element.remove());
   root.querySelectorAll<HTMLElement>("*").forEach((element) => {
     transientClassNames.forEach((className) => element.classList.remove(className));

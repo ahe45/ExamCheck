@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { fetchOperationRoster, type Examinee, type OperationSchedule } from "../../shared/api/examinees";
 import {
   closePseudonymOperation,
+  reopenPseudonymOperation,
   downloadPseudonymRosterExcel,
   fetchPseudonymOperationStatus,
   type PseudonymAssignment,
@@ -35,6 +36,7 @@ export function useOperationRoster(options: Options) {
   const [status, setStatus] = useState<PseudonymOperationStatus>(initialOperationStatus);
   const [statusLoaded, setStatusLoaded] = useState(false);
   const [closing, setClosing] = useState(false);
+  const statusChangePendingRef = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -89,21 +91,46 @@ export function useOperationRoster(options: Options) {
   }, []);
 
   async function finish(onClosed: () => void) {
-    if (closing || status.closed) return;
+    return changeRegistrationStatus(false, onClosed);
+  }
+
+  async function reopen(onReopened: () => void) {
+    return changeRegistrationStatus(true, onReopened);
+  }
+
+  async function changeRegistrationStatus(reopening: boolean, onChanged: () => void) {
+    if (!statusLoaded || closing || statusChangePendingRef.current || status.closed !== reopening) return;
+    statusChangePendingRef.current = true;
     const requestScheduleKey = scheduleKey;
     setClosing(true);
     onNotice(null);
     try {
-      const nextStatus = await closePseudonymOperation(token, operationScope(schedule, examName));
-      const nextRows = await fetchOperationRoster(token, schedule);
+      const nextStatus = await (reopening ? reopenPseudonymOperation : closePseudonymOperation)(
+        token,
+        operationScope(schedule, examName),
+      );
       if (!isCurrentSchedule(requestScheduleKey)) return;
       setStatus(nextStatus);
+      onChanged();
+      let nextRows: Examinee[];
+      try {
+        nextRows = await fetchOperationRoster(token, schedule);
+      } catch {
+        if (isCurrentSchedule(requestScheduleKey)) {
+          onNotice({
+            kind: "error",
+            text: `${reopening ? "마감 취소" : "마감"}는 완료되었지만 목록을 불러오지 못했습니다. 새로고침해 주세요.`,
+          });
+        }
+        return;
+      }
+      if (!isCurrentSchedule(requestScheduleKey)) return;
       setRows(toOperationRows(nextRows));
-      onClosed();
       onNotice({
         kind: "success",
-        text:
-          nextStatus.autoAssignedAbsenteeCount > 0
+        text: reopening
+          ? "등록 마감을 취소했습니다. 가번호 등록을 다시 진행할 수 있습니다."
+          : nextStatus.autoAssignedAbsenteeCount > 0
             ? `가번호 등록을 마감하고 결시자 ${nextStatus.autoAssignedAbsenteeCount}명의 가번호를 자동 부여했습니다.`
             : "가번호 등록 작업을 마감했습니다.",
       });
@@ -111,28 +138,35 @@ export function useOperationRoster(options: Options) {
       if (isCurrentSchedule(requestScheduleKey)) {
         onNotice({
           kind: "error",
-          text: reason instanceof Error ? reason.message : "가번호 등록을 마감하지 못했습니다.",
+          text:
+            reason instanceof Error
+              ? reason.message
+              : reopening
+                ? "등록 마감을 취소하지 못했습니다."
+                : "가번호 등록을 마감하지 못했습니다.",
         });
       }
     } finally {
+      statusChangePendingRef.current = false;
       if (isCurrentSchedule(requestScheduleKey)) setClosing(false);
     }
   }
 
-  async function refresh() {
-    if (refreshing) return;
+  async function refresh(clearNotice = true) {
+    if (refreshing) return false;
     const requestScheduleKey = scheduleKey;
     setRefreshing(true);
-    onNotice(null);
+    if (clearNotice) onNotice(null);
     try {
       const [nextRows, nextStatus] = await Promise.all([
         fetchOperationRoster(token, schedule),
         fetchPseudonymOperationStatus(token, operationScope(schedule, examName)),
       ]);
-      if (!isCurrentSchedule(requestScheduleKey)) return;
+      if (!isCurrentSchedule(requestScheduleKey)) return false;
       setRows(toOperationRows(nextRows));
       setStatus(nextStatus);
       setStatusLoaded(true);
+      return true;
     } catch (reason) {
       if (isCurrentSchedule(requestScheduleKey)) {
         onNotice({
@@ -140,6 +174,7 @@ export function useOperationRoster(options: Options) {
           text: reason instanceof Error ? reason.message : "교시 수험생 데이터를 다시 불러오지 못했습니다.",
         });
       }
+      return false;
     } finally {
       if (isCurrentSchedule(requestScheduleKey)) setRefreshing(false);
     }
@@ -187,8 +222,30 @@ export function useOperationRoster(options: Options) {
     closing,
     refreshing,
     exporting,
+    clearCandidateHistory: (candidateId: number, mode: "LABEL" | "ASSIGNMENT", clearedPreassigned: boolean) => {
+      setRows((current) =>
+        current.map((row) =>
+          row.candidate.id !== candidateId
+            ? row
+            : {
+                candidate:
+                  mode === "LABEL"
+                    ? { ...row.candidate, lastPrintedAt: null }
+                    : {
+                        ...row.candidate,
+                        assignedNumber: null,
+                        assignmentMode: null,
+                        assignedAt: null,
+                        ...(clearedPreassigned ? { preassignedNumber: null, preassignedAvailable: false } : {}),
+                      },
+                assignment: mode === "LABEL" ? row.assignment : null,
+              },
+        ),
+      );
+    },
     addRow,
     finish,
+    reopen,
     refresh,
     download,
     isCurrentSchedule,

@@ -7,6 +7,7 @@ export interface AssignPseudonymInput {
   examineeNo: string;
   mode: PseudonymAssignmentMode;
   manualNumber?: string;
+  expectedNumber?: string;
   examDate: string;
   examTime: string;
   periodName: string;
@@ -28,6 +29,7 @@ export interface AdmissionOperationScheduleInput {
 }
 
 export interface ResetAdmissionOperationsInput {
+  password: string;
   examName: string;
   admissionName: string;
   schedules: AdmissionOperationScheduleInput[];
@@ -35,7 +37,7 @@ export interface ResetAdmissionOperationsInput {
 
 export interface DeleteAdmissionInput {
   admissionName: string;
-  currentPassword: string;
+  password: string;
 }
 
 export interface PseudonymTimeRangeInput {

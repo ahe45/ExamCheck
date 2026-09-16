@@ -1,13 +1,16 @@
 import DOMPurify from "dompurify";
-import type { TemplateEditorValue } from "../../shared/templates/template-editor-contracts";
+import { getTemplatePrintPresentation, templatePrintTokenFlowCss } from "./template-print-presentation";
+import { joinFullSizePrintTables } from "./editor/template-table-joining";
+import { embedLoadedPrintFonts } from "./template-print-fonts";
+import type { TemplateEditorPageSettings, TemplateEditorValue } from "../../shared/templates/template-editor-contracts";
 import { throwIfAborted } from "../../shared/async/bounded-map";
 import { formatProjectDataTagSampleValue } from "./editor/examlist-template-formatting";
 import { createTemplateGeneratedObjectDataUrl } from "./generated-object-assets";
 import { normalizeTemplateDataTagKey, resolveTemplateDataTagValue } from "./template-data-projection";
 
-export function getTemplateDocumentHtml(template: TemplateEditorValue): string {
-  if (typeof template === "string") return template;
-  type PrintablePage = { type?: string; settings?: { documentHtml?: string } };
+function getTemplateContentPage(template: TemplateEditorValue) {
+  if (typeof template === "string") return undefined;
+  type PrintablePage = { type?: string; settings?: TemplateEditorPageSettings };
   const nestedPages = template.layout?.pages as PrintablePage[] | undefined;
   const topLevelPages = (template as { pages?: PrintablePage[] }).pages;
   const pages: PrintablePage[] = Array.isArray(nestedPages)
@@ -15,11 +18,21 @@ export function getTemplateDocumentHtml(template: TemplateEditorValue): string {
     : Array.isArray(topLevelPages)
       ? topLevelPages
       : [];
-  const contentPage =
-    pages.find((page) => page.type === "content" && page.settings?.documentHtml) ??
-    pages.find((page) => page.settings?.documentHtml);
   return (
-    contentPage?.settings?.documentHtml ??
+    pages.find((page) => page.type === "content" && page.settings?.documentHtml) ??
+    pages.find((page) => page.settings?.documentHtml)
+  );
+}
+
+export function getTemplatePageSettings(template: TemplateEditorValue): TemplateEditorPageSettings {
+  if (typeof template === "string") return {};
+  return getTemplateContentPage(template)?.settings ?? template.settings ?? {};
+}
+
+export function getTemplateDocumentHtml(template: TemplateEditorValue): string {
+  if (typeof template === "string") return template;
+  return (
+    getTemplateContentPage(template)?.settings?.documentHtml ??
     template.documentHtml ??
     template.html ??
     template.settings?.documentHtml ??
@@ -83,12 +96,14 @@ function replaceTemplateTextTokens(root: HTMLElement, values: Record<string, unk
 export function openTemplatePrintWindow(title: string, bodyHtml: string) {
   const printWindow = window.open("", "_blank", "width=1000,height=800");
   if (!printWindow) throw new Error("팝업이 차단되었습니다. 이 사이트의 팝업을 허용해 주세요.");
+  const { css } = getTemplatePrintPresentation(bodyHtml);
   printWindow.opener = null;
   printWindow.document.open();
   printWindow.document.write(
-    `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>@page{size:A4;margin:10mm}*{box-sizing:border-box}body{margin:0;color:#111827;font-family:"Noto Sans KR",Arial,sans-serif}.print-toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;gap:8px;padding:10px;background:#edf2f7;border-bottom:1px solid #cbd5e1}.print-toolbar button{border:0;border-radius:8px;padding:9px 14px;color:white;background:#176b5f;font-weight:700;cursor:pointer}.print-document{width:210mm;min-height:297mm;margin:0 auto;padding:10mm;background:white}.template-generated-object[data-render-pending="true"]{display:inline-grid;place-items:center;min-width:120px;min-height:54px;border:1px dashed #94a3b8;font-size:11px}@media print{.print-toolbar{display:none}.print-document{width:auto;min-height:0;margin:0;padding:0}}</style></head><body><div class="print-toolbar"><button onclick="window.print()">인쇄</button></div><main class="print-document">${sanitizeTemplateHtml(bodyHtml)}</main></body></html>`,
+    `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>*{box-sizing:border-box}body{margin:0;color:#111827;font-family:"Noto Sans KR",Arial,sans-serif}.print-toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;gap:8px;padding:10px;background:#edf2f7;border-bottom:1px solid #cbd5e1}.print-toolbar button{border:0;border-radius:8px;padding:9px 14px;color:white;background:#176b5f;font-weight:700;cursor:pointer}.template-generated-object[data-render-pending="true"]{display:inline-grid;place-items:center;min-width:120px;min-height:54px;border:1px dashed #94a3b8;font-size:11px}${css}</style></head><body><div class="print-toolbar"><button onclick="window.print()">인쇄</button></div><main class="print-document examlist-template-editor"><div class="editor-document-surface template-editor-surface">${sanitizeTemplateHtml(bodyHtml)}</div></main></body></html>`,
   );
   printWindow.document.close();
+  joinFullSizePrintTables(printWindow.document.body);
 }
 
 export interface PdfGenerationOptions {
@@ -108,69 +123,154 @@ export async function downloadTemplatePdf(
   throwIfAborted(options.signal);
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   throwIfAborted(options.signal);
-  const orientation = templateOrientation(template);
-  const pageWidth = orientation === "landscape" ? 1123 : 794;
-  const pageHeight = orientation === "landscape" ? 794 : 1123;
-  const stage = document.createElement("div");
-  stage.setAttribute("aria-hidden", "true");
-  Object.assign(stage.style, {
-    position: "fixed",
-    left: "-20000px",
-    top: "0",
-    width: `${pageWidth}px`,
-    background: "#fff",
-    zIndex: "-1",
-  });
-  document.body.append(stage);
-  const pdf = new jsPDF({ orientation, unit: "mm", format: "a4", compress: true });
+  // Use the preview's document styles without changing the live operator screen.
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.title = "PDF 인쇄 준비";
+  Object.assign(frame.style, { position: "fixed", left: "-20000px", top: "0", border: "0", pointerEvents: "none" });
+  document.body.append(frame);
   try {
-    await withDeadline(document.fonts.ready, 15_000, "PDF 글꼴 준비 시간이 초과되었습니다.", options.signal);
+    const printDocument = frame.contentDocument;
+    if (!printDocument) throw new Error("PDF 인쇄 화면을 준비하지 못했습니다.");
+    printDocument.head.innerHTML = '<meta charset="utf-8">';
+    const style = printDocument.createElement("style");
+    printDocument.head.append(style);
+    const fontCss = collectPrintFontFaces();
+    const fontCache = new Map<string, Promise<string>>();
+    let pdf: InstanceType<typeof jsPDF> | undefined;
     for (let index = 0; index < pagesHtml.length; index += 1) {
       throwIfAborted(options.signal);
-      const page = document.createElement("section");
-      page.className = "generated-pdf-page";
-      Object.assign(page.style, {
-        boxSizing: "border-box",
-        width: `${pageWidth}px`,
-        minHeight: `${pageHeight}px`,
-        padding: "38px",
-        overflow: "hidden",
-        color: "#111827",
-        background: "#fff",
-        fontFamily: '"Noto Sans KR", Arial, sans-serif',
-      });
-      page.innerHTML = sanitizeTemplateHtml(pagesHtml[index]);
-      stage.replaceChildren(page);
+      const html = printableDocumentHtml(pagesHtml[index], template);
+      const presentation = getTemplatePrintPresentation(html);
+      const { width, height } = presentation;
+      const orientation = width > height ? "landscape" : "portrait";
+      const format: [number, number] = [(width * 25.4) / 96, (height * 25.4) / 96];
+      if (!pdf) pdf = new jsPDF({ orientation, unit: "mm", format, compress: true });
+      else pdf.addPage(format, orientation);
+      frame.style.width = `${width}px`;
+      frame.style.height = `${height}px`;
+      style.textContent = fontCss + "\n*{box-sizing:border-box}body{margin:0}" + presentation.css;
+      const page = printDocument.createElement("section");
+      page.className = "generated-pdf-page print-document examlist-template-editor";
+      page.style.height = `${height}px`;
+      page.style.overflow = "hidden";
+      const surface = printDocument.createElement("div");
+      surface.className = "editor-document-surface template-editor-surface";
+      surface.innerHTML = sanitizeTemplateHtml(html);
+      page.append(surface);
+      const captureStyles = printDocument.createElement("style");
+      captureStyles.textContent = templatePrintTokenFlowCss;
+      page.prepend(captureStyles);
+      printDocument.body.replaceChildren(page);
+      appendPrintPageNumber(page, template, index + 1, pagesHtml.length);
+      await withDeadline(
+        printDocument.fonts?.ready || document.fonts.ready,
+        15_000,
+        "PDF 글꼴 준비 시간이 초과되었습니다.",
+        options.signal,
+      );
       await waitForImages(page, options.imageTimeoutMs ?? 15_000, options.signal);
+      await withDeadline(
+        embedLoadedPrintFonts(page, fontCache, options.signal),
+        15_000,
+        "PDF 글꼴 준비 시간이 초과되었습니다.",
+        options.signal,
+      );
+      joinFullSizePrintTables(page);
+      // Foreign-object capture drops every <style> while copying computed
+      // styles. Restore our embedded fonts and auto-width rules AFTER cloning,
+      // so the final SVG cannot fall back to a different font in frozen boxes.
+      const captureCss = [...page.querySelectorAll("style")].map((element) => element.textContent || "").join("\n");
       const canvas = await withDeadline(
         html2canvas(page, {
           backgroundColor: "#ffffff",
           scale: 1.35,
+          foreignObjectRendering: true,
           useCORS: true,
           logging: false,
+          width,
+          height,
+          onclone: async (clonedDocument, clonedPage) => {
+            const embeddedStyles = clonedDocument.createElement("style");
+            embeddedStyles.textContent = captureCss;
+            clonedPage.append(embeddedStyles);
+            await clonedDocument.fonts?.ready;
+          },
         }),
         options.renderTimeoutMs ?? 30_000,
         `PDF ${index + 1}페이지 렌더링 시간이 초과되었습니다.`,
         options.signal,
       );
       throwIfAborted(options.signal);
-      if (index > 0) pdf.addPage("a4", orientation);
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
       options.onProgress?.(index + 1, pagesHtml.length);
     }
     throwIfAborted(options.signal);
-    pdf.save(`${safeFileName(title)}.pdf`);
+    pdf?.save(`${safeFileName(title)}.pdf`);
   } finally {
-    stage.remove();
+    frame.remove();
   }
 }
 
-function templateOrientation(template: TemplateEditorValue): "portrait" | "landscape" {
-  if (typeof template === "string") return "portrait";
-  const raw = String(template.orientation || template.settings?.orientation || "portrait").toLowerCase();
-  return raw === "landscape" ? "landscape" : "portrait";
+function printableDocumentHtml(html: string, template: TemplateEditorValue) {
+  const root = new DOMParser().parseFromString(sanitizeTemplateHtml(html), "text/html").body;
+  let doc = root.querySelector<HTMLElement>(".template-doc");
+  if (!doc) {
+    doc = root.ownerDocument.createElement("div");
+    doc.className = "template-doc";
+    doc.append(...root.childNodes);
+    root.append(doc);
+  }
+  if (!doc.dataset.templatePageOrientation && typeof template !== "string") {
+    doc.dataset.templatePageOrientation = String(
+      getTemplatePageSettings(template).orientation || template.orientation || "portrait",
+    );
+  }
+  return root.innerHTML;
+}
+
+function collectPrintFontFaces() {
+  return [...document.styleSheets]
+    .flatMap((sheet) => {
+      try {
+        return [...sheet.cssRules].filter((rule) => rule.type === CSSRule.FONT_FACE_RULE).map((rule) => rule.cssText);
+      } catch {
+        return [];
+      }
+    })
+    .join("\n");
+}
+
+function appendPrintPageNumber(page: HTMLElement, template: TemplateEditorValue, current: number, total: number) {
+  const config = getTemplatePageSettings(template).pageNumber as
+    { enabled?: boolean; position?: string; preset?: string } | undefined;
+  if (!config?.enabled) return;
+  const texts: Record<string, string> = {
+    numericCurrentTotal: `${current}/${total}`,
+    pageCurrentTotal: `페이지 ${current}/${total}`,
+    pageCurrentTotalEnglish: `Page ${current}/${total}`,
+    currentPageKorean: `${current}페이지`,
+    koreanPage: `${current}쪽`,
+    currentPageOfTotalKorean: `${current}페이지 중 ${total}페이지`,
+    koreanPageOfTotal: `${current}쪽 중 ${total}쪽`,
+  };
+  const footer = page.ownerDocument.createElement("div");
+  footer.className = "generated-pdf-page-number";
+  footer.textContent = texts[config.preset || "numericCurrentTotal"] || texts.numericCurrentTotal;
+  const computed = page.ownerDocument.defaultView!.getComputedStyle(page);
+  Object.assign(footer.style, {
+    position: "absolute",
+    bottom: "19px",
+    left: computed.paddingLeft,
+    right: computed.paddingRight,
+    textAlign: ["left", "right"].includes(config.position || "") ? config.position : "center",
+    fontSize: "12px",
+    lineHeight: "1",
+    fontWeight: "800",
+  });
+  page.append(footer);
 }
 
 async function waitForImages(root: HTMLElement, timeoutMs: number, signal?: AbortSignal) {

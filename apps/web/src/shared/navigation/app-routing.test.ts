@@ -14,6 +14,8 @@ const schedule: OperationSchedule = {
   buildingNames: ["본관"],
   candidateCount: 30,
   assignedCount: 2,
+  printedCount: 0,
+  labelPrintingEnabled: false,
 };
 
 describe("app route resolver", () => {

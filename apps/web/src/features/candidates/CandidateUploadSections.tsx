@@ -1,22 +1,20 @@
-import type { ChangeEvent } from "react";
 import type { CandidatePhotoPreview, CandidateUploadPolicy, CandidateUploadPreview } from "../../shared/api/candidates";
 import { DownloadButtonIcon } from "../../shared/components/ActionIcons";
+import { CandidateUploadFilePanel } from "./CandidateUploadFilePanel";
 import { candidateUploadPolicies, photoPolicyDescription } from "./candidate-data-model";
 
 interface WorkbookUploadSectionProps {
   busy: boolean;
   downloadBusy: boolean;
-  error: string | null;
   file: File | null;
   preview: CandidateUploadPreview | null;
-  onChoose(event: ChangeEvent<HTMLInputElement>): void;
+  onChoose(files: File[]): void;
   onDownload(): void;
 }
 
 export function WorkbookUploadSection({
   busy,
   downloadBusy,
-  error,
   file,
   preview,
   onChoose,
@@ -24,16 +22,12 @@ export function WorkbookUploadSection({
 }: WorkbookUploadSectionProps) {
   return (
     <>
-      <div className="candidate-upload-file-panel">
-        <label>
-          <input type="file" accept=".xlsx" onChange={onChoose} disabled={busy} />
-          <span>{file?.name || "XLSX 파일 선택"}</span>
-        </label>
+      <CandidateUploadFilePanel accept=".xlsx" label="XLSX 파일 선택" file={file} busy={busy} onChoose={onChoose}>
         <button className="exam-outline-button" onClick={onDownload} disabled={busy || downloadBusy}>
           <DownloadButtonIcon />
           <span>업로드 양식 다운로드</span>
         </button>
-      </div>
+      </CandidateUploadFilePanel>
       <section className="candidate-upload-preview">
         <div className="candidate-upload-preview-head">
           <div>
@@ -46,11 +40,6 @@ export function WorkbookUploadSection({
           </div>
           {preview && <span>총 {preview.totalRows.toLocaleString()}건</span>}
         </div>
-        {error && (
-          <p className="candidate-upload-preview-error" role="alert">
-            {error}
-          </p>
-        )}
         <div className="candidate-upload-summary">
           <div className="insert">
             <span>신규</span>
@@ -72,21 +61,21 @@ export function WorkbookUploadSection({
 
 interface PhotoUploadSectionProps {
   busy: boolean;
-  error: string | null;
   file: File | null;
   preview: CandidatePhotoPreview | null;
-  onChoose(event: ChangeEvent<HTMLInputElement>): void;
+  onChoose(files: File[]): void;
 }
 
-export function PhotoUploadSection({ busy, error, file, preview, onChoose }: PhotoUploadSectionProps) {
+export function PhotoUploadSection({ busy, file, preview, onChoose }: PhotoUploadSectionProps) {
   return (
     <>
-      <div className="candidate-upload-file-panel photo">
-        <label>
-          <input type="file" accept=".zip,application/zip" onChange={onChoose} disabled={busy} />
-          <span>{file?.name || "수험생 사진 ZIP 파일 선택"}</span>
-        </label>
-      </div>
+      <CandidateUploadFilePanel
+        accept=".zip,application/zip"
+        label="ZIP 파일 선택"
+        file={file}
+        busy={busy}
+        onChoose={onChoose}
+      />
       <section className="candidate-upload-preview">
         <div className="candidate-upload-preview-head">
           <div>
@@ -99,11 +88,6 @@ export function PhotoUploadSection({ busy, error, file, preview, onChoose }: Pho
           </div>
           {preview && <span>총 {preview.totalFiles.toLocaleString()}개</span>}
         </div>
-        {error && (
-          <p className="candidate-upload-preview-error" role="alert">
-            {error}
-          </p>
-        )}
         <div className="candidate-upload-summary">
           <div className="insert">
             <span>매칭 가능</span>

@@ -1,0 +1,48 @@
+diff --git a/src/core/candidate-block-grid-config.js b/src/core/candidate-block-grid-config.js
+index c39a3f8..9ba80a6 100644
+--- a/src/core/candidate-block-grid-config.js
++++ b/src/core/candidate-block-grid-config.js
+@@ -22,7 +22,7 @@ export const candidateBlockGridDefaults = Object.freeze({
+     enabled: false,
+     templateHtml: "<p><br></p>",
+   }),
+-  fillEmptyBlocks: true,
++  fillEmptyBlocks: false,
+   gapXPt: 0,
+   gapYPt: 0,
+   rows: 20,
+@@ -271,7 +271,9 @@ export function normalizeCandidateBlockGridConfig(value) {
+     ),
+     fillEmptyBlocks: source.fillEmptyBlocks === false || String(source.fillEmptyBlocks || "").trim() === "false"
+       ? false
+-      : candidateBlockGridDefaults.fillEmptyBlocks,
++      : source.fillEmptyBlocks === true || String(source.fillEmptyBlocks || "").trim() === "true"
++        ? true
++        : candidateBlockGridDefaults.fillEmptyBlocks,
+     gapXPt: clampPointValue(source.gapXPt ?? source.gapX, candidateBlockGridDefaults.gapXPt, 0, 48),
+     gapYPt: clampPointValue(source.gapYPt ?? source.gapY, candidateBlockGridDefaults.gapYPt, 0, 48),
+     rows: clampInteger(source.rows, candidateBlockGridDefaults.rows, 1, 30),
+diff --git a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-config.js b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-config.js
+index ca2fa0a..6c86285 100644
+--- a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-config.js
++++ b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-config.js
+@@ -20,7 +20,7 @@ export const candidateBlockGridDefaults = Object.freeze({
+     enabled: false,
+     templateHtml: "<p><br></p>",
+   }),
+-  fillEmptyBlocks: true,
++  fillEmptyBlocks: false,
+   gapXPt: 0,
+   gapYPt: 0,
+   rows: 20,
+@@ -243,7 +243,9 @@ export function normalizeCandidateBlockGridConfig(value) {
+     ),
+     fillEmptyBlocks: source.fillEmptyBlocks === false || String(source.fillEmptyBlocks || "").trim() === "false"
+       ? false
+-      : candidateBlockGridDefaults.fillEmptyBlocks,
++      : source.fillEmptyBlocks === true || String(source.fillEmptyBlocks || "").trim() === "true"
++        ? true
++        : candidateBlockGridDefaults.fillEmptyBlocks,
+     gapXPt: clampPointValue(source.gapXPt ?? source.gapX, candidateBlockGridDefaults.gapXPt, 0, 48),
+     gapYPt: clampPointValue(source.gapYPt ?? source.gapY, candidateBlockGridDefaults.gapYPt, 0, 48),
+     rows: clampInteger(source.rows, candidateBlockGridDefaults.rows, 1, 30),

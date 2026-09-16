@@ -1,0 +1,45 @@
+diff --git a/src/runtime/template-editor-runtime-bootstrap.bundle.js b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+index 42884bb..3142756 100644
+--- a/src/runtime/template-editor-runtime-bootstrap.bundle.js
++++ b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+@@ -791,7 +791,9 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+       const surface = getTemplateEditorSurface();
+       const table = state.templateEditor.selectedTableElement;
+       const target = isElement(event.target) ? event.target : null;
+-      if (target?.closest("input, textarea, select, button") ||
++      const overlay = target?.closest(".template-editor-table-selection");
++      const isSelectedTableHandle = overlay?.__templateEditorTableElement === table && Boolean(table);
++      if ((target?.closest("input, textarea, select, button") && !isSelectedTableHandle) ||
+           !(table instanceof ownerWindow.HTMLTableElement) || !surface?.contains(table)) {
+         return null;
+       }
+@@ -814,6 +816,12 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+     function handleCopy(event) {
+       const selectedTable = getClipboardSelectedTable(event);
+       if (!selectedTable || !event.clipboardData) return;
++      // With an object selected there may be no DOM text range. Chromium can
++      // dispatch copy at body/the previous selection instead of the surface.
++      // Only consume that document-level event while this editor owns focus.
++      const activeElement = ownerDocument.activeElement;
++      if (!shell.surfaceElement.contains(activeElement) &&
++          !getTemplateEditorSurface()?.contains(activeElement)) return;
+       const table = prepareClipboardTable(selectedTable.cloneNode(true));
+       const originals = [selectedTable, ...selectedTable.querySelectorAll("td, th")];
+       const copies = [table, ...table.querySelectorAll("td, th")];
+@@ -828,6 +836,7 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+       event.clipboardData.setData("text/plain", Array.from(selectedTable.rows)
+         .map(row => Array.from(row.cells).map(cell => cell.innerText || cell.textContent || "").join("\t")).join("\n"));
+       event.preventDefault();
++      getTemplateEditorSurface().dispatchEvent(new ownerWindow.CustomEvent("template-editor-table-copied", { bubbles: true }));
+     }
+ 
+     function handlePaste(event) {
+@@ -937,7 +946,7 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+       addListener(getTemplateEditorModal(), "beforeinput", handleBeforeInput);
+       addListener(getTemplateEditorModal(), "input", handleInput);
+       addListener(getTemplateEditorModal(), "compositionend", handleCompositionEnd);
+-      addListener(getTemplateEditorModal(), "copy", handleCopy);
++      addListener(ownerDocument, "copy", handleCopy, true);
+       addListener(getTemplateEditorModal(), "paste", handlePaste);
+       addListener(getTemplateEditorModal(), "dragstart", handleDragStart);
+       addListener(getTemplateEditorModal(), "pointermove", updateTemplateEditorImageHoverState);

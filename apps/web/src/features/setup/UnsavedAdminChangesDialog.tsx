@@ -1,3 +1,4 @@
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import { CancelButtonIcon, DiscardButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
 import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
 
@@ -27,9 +28,7 @@ export function UnsavedAdminChangesDialog({ open, saving, dirtyLabel, onCancel, 
             <p>저장되지 않은 변경사항</p>
             <h2 id="unsaved-settings-title">{dirtyLabel}을 저장하시겠습니까?</h2>
           </div>
-          <button type="button" onClick={onCancel} disabled={saving} aria-label="닫기">
-            ×
-          </button>
+          <ModalCloseButton onClick={onCancel} disabled={saving} />
         </header>
         <div className="unsaved-settings-copy">
           <span>!</span>

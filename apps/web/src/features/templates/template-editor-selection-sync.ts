@@ -1,6 +1,12 @@
 import type { TemplateEditorInstance } from "../../shared/templates/template-editor-contracts";
 import { selectCandidateBlockGridElement } from "examlist-template-editor/examlist/template-editor/candidate-block-grid-selection";
 import type { TemplateEditorCommandDispatcher } from "./editor/template-editor-command-dispatcher";
+import { ensureTemplateTokenCaret } from "./editor/template-token-caret";
+import {
+  captureTemplateTextSelection,
+  restoreTemplateTextSelection,
+  type TemplateTextSelection,
+} from "./editor/template-text-selection";
 
 type RuntimeWithObjectSelection = {
   state?: {
@@ -71,6 +77,52 @@ export function bindTemplateEditorToolbarFocusPersistence(
 ) {
   const runtime = editor.getRuntime() as RuntimeWithObjectSelection;
   const ownerWindow = surfaceElement.ownerDocument.defaultView;
+  let disposed = false;
+  let selectionRevision = 0;
+  let textSelection: { surface: HTMLElement; snapshot: TemplateTextSelection } | null = null;
+  const invalidateTextSelection = (event: Event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (target && toolbarHost.contains(target)) return;
+    selectionRevision += 1;
+    textSelection = null;
+  };
+  const captureTextSelection = () => {
+    const surface = getActiveEditingSurface(surfaceElement);
+    const content = surface.querySelector<HTMLElement>(":scope > .template-doc") || surface;
+    const snapshot = captureTemplateTextSelection(content);
+    if (snapshot) textSelection = { surface, snapshot };
+  };
+
+  const preserveFormattingSelection = (event: Event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || !toolbarHost.contains(target)) return;
+    const action = target.closest(
+      "[data-template-command], [data-editor-font-family-option], [data-editor-font-size-option], " +
+        "[data-editor-color-preset], [data-editor-color-apply], [data-template-line-height-option], input, select",
+    );
+    if (!action || ["undo", "redo"].includes(action.getAttribute("data-template-command") || "")) return;
+    captureTextSelection();
+    const saved = textSelection;
+    // Replacing a collapsed selection would clear the browser's pending typing
+    // format, such as Bold enabled before the user types the next character.
+    if (!saved || saved.snapshot.start === saved.snapshot.end) return;
+    const revision = selectionRevision;
+    // Native event dispatch can run microtasks between capture and bubble
+    // listeners. Wait for the entire command event, including runtime handlers.
+    ownerWindow?.setTimeout(() => {
+      if (disposed || revision !== selectionRevision || saved.surface !== getActiveEditingSurface(surfaceElement))
+        return;
+      const content = saved.surface.querySelector<HTMLElement>(":scope > .template-doc") || saved.surface;
+      if (!restoreTemplateTextSelection(content, saved.snapshot)) return;
+      const range = cloneSelectionInsideSurface(saved.surface);
+      const runtimeState = runtime.state?.templateEditor;
+      if (range && runtimeState) {
+        runtimeState.savedRange = range;
+        runtimeState.savedSelectionSnapshot = null;
+      }
+      commandDispatcher?.captureSelection();
+    }, 0);
+  };
 
   const handleToolbarPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return;
@@ -92,6 +144,7 @@ export function bindTemplateEditorToolbarFocusPersistence(
       runtimeState.suppressToolbarSelectionChange = true;
     }
     commandDispatcher?.captureSelection();
+    captureTextSelection();
 
     const isFormControl = Boolean(target.closest("input, select, textarea, [contenteditable='true']"));
     const action = target.closest(TOOLBAR_POINTER_ACTION_SELECTOR);
@@ -111,13 +164,22 @@ export function bindTemplateEditorToolbarFocusPersistence(
   };
 
   toolbarHost.addEventListener("pointerdown", handleToolbarPointerDown, true);
+  toolbarHost.addEventListener("click", preserveFormattingSelection, true);
+  toolbarHost.addEventListener("change", preserveFormattingSelection, true);
+  surfaceElement.ownerDocument.addEventListener("pointerdown", invalidateTextSelection, true);
+  surfaceElement.ownerDocument.addEventListener("keydown", invalidateTextSelection, true);
   additionalCommandHosts.forEach((host) => host.addEventListener("pointerdown", handleToolbarPointerDown, true));
   ownerWindow?.addEventListener("keydown", isolateTableDimensionEvent, true);
   ownerWindow?.addEventListener("beforeinput", isolateTableDimensionEvent, true);
   ownerWindow?.addEventListener("input", isolateTableDimensionEvent, true);
   ownerWindow?.addEventListener("change", isolateTableDimensionEvent, true);
   return () => {
+    disposed = true;
     toolbarHost.removeEventListener("pointerdown", handleToolbarPointerDown, true);
+    toolbarHost.removeEventListener("click", preserveFormattingSelection, true);
+    toolbarHost.removeEventListener("change", preserveFormattingSelection, true);
+    surfaceElement.ownerDocument.removeEventListener("pointerdown", invalidateTextSelection, true);
+    surfaceElement.ownerDocument.removeEventListener("keydown", invalidateTextSelection, true);
     additionalCommandHosts.forEach((host) => host.removeEventListener("pointerdown", handleToolbarPointerDown, true));
     ownerWindow?.removeEventListener("keydown", isolateTableDimensionEvent, true);
     ownerWindow?.removeEventListener("beforeinput", isolateTableDimensionEvent, true);
@@ -262,6 +324,50 @@ export function bindTemplateEditorCanvasSelectionPersistence(
   const runtime = editor.getRuntime() as RuntimeWithObjectSelection;
   let objectSelection: ObjectSelectionSnapshot[] = [];
   let selectedGridIndex = -1;
+  let disposed = false;
+
+  const restoreTokenCaret = (event: Event) => {
+    if (
+      event instanceof KeyboardEvent &&
+      !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "End", "Home"].includes(event.key)
+    )
+      return;
+    surfaceElement.ownerDocument.defaultView?.setTimeout(() => {
+      if (disposed) return;
+      const activeSurface = getActiveEditingSurface(surfaceElement);
+      if (activeSurface.ownerDocument.activeElement !== activeSurface) return;
+      const range = ensureTemplateTokenCaret(activeSurface);
+      if (range && runtime.state?.templateEditor) {
+        runtime.state.templateEditor.savedRange = range;
+        runtime.state.templateEditor.savedSelectionSnapshot = null;
+      }
+    }, 0);
+  };
+
+  const handleTokenClick = (event: MouseEvent) => {
+    if (event.button !== 0 || event.shiftKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const token = target?.closest<HTMLElement>(".template-token[contenteditable='false'][data-template-tag-value]");
+    const activeSurface = getActiveEditingSurface(surfaceElement);
+    if (!token || !activeSurface.contains(token)) return;
+    // The document's data-block preview opens its own editor; keep that action.
+    if (activeSurface === surfaceElement && token.closest("[data-candidate-block-grid]")) return;
+    event.preventDefault();
+    surfaceElement.ownerDocument.defaultView?.setTimeout(() => {
+      if (disposed || !token.isConnected || activeSurface !== getActiveEditingSurface(surfaceElement)) return;
+      activeSurface.focus({ preventScroll: true });
+      const range = token.ownerDocument.createRange();
+      range.selectNode(token);
+      const selection = token.ownerDocument.defaultView?.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      const runtimeState = runtime.state?.templateEditor;
+      if (runtimeState) {
+        runtimeState.savedRange = range.cloneRange();
+        runtimeState.savedSelectionSnapshot = null;
+      }
+    }, 0);
+  };
 
   const handlePointerDown = (event: PointerEvent) => {
     const target = event.target instanceof Element ? event.target : null;
@@ -291,11 +397,18 @@ export function bindTemplateEditorCanvasSelectionPersistence(
   };
 
   surfaceElement.addEventListener("pointerdown", handlePointerDown, true);
+  surfaceElement.addEventListener("click", handleTokenClick, true);
+  surfaceElement.addEventListener("click", restoreTokenCaret);
+  surfaceElement.addEventListener("keyup", restoreTokenCaret);
   window.addEventListener("pointerup", handlePointerEnd, true);
   window.addEventListener("pointercancel", handlePointerEnd, true);
 
   return () => {
+    disposed = true;
     surfaceElement.removeEventListener("pointerdown", handlePointerDown, true);
+    surfaceElement.removeEventListener("click", handleTokenClick, true);
+    surfaceElement.removeEventListener("click", restoreTokenCaret);
+    surfaceElement.removeEventListener("keyup", restoreTokenCaret);
     window.removeEventListener("pointerup", handlePointerEnd, true);
     window.removeEventListener("pointercancel", handlePointerEnd, true);
   };

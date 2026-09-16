@@ -32,6 +32,8 @@ const schedule: OperationSchedule = {
   buildingNames: ["본관"],
   candidateCount: 9,
   assignedCount: 0,
+  printedCount: 0,
+  labelPrintingEnabled: false,
 };
 
 const systemProfile: DeveloperSettings = {
@@ -155,6 +157,32 @@ describe("buildOperationTemplatePages", () => {
       }),
     ).resolves.toEqual(["김작성/이확인"]);
   });
+
+  it("수험생별 대기실명을 실제 문서에 출력하고 빈 값은 예시로 대체하지 않는다", async () => {
+    const renderer = await vi.importActual<typeof import("../templates/template-renderer")>(
+      "../templates/template-renderer",
+    );
+    const html = '<p><span data-template-tag-value="candidate.waitingRoomName">101호 대기실</span></p>';
+    mocks.getTemplateDocumentHtml.mockReturnValue(html);
+    mocks.renderTemplateHtml.mockImplementation(renderer.renderTemplateHtml);
+    const rows = [operationRow(1), operationRow(2), operationRow(3)];
+    rows[0].candidate.waitingRoom = "본관 201호";
+    rows[1].candidate.waitingRoom = "별관 <202호>";
+    rows[2].candidate.waitingRoom = "";
+    const pages = await buildOperationTemplatePages({ ...candidateTemplate(), layout: { documentHtml: html } }, rows, {
+      token: "token",
+      systemProfile,
+      schedule,
+      examName: "시험",
+      operationClosed: false,
+    });
+    expect(pages.map((page) => new DOMParser().parseFromString(page, "text/html").body.textContent)).toEqual([
+      "본관 201호",
+      "별관 <202호>",
+      "",
+    ]);
+    expect(pages[1]).toContain("&lt;202호&gt;");
+  });
 });
 
 function candidateTemplate(): FormTemplate {
@@ -182,6 +210,7 @@ function operationRow(index: number): OperationRow {
     examName: "2026년도 자격시험",
     examDate: schedule.date,
     roomName: "101호",
+    waitingRoom: "201호 대기실",
     seatNo: String(index),
     labelBarcode: `EX${examineeNo}`,
     preassignedNumber: null,

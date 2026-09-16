@@ -1,0 +1,192 @@
+diff --git a/src/runtime/index.js b/src/runtime/index.js
+index 2db1399..1c2ad8f 100644
+--- a/src/runtime/index.js
++++ b/src/runtime/index.js
+@@ -665,6 +665,12 @@ export function mountTemplateEditor(options = {}) {
+         const canonicalHtml = rawRuntimeApi.getHtml();
+         if (currentSnapshot?.html === rawHtml) {
+           currentSnapshot.html = canonicalHtml;
++          const previousSnapshot = historyState.historyEntries[historyState.historyIndex - 1];
++          if (previousSnapshot?.html === canonicalHtml) {
++            previousSnapshot.selection = currentSnapshot.selection;
++            historyState.historyEntries.splice(historyState.historyIndex, 1);
++            historyState.historyIndex -= 1;
++          }
+         }
+         nextHtml = sanitizeResolvedHtml(canonicalHtml, options.document || globalThis.document, options);
+       } finally {
+diff --git a/src/runtime/template-editor-runtime-objects.bundle.js b/src/runtime/template-editor-runtime-objects.bundle.js
+index 52d4cf6..d830dc7 100644
+--- a/src/runtime/template-editor-runtime-objects.bundle.js
++++ b/src/runtime/template-editor-runtime-objects.bundle.js
+@@ -6717,7 +6717,12 @@ import "./template-editor-runtime-foundation.bundle.js";
+     }
+ 
+     const referenceElement = getTopLevelChild(objectElement, documentElement);
+-    const nextElement = referenceElement?.nextElementSibling || null;
++    let nextElement = referenceElement?.nextElementSibling || null;
++    // Reflow can put its temporary spacer after the object. It is not
++    // editable content and must not hide the existing caret paragraph.
++    while (nextElement?.matches?.("[data-template-object-flow-spacer]")) {
++      nextElement = nextElement.nextElementSibling;
++    }
+ 
+     if (isFlowObjectCaretHost(nextElement, documentElement)) {
+       if (!nextElement.childNodes.length) {
+diff --git a/src/extensions/examlist/client/features/template-editor/object-flow-reflow.js b/src/extensions/examlist/client/features/template-editor/object-flow-reflow.js
+index 6b07a52..9fb00d4 100644
+--- a/src/extensions/examlist/client/features/template-editor/object-flow-reflow.js
++++ b/src/extensions/examlist/client/features/template-editor/object-flow-reflow.js
+@@ -219,7 +219,12 @@ function ensureFlowObjectCaretHost(objectElement, documentElement) {
+   }
+ 
+   const referenceElement = getTopLevelChild(objectElement, documentElement);
+-  const nextElement = referenceElement?.nextElementSibling || null;
++  let nextElement = referenceElement?.nextElementSibling || null;
++  // Reflow can put its temporary spacer after the object. It is not
++  // editable content and must not hide the existing caret paragraph.
++  while (nextElement?.matches?.("[data-template-object-flow-spacer]")) {
++    nextElement = nextElement.nextElementSibling;
++  }
+ 
+   if (isFlowObjectCaretHost(nextElement, documentElement)) {
+     if (!nextElement.childNodes.length) {
+diff --git a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-keyboard-target.js b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-keyboard-target.js
+index 8e70c48..e7eba86 100644
+--- a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-keyboard-target.js
++++ b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-keyboard-target.js
+@@ -88,6 +88,15 @@ export function isCandidateBlockGridKeyboardDeleteTarget(event, surfaceElement,
+   const ownerDocument = gridElement.ownerDocument || null;
+   const activeElement = ownerDocument?.activeElement || null;
+ 
++  const selection = ownerDocument?.defaultView?.getSelection?.();
++  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
++  // A retained object highlight must not turn deletion of adjacent text or
++  // blank paragraphs into deletion of the entire candidate block.
++  if (activeElement !== gridElement && !gridElement.contains(activeElement) &&
++      target !== gridElement && !gridElement.contains(target) && range &&
++      surfaceElement.contains(range.startContainer) && surfaceElement.contains(range.endContainer) &&
++      !range.intersectsNode(gridElement)) return false;
++
+   return shouldHandleCandidateBlockGridKeyboardDelete({
+     activeElement,
+     activeGridElement: activeElement?.closest?.(CANDIDATE_BLOCK_GRID_SELECTOR) || null,
+diff --git a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-boundary.js b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-boundary.js
+index e9a33a7..a06b185 100644
+--- a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-boundary.js
++++ b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-boundary.js
+@@ -233,3 +233,45 @@ export function normalizeCandidateBlockBoundaryHostHtml(value = "") {
+ export function isBlankCandidateBlockBoundaryHost(element) {
+   return normalizeCandidateBlockBoundaryHostHtml(element?.innerHTML || "") === "";
+ }
++
++// Delete only the editable blank tail, never let the browser merge it into a
++// noneditable grid or its temporary flow spacer.
++export function deleteCandidateBlockTrailingBlankParagraphs(event, surfaceElement) {
++  if (!["Backspace", "Delete"].includes(event.key) || event.ctrlKey || event.metaKey || event.altKey) return null;
++  const root = surfaceElement?.querySelector?.(".template-doc");
++  const selection = surfaceElement?.ownerDocument?.defaultView?.getSelection?.();
++  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
++  if (!root || !range || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
++  const tail = [];
++  let previous = root.lastElementChild;
++  while (previous?.matches("p") && isBlankCandidateBlockBoundaryHost(previous)) {
++    tail.unshift(previous);
++    previous = previous.previousElementSibling;
++  }
++  if (previous?.matches("[data-template-object-flow-spacer]")) previous = previous.previousElementSibling;
++  if (!previous?.matches(CANDIDATE_BLOCK_GRID_SELECTOR) || !tail.length) return null;
++  const boundaryHost = (node, offset, end) => node === root
++    ? root.childNodes[offset - (end ? 1 : 0)]
++    : (node.nodeType === TEXT_NODE ? node.parentElement : node)?.closest?.("p");
++  const startHost = boundaryHost(range.startContainer, range.startOffset, false);
++  const endHost = range.collapsed ? startHost : boundaryHost(range.endContainer, range.endOffset, true);
++  if (!tail.includes(startHost) || !tail.includes(endHost)) return null;
++  const startIndex = tail.indexOf(startHost);
++  let removed;
++  if (range.collapsed) {
++    const target = event.key === "Backspace" ? startHost : tail[startIndex + 1];
++    removed = tail.length > 1 && target ? [target] : [];
++  } else {
++    removed = tail.filter((paragraph) => range.intersectsNode(paragraph));
++    if (removed.length === tail.length) removed = removed.slice(1);
++  }
++  const caretHost = tail[Math.max(0, startIndex - (event.key === "Backspace" ? 1 : 0))];
++  removed.forEach((paragraph) => paragraph.remove());
++  const survivingHost = caretHost.isConnected ? caretHost : tail.find((paragraph) => paragraph.isConnected);
++  const caret = root.ownerDocument.createRange();
++  caret.selectNodeContents(survivingHost);
++  caret.collapse(true);
++  selection.removeAllRanges();
++  selection.addRange(caret);
++  return { changed: removed.length > 0 };
++}
+diff --git a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-adapter.js b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-adapter.js
+index 43e3826..185fb49 100644
+--- a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-adapter.js
++++ b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-adapter.js
+@@ -61,6 +61,7 @@ import {
+ } from "./candidate-block-grid-block-roles.js";
+ import {
+   shouldPreventCandidateBlockGridNativeDeletion,
++  deleteCandidateBlockTrailingBlankParagraphs,
+ } from "./candidate-block-grid-boundary.js";
+ import { getSelectedPage } from "./state.js";
+ 
+@@ -672,6 +673,18 @@ export function bindCandidateBlockGridControls({
+       return;
+     }
+ 
++    const blankTailDeletion = deleteCandidateBlockTrailingBlankParagraphs(event, surfaceElement);
++    if (blankTailDeletion) {
++      event.preventDefault();
++      event.stopImmediatePropagation();
++      clearCandidateBlockGridSelection();
++      if (blankTailDeletion.changed) {
++        editor?.sync?.({ preserveSelection: true, focusEditor: true });
++        markDirty();
++      }
++      return;
++    }
++
+     const selectedTableElement = editor?.state?.templateEditor?.selectedTableElement || null;
+ 
+     if (selectedTableElement instanceof HTMLElement && surfaceElement.contains(selectedTableElement)) {
+diff --git a/src/dom/object-flow-reflow.js b/src/dom/object-flow-reflow.js
+index 6b07a52..9fb00d4 100644
+--- a/src/dom/object-flow-reflow.js
++++ b/src/dom/object-flow-reflow.js
+@@ -219,7 +219,12 @@ function ensureFlowObjectCaretHost(objectElement, documentElement) {
+   }
+ 
+   const referenceElement = getTopLevelChild(objectElement, documentElement);
+-  const nextElement = referenceElement?.nextElementSibling || null;
++  let nextElement = referenceElement?.nextElementSibling || null;
++  // Reflow can put its temporary spacer after the object. It is not
++  // editable content and must not hide the existing caret paragraph.
++  while (nextElement?.matches?.("[data-template-object-flow-spacer]")) {
++    nextElement = nextElement.nextElementSibling;
++  }
+ 
+   if (isFlowObjectCaretHost(nextElement, documentElement)) {
+     if (!nextElement.childNodes.length) {
+diff --git a/src/dom/candidate-block-grid-keyboard-target.js b/src/dom/candidate-block-grid-keyboard-target.js
+index 8e70c48..e7eba86 100644
+--- a/src/dom/candidate-block-grid-keyboard-target.js
++++ b/src/dom/candidate-block-grid-keyboard-target.js
+@@ -88,6 +88,15 @@ export function isCandidateBlockGridKeyboardDeleteTarget(event, surfaceElement,
+   const ownerDocument = gridElement.ownerDocument || null;
+   const activeElement = ownerDocument?.activeElement || null;
+ 
++  const selection = ownerDocument?.defaultView?.getSelection?.();
++  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
++  // A retained object highlight must not turn deletion of adjacent text or
++  // blank paragraphs into deletion of the entire candidate block.
++  if (activeElement !== gridElement && !gridElement.contains(activeElement) &&
++      target !== gridElement && !gridElement.contains(target) && range &&
++      surfaceElement.contains(range.startContainer) && surfaceElement.contains(range.endContainer) &&
++      !range.intersectsNode(gridElement)) return false;
++
+   return shouldHandleCandidateBlockGridKeyboardDelete({
+     activeElement,
+     activeGridElement: activeElement?.closest?.(CANDIDATE_BLOCK_GRID_SELECTOR) || null,

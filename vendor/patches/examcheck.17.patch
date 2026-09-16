@@ -1,0 +1,14 @@
+diff --git a/src/runtime/template-editor-runtime-bootstrap.bundle.js b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+index 8f5b1aa..0fae39b 100644
+--- a/src/runtime/template-editor-runtime-bootstrap.bundle.js
++++ b/src/runtime/template-editor-runtime-bootstrap.bundle.js
+@@ -266,6 +266,9 @@ import { sanitizeTemplateEditorHtml } from "../dom/document-sanitizer.js";
+       throw new Error("Template editor toolbarHost and surface elements are required.");
+     }
+ 
++    // Establish document coordinates before setHtml initializes flow spacers and history.
++    // Adding these classes later changes the containing block and shifts saved tables.
++    resolvedSurfaceElement.classList.add("editor-paper", "editor-document-surface");
+     resolvedSurfaceElement.setAttribute("contenteditable", "true");
+     return Object.freeze({
+       rootElement,

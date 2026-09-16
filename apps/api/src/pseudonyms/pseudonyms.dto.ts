@@ -68,6 +68,10 @@ export class AdmissionOperationScheduleDto implements AdmissionOperationSchedule
 export class ResetAdmissionOperationsDto implements ResetAdmissionOperationsInput {
   @IsString()
   @Length(1, 200)
+  password!: string;
+
+  @IsString()
+  @Length(1, 200)
   examName!: string;
 
   @IsString()
@@ -91,8 +95,8 @@ export class DeleteAdmissionDto implements DeleteAdmissionInput {
   admissionName!: string;
 
   @IsString()
-  @Length(1, 1024)
-  currentPassword!: string;
+  @Length(1, 200)
+  password!: string;
 }
 
 export class AssignPseudonymDto implements AssignPseudonymInput {
@@ -112,6 +116,11 @@ export class AssignPseudonymDto implements AssignPseudonymInput {
   @IsString()
   @Length(1, 50)
   manualNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{1,9}$/)
+  expectedNumber?: string;
 
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
@@ -168,6 +177,28 @@ export class ExportPseudonymRosterFilterDto {
   @IsString({ each: true })
   @Length(1, 200, { each: true })
   values!: string[];
+}
+
+export class DeleteCandidateHistoryDto extends PseudonymOperationScopeDto {
+  @IsInt()
+  @Min(1)
+  candidateRecordId!: number;
+
+  @IsString()
+  @Length(1, 50)
+  examineeNo!: string;
+
+  @IsIn(["LABEL", "ASSIGNMENT"])
+  mode!: "LABEL" | "ASSIGNMENT";
+}
+
+export class ResetOperationHistoryDto extends PseudonymOperationScopeDto {
+  @IsString()
+  @Length(1, 200)
+  password!: string;
+
+  @IsIn(["LABEL", "ASSIGNMENT"])
+  mode!: "LABEL" | "ASSIGNMENT";
 }
 
 export class ExportPseudonymRosterSortDto {

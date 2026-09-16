@@ -1,0 +1,27 @@
+diff --git a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-focus-editor.js b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-focus-editor.js
+index f9e3ad2..f1705fc 100644
+--- a/src/extensions/examlist/client/features/template-editor/candidate-block-grid-focus-editor.js
++++ b/src/extensions/examlist/client/features/template-editor/candidate-block-grid-focus-editor.js
+@@ -149,6 +149,11 @@ export function getCandidateBlockFocusBlockLogicalSize(blockElement) {
+   const gridElement = blockElement.closest?.("[data-candidate-block-grid]") || null;
+   const gridRect = gridElement?.getBoundingClientRect?.();
+   const gridStyle = gridElement instanceof HTMLElement ? getOwnerWindow(gridElement).getComputedStyle(gridElement) : null;
++  // Canvas presentation can hide reserved editing borders to join full tables.
++  // The modal must retain the original content box, not the painted table size.
++  const blockStyle = getOwnerWindow(blockElement).getComputedStyle(blockElement);
++  const editorWidth = Number.parseFloat(blockStyle.getPropertyValue("--template-candidate-block-editor-width"));
++  const editorHeight = Number.parseFloat(blockStyle.getPropertyValue("--template-candidate-block-editor-height"));
+   const chromeSize = getElementChromeSize(blockElement);
+   const measuredBlockSize = getBlockLogicalBorderBoxSize(blockElement, chromeSize);
+   const columnCount = Math.max(1, Number(gridElement?.dataset?.candidateBlockColumns) || 1);
+@@ -171,8 +176,8 @@ export function getCandidateBlockFocusBlockLogicalSize(blockElement) {
+   const height = measuredBlockSize.height || toFinitePixelValue(gridTrackHeight, 1);
+ 
+   return {
+-    height: Math.max(1, Math.round(height - chromeSize.vertical)),
+-    width: Math.max(1, Math.round(width - chromeSize.horizontal)),
++    height: Math.max(1, Math.round(editorHeight > 0 ? editorHeight : height - chromeSize.vertical)),
++    width: Math.max(1, Math.round(editorWidth > 0 ? editorWidth : width - chromeSize.horizontal)),
+   };
+ }
+ 

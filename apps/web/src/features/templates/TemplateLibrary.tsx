@@ -304,7 +304,7 @@ export function TemplateLibrary({
                       </span>
                     </button>
                     <button
-                      className="exam-primary-button compact"
+                      className="exam-primary-button"
                       disabled={Boolean(cardAction)}
                       onClick={() => onEdit(template)}
                     >

@@ -1,3 +1,4 @@
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import { useState, type FormEvent } from "react";
 import type { Account, AccountInput, AccountRole } from "../../shared/api/accounts";
 import { CancelButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
@@ -69,9 +70,7 @@ export function AccountEditorModal({
             <p>{editing ? "ACCOUNT EDIT" : "NEW ACCOUNT"}</p>
             <h2 id="account-editor-title">{editing ? "계정 수정" : "계정 생성"}</h2>
           </div>
-          <button type="button" onClick={onClose} disabled={saving} aria-label="닫기">
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} disabled={saving} />
         </header>
         <div className="account-editor-body">
           <div className="account-form-grid">

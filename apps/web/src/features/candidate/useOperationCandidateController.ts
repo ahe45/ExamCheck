@@ -7,6 +7,7 @@ import {
 } from "../../shared/api/examinees";
 import {
   assignPseudonym,
+  previewSequentialPseudonym,
   type AssignmentMode,
   type PseudonymAssignment,
   type PseudonymTimeRange,
@@ -37,6 +38,7 @@ interface OperationCandidateServices {
   lookupExaminee: typeof fetchExamineeLookup;
   fetchPhoto: typeof fetchExamineePhoto;
   assignPseudonym: typeof assignPseudonym;
+  previewSequential?: typeof previewSequentialPseudonym;
 }
 
 const defaultServices: OperationCandidateServices = {
@@ -197,17 +199,14 @@ export function useOperationCandidateController(options: Options) {
             item.admission === found.admissionName &&
             item.unit === found.unitName &&
             item.major === found.majorName &&
+            item.building === found.buildingName &&
             item.room === found.roomName,
         );
         if (scheduleRange) config.onRangeChange({ start: scheduleRange.rangeStart, end: scheduleRange.rangeEnd });
 
         const currentAssignment = assignmentFromExaminee(found);
-        const notice = currentAssignment
-          ? {
-              kind: "success" as const,
-              text: `이미 부여된 가번호 ${currentAssignment.pseudonymNumber}을 확인했습니다.`,
-            }
-          : config.selectedMode === "PREASSIGNED" && !found.preassignedAvailable
+        const notice =
+          !currentAssignment && config.selectedMode === "PREASSIGNED" && !found.preassignedAvailable
             ? { kind: "error" as const, text: "사전 등록된 가번호가 없습니다." }
             : null;
         dispatch({
@@ -215,7 +214,13 @@ export function useOperationCandidateController(options: Options) {
           candidate: found,
           assignment: currentAssignment,
           notice,
-          drawPopoverOpen: !currentAssignment && config.selectedMode === "RANDOM" && !config.operationClosed,
+          drawPopoverOpen:
+            !currentAssignment &&
+            (config.selectedMode === "RANDOM" ||
+              config.selectedMode === "SEQUENTIAL" ||
+              config.selectedMode === "MANUAL") &&
+            !config.operationClosed &&
+            config.userRole !== "VIEWER",
         });
         if (currentAssignment) config.onAssigned(found, currentAssignment);
 
@@ -224,6 +229,29 @@ export function useOperationCandidateController(options: Options) {
             (config.services || defaultServices).fetchPhoto(found.examineeNo, config.token, config.schedule, signal),
           );
         }
+        if (
+          !currentAssignment &&
+          config.selectedMode === "SEQUENTIAL" &&
+          !config.operationClosed &&
+          config.userRole !== "VIEWER"
+        ) {
+          const preview = await (config.services?.previewSequential || previewSequentialPseudonym)(
+            config.token,
+            found.examineeNo,
+            {
+              examName: found.examName,
+              examDate: config.schedule.date,
+              examTime: config.schedule.time,
+              periodName: config.schedule.periodName,
+              admissionName: config.schedule.admissionName,
+            },
+            controller.signal,
+          );
+          if (!isCurrentScheduleRequest(request, lookupRequestSequenceRef.current, currentScheduleKeyRef.current))
+            return;
+          dispatch({ type: "SET_SEQUENTIAL_PREVIEW", value: preview.pseudonymNumber });
+        }
+        return { candidate: found, assignment: currentAssignment };
       } catch (reason) {
         if (isCurrentScheduleRequest(request, lookupRequestSequenceRef.current, currentScheduleKeyRef.current)) {
           dispatch({
@@ -245,6 +273,9 @@ export function useOperationCandidateController(options: Options) {
     const snapshot = stateRef.current;
     const config = optionsRef.current;
     if (!snapshot.candidate || snapshot.assigning || assignmentRequestRef.current || config.userRole === "VIEWER")
+      return;
+    if (config.selectedMode === "SEQUENTIAL" && snapshot.sequentialPreviewNumber === null) return;
+    if ((config.selectedMode === "MANUAL" || config.selectedMode === "SEQUENTIAL") && !snapshot.manualNumber.trim())
       return;
     const requestTarget = createOperationRequestTarget(snapshot.candidate.examineeNo, config.schedule);
     if (expectedTarget && !isSameOperationRequestTarget(expectedTarget, currentOperationTargetRef.current)) return;
@@ -277,6 +308,7 @@ export function useOperationCandidateController(options: Options) {
           admissionName: config.schedule.admissionName,
         },
         snapshot.manualNumber.trim() || undefined,
+        ...(config.selectedMode === "SEQUENTIAL" ? [snapshot.sequentialPreviewNumber!] : []),
       );
       const updated = {
         ...snapshot.candidate,
@@ -341,6 +373,9 @@ export function useOperationCandidateController(options: Options) {
       !options.operationClosed &&
       Boolean(state.candidate) &&
       !state.assignment &&
+      (!(options.selectedMode === "MANUAL" || options.selectedMode === "SEQUENTIAL") ||
+        Boolean(state.manualNumber.trim())) &&
+      (options.selectedMode !== "SEQUENTIAL" || state.sequentialPreviewNumber !== null) &&
       options.userRole !== "VIEWER",
     setInput,
     setManualNumber,

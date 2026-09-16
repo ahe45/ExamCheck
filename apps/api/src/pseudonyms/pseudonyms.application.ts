@@ -101,7 +101,9 @@ export class UpdatePseudonymSettingUseCase {
       assertScheduleRangeCapacities(
         input.ranges,
         scheduleCounts,
-        input.assignmentMethod === "DRAW" || input.assignmentMethod === "SEQUENTIAL",
+        input.assignmentMethod === "DRAW" ||
+          input.assignmentMethod === "SEQUENTIAL" ||
+          input.assignmentMethod === "MATCHING",
       );
 
       const existingRanges = existingSetting
@@ -205,7 +207,11 @@ export class AssignPseudonymUseCase {
     private readonly identityProjection: IdentityBackfillProjectionRepository = new IdentityBackfillProjectionRepository(),
   ) {}
 
-  async execute(input: AssignPseudonymInput, user: AuthenticatedUser) {
+  execute(input: AssignPseudonymInput, user: AuthenticatedUser): Promise<ReturnType<typeof assignmentResponse>>;
+  execute(input: AssignPseudonymInput, user: AuthenticatedUser, preview: true): Promise<{ pseudonymNumber: string }>;
+  async execute(input: AssignPseudonymInput, user: AuthenticatedUser, preview = false) {
+    if (preview && input.mode !== "SEQUENTIAL")
+      throw new BadRequestException("순차부여에서만 예정 번호를 조회할 수 있습니다.");
     const admissionName = assertAdmissionAccess(user, input.admissionName, {
       forbiddenMessage: "배정되지 않은 전형의 수험생에게 가번호를 부여할 수 없습니다.",
     });
@@ -236,7 +242,9 @@ export class AssignPseudonymUseCase {
         input.admissionName,
       );
       const timeRanges =
-        setting.assignmentMethod === "DRAW" || setting.assignmentMethod === "SEQUENTIAL"
+        setting.assignmentMethod === "DRAW" ||
+        setting.assignmentMethod === "SEQUENTIAL" ||
+        setting.assignmentMethod === "MATCHING"
           ? await this.repository.listTimeRangesForUpdate(connection, setting.id)
           : [];
       const candidate = await this.repository.findCandidateInScope(connection, input, { forUpdate: true });
@@ -244,6 +252,10 @@ export class AssignPseudonymUseCase {
 
       const existingAssignment = await this.repository.findAssignmentForUpdate(connection, candidate.candidateRecordId);
       if (existingAssignment) {
+        if (preview) {
+          await connection.rollback();
+          return { pseudonymNumber: existingAssignment.pseudonymNumber };
+        }
         if (identityDecision.writeTarget) {
           await this.identityProjection.syncAssignmentTree(
             connection,
@@ -259,7 +271,9 @@ export class AssignPseudonymUseCase {
       let effectiveRange: Pick<SettingRow, "rangeStart" | "rangeEnd" | "displayWidth" | "nextSequence"> = setting;
       let timeRangeId: number | null = null;
       if (
-        (setting.assignmentMethod === "DRAW" || setting.assignmentMethod === "SEQUENTIAL") &&
+        (setting.assignmentMethod === "DRAW" ||
+          setting.assignmentMethod === "SEQUENTIAL" ||
+          setting.assignmentMethod === "MATCHING") &&
         candidate.examDate &&
         candidate.examTime
       ) {
@@ -290,12 +304,17 @@ export class AssignPseudonymUseCase {
         uniquenessScope,
       );
       let number: number;
-      let displayWidth = effectiveRange.displayWidth ?? Math.max(String(effectiveRange.rangeStart).length, String(effectiveRange.rangeEnd).length);
+      let displayWidth =
+        effectiveRange.displayWidth ??
+        Math.max(String(effectiveRange.rangeStart).length, String(effectiveRange.rangeEnd).length);
       if (input.mode === "PREASSIGNED") {
         if (!candidate.preassignedNumber) throw new BadRequestException("이 수험생에게 미리 등록된 가번호가 없습니다.");
         number = parsePseudonym(candidate.preassignedNumber);
         displayWidth = candidate.preassignedNumber.length;
-      } else if (input.mode === "MANUAL") {
+      } else if (
+        input.mode === "MANUAL" ||
+        (!preview && input.mode === "SEQUENTIAL" && input.manualNumber !== undefined)
+      ) {
         if (!input.manualNumber) throw new BadRequestException("직접 부여할 가번호를 입력해 주세요.");
         number = parsePseudonym(input.manualNumber);
         displayWidth = input.manualNumber.length;
@@ -320,13 +339,27 @@ export class AssignPseudonymUseCase {
           effectiveRange.rangeEnd,
           reserved,
         );
-        const next = number >= effectiveRange.rangeEnd ? effectiveRange.rangeStart : number + 1;
-        if (timeRangeId) await this.repository.updateTimeRangeSequence(connection, timeRangeId, next, user.id);
-        else await this.repository.updateSettingSequence(connection, setting.id, next, user.id);
       }
 
       assertWithinRange(number, effectiveRange);
       const pseudonymNumber = displayPseudonymNumber(number, Math.max(displayWidth, String(number).length));
+      if (preview) {
+        await connection.rollback();
+        return { pseudonymNumber };
+      }
+      if (
+        input.mode === "SEQUENTIAL" &&
+        input.manualNumber === undefined &&
+        input.expectedNumber !== undefined &&
+        input.expectedNumber !== pseudonymNumber
+      ) {
+        throw new ConflictException("부여 예정 가번호가 변경되었습니다. 수험생을 다시 검색한 후 저장해 주세요.");
+      }
+      if (input.mode === "SEQUENTIAL") {
+        const next = number >= effectiveRange.rangeEnd ? effectiveRange.rangeStart : number + 1;
+        if (timeRangeId) await this.repository.updateTimeRangeSequence(connection, timeRangeId, next, user.id);
+        else await this.repository.updateSettingSequence(connection, setting.id, next, user.id);
+      }
       const assignmentId = await this.repository.insertAssignment(
         connection,
         candidate,

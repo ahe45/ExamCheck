@@ -88,6 +88,14 @@ export const pseudonymSettingSchema = z.object({
   autoDrawDelaySeconds: nonnegativeIntegerSchema,
   printPreassignedLabel: z.boolean(),
   labelTemplateId: z.number().int().positive().nullable().optional(),
+  labelPrintDefaults: z
+    .object({
+      templateId: z.number().int().positive(),
+      templateName: z.string(),
+      copies: z.number().int().min(1).max(10),
+    })
+    .nullable()
+    .optional(),
   autoAssignAbsenteesOnClose: z.boolean(),
   deleteAbsenteeInfoOnReopen: z.boolean(),
   useCandidatePhotos: z.boolean(),
@@ -153,15 +161,57 @@ export function assignPseudonym(
   mode: AssignmentMode,
   schedule: { examName: string; examDate: string; examTime: string; periodName: string; admissionName: string },
   manualNumber?: string,
+  expectedNumber?: string,
 ) {
   return apiFetch(
     "/pseudonyms/assignments",
     {
       method: "POST",
-      body: JSON.stringify({ examineeNo, mode, ...schedule, ...(manualNumber ? { manualNumber } : {}) }),
+      body: JSON.stringify({
+        examineeNo,
+        mode,
+        ...schedule,
+        ...(manualNumber ? { manualNumber } : {}),
+        ...(expectedNumber !== undefined ? { expectedNumber } : {}),
+      }),
     },
     token,
     pseudonymAssignmentSchema,
+  );
+}
+
+export function previewSequentialPseudonym(
+  token: string,
+  examineeNo: string,
+  scope: PseudonymOperationScope,
+  signal?: AbortSignal,
+) {
+  return apiFetch(
+    "/pseudonyms/assignments/preview",
+    {
+      method: "POST",
+      body: JSON.stringify({ examineeNo, mode: "SEQUENTIAL", ...scope }),
+      signal,
+    },
+    token,
+    z.object({ pseudonymNumber: z.string().min(1) }),
+  );
+}
+
+export function deleteCandidateHistory(
+  token: string,
+  input: PseudonymOperationScope & { candidateRecordId: number; examineeNo: string; mode: "LABEL" | "ASSIGNMENT" },
+) {
+  return apiFetch(
+    "/pseudonyms/operations/candidate-history",
+    { method: "DELETE", body: JSON.stringify(input) },
+    token,
+    z.object({
+      mode: z.enum(["LABEL", "ASSIGNMENT"]),
+      resetPrintCount: nonnegativeIntegerSchema,
+      deletedAssignmentCount: nonnegativeIntegerSchema,
+      clearedPreassigned: z.boolean(),
+    }),
   );
 }
 
@@ -207,7 +257,12 @@ export function fetchAdmissionOperationSchedules(token: string, examName: string
 
 export function resetAdmissionOperations(
   token: string,
-  input: { examName: string; admissionName: string; schedules: AdmissionOperationScheduleSelection[] },
+  input: {
+    examName: string;
+    admissionName: string;
+    schedules: AdmissionOperationScheduleSelection[];
+    password: string;
+  },
 ) {
   return apiFetch(
     "/pseudonyms/admission-operations/reset",
@@ -217,10 +272,10 @@ export function resetAdmissionOperations(
   );
 }
 
-export function deleteAdmission(token: string, admissionName: string, currentPassword: string) {
+export function deleteAdmission(token: string, admissionName: string, password: string) {
   return apiFetch(
     "/pseudonyms/admission",
-    { method: "DELETE", body: JSON.stringify({ admissionName, currentPassword }) },
+    { method: "DELETE", body: JSON.stringify({ admissionName, password }) },
     token,
     deleteAdmissionResultSchema,
   );
@@ -229,6 +284,25 @@ export function deleteAdmission(token: string, admissionName: string, currentPas
 export function fetchPseudonymOperationStatus(token: string, input: PseudonymOperationScope) {
   const query = new URLSearchParams(Object.entries(input)).toString();
   return apiFetch(`/pseudonyms/operations/status?${query}`, {}, token, pseudonymOperationStatusSchema);
+}
+
+export function resetOperationHistory(
+  token: string,
+  input: PseudonymOperationScope & { password: string; mode: "LABEL" | "ASSIGNMENT" },
+) {
+  return apiFetch(
+    "/pseudonyms/operations/reset-history",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+    z.object({
+      mode: z.enum(["LABEL", "ASSIGNMENT"]),
+      resetPrintCount: z.number(),
+      deletedAssignmentCount: z.number(),
+    }),
+  );
 }
 
 export async function downloadPseudonymRosterExcel(
@@ -251,6 +325,18 @@ export async function downloadPseudonymRosterExcel(
 export function closePseudonymOperation(token: string, input: PseudonymOperationScope) {
   return apiFetch(
     "/pseudonyms/operations/close",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+    token,
+    pseudonymOperationStatusSchema,
+  );
+}
+
+export function reopenPseudonymOperation(token: string, input: PseudonymOperationScope) {
+  return apiFetch(
+    "/pseudonyms/operations/reopen",
     {
       method: "POST",
       body: JSON.stringify(input),

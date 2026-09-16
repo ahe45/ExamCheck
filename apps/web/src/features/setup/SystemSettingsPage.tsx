@@ -20,6 +20,7 @@ import {
   formatRangeNumber,
   hasInvalidRange,
   parseRangeNumberInput,
+  scheduleIdentity,
   toSettingRanges,
   totalRangeCapacity,
   updateRangeStart,
@@ -72,10 +73,24 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [bulkStart, setBulkStart] = useState("1001");
     const [bulkCriteria, setBulkCriteria] = useState<BulkRangeCriterion[]>([]);
     const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+    const [requiresInitialSave, setRequiresInitialSave] = useState(false);
     const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
     const applySetting = useCallback((setting: PseudonymSetting, rows: CandidateRecord[]) => {
       const nextRanges = buildScheduleRanges(rows, setting);
+      setRequiresInitialSave(
+        setting.version === 0 ||
+          setting.ranges.length !== nextRanges.length ||
+          nextRanges.some((range) => {
+            const saved = setting.ranges.find((item) => scheduleIdentity(item) === scheduleIdentity(range));
+            return (
+              !saved ||
+              saved.rangeStart !== range.rangeStart ||
+              saved.rangeEnd !== range.rangeEnd ||
+              (saved.displayWidth ?? setting.displayWidth) !== range.displayWidth
+            );
+          }),
+      );
       setCandidates(rows);
       setSettingVersion(setting.version);
       setAssignmentMethod(setting.assignmentMethod);
@@ -134,15 +149,6 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       void load();
     }, [load]);
 
-    useEffect(() => {
-      if (!notice) return;
-      const timer = window.setTimeout(
-        () => setNotice((current) => (current === notice ? null : current)),
-        notice.kind === "success" ? 4000 : 7000,
-      );
-      return () => window.clearTimeout(timer);
-    }, [notice]);
-
     useEscapeKey(bulkOpen, () => setBulkOpen(false));
 
     const rangeCapacity = useMemo(() => totalRangeCapacity(ranges), [ranges]);
@@ -174,7 +180,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
         enableBulkDraw,
       ],
     );
-    const dirty = savedSnapshot !== null && savedSnapshot !== currentSnapshot;
+    const dirty = savedSnapshot !== null && (requiresInitialSave || savedSnapshot !== currentSnapshot);
 
     useEffect(() => {
       onDirtyChange?.(dirty);
@@ -318,7 +324,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
               />
             </div>
 
-            {(assignmentMethod === "DRAW" || assignmentMethod === "SEQUENTIAL") && (
+            {(assignmentMethod === "DRAW" || assignmentMethod === "SEQUENTIAL" || assignmentMethod === "MATCHING") && (
               <ScheduleRangeSection
                 assignmentMethod={assignmentMethod}
                 ranges={ranges}

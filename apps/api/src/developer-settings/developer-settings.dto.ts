@@ -33,3 +33,9 @@ export class ChangeDeveloperPasswordDto {
   @Length(4, 200)
   newPassword!: string;
 }
+
+export class UpdateHistoryResetPasswordDto {
+  @IsString()
+  @Length(4, 200)
+  newPassword!: string;
+}

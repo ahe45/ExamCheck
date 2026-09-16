@@ -1,3 +1,5 @@
+import { ToastNotice } from "../../shared/components/ToastNotice";
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import type { FormEvent } from "react";
 import { CancelButtonIcon, KeyButtonIcon } from "../../shared/components/ActionIcons";
 import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
@@ -13,6 +15,7 @@ interface Props {
   onPasswordChange(patch: Partial<DeveloperPasswordForm>): void;
   onClose(): void;
   onSave(): void;
+  onCloseNotice?(): void;
 }
 
 export function DeveloperPasswordModal({
@@ -23,6 +26,7 @@ export function DeveloperPasswordModal({
   onPasswordChange,
   onClose,
   onSave,
+  onCloseNotice,
 }: Props) {
   const dialogRef = useDialogFocus<HTMLFormElement>();
   useEscapeKey(!saving, onClose);
@@ -57,15 +61,9 @@ export function DeveloperPasswordModal({
             <h2 id="developer-password-title">개발자 비밀번호 변경</h2>
             <small>현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다.</small>
           </div>
-          <button type="button" onClick={onClose} disabled={saving} aria-label="닫기">
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} disabled={saving} />
         </header>
-        {notice && (
-          <p className={`developer-password-notice ${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
-            {notice.text}
-          </p>
-        )}
+        {notice && <ToastNotice notice={notice} onClose={onCloseNotice} />}
         <div className="developer-password-fields">
           <label>
             <span>현재 비밀번호</span>

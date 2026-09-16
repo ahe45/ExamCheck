@@ -76,6 +76,7 @@ export interface TemplateEditorOverflowInfo {
 
 export interface TemplateEditorRuntime {
   insertTag?(tag: string): unknown;
+  sync?(options?: { preserveSelection?: boolean; focusEditor?: boolean }): unknown;
   setHtml(html: string, options?: { notify?: boolean; resetHistory?: boolean }): unknown;
 }
 
@@ -91,6 +92,8 @@ export interface TemplateEditorInstance {
 }
 
 export interface TemplateEditorTagDisplayContext {
+  formatValue?: string;
+  formatType?: string;
   definition: Readonly<DataTagDefinition> | null;
   iconMarkup: string;
   label: string;

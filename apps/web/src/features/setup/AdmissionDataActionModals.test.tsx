@@ -60,12 +60,20 @@ describe("AdmissionOperationsResetModal", () => {
     );
 
     fireEvent.click(await screen.findByRole("checkbox", { name: /09:00 · 1교시/ }));
+    expect(screen.queryByLabelText("초기화 비밀번호")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "선택 교시 초기화" }));
+    expect(resetAdmissionOperations).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "초기화 비밀번호 확인" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "확인 후 초기화" })).toBeDisabled();
+    expect(screen.getByLabelText("초기화 비밀번호")).toHaveFocus();
+    fireEvent.change(screen.getByLabelText("초기화 비밀번호"), { target: { value: "reset-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "확인 후 초기화" }));
 
     await waitFor(() =>
       expect(resetAdmissionOperations).toHaveBeenCalledWith("token", {
         examName: "2026년도 자격시험",
         admissionName: "학생부교과",
+        password: "reset-password",
         schedules: [{ examDate: "2026-10-30", examTime: "09:00", periodName: "1교시" }],
       }),
     );
@@ -73,12 +81,104 @@ describe("AdmissionOperationsResetModal", () => {
   });
 });
 
+it.each(["reset", "delete"] as const)(
+  "%s 비밀번호 오류 시 창을 유지하고 비밀번호를 비워 재입력하도록 한다",
+  async (action) => {
+    vi.clearAllMocks();
+    vi.mocked(fetchAdmissionOperationSchedules).mockResolvedValue([
+      {
+        examDate: "2026-10-30",
+        examTime: "09:00",
+        periodName: "1교시",
+        buildingNames: [],
+        candidateCount: 1,
+        assignedCount: 1,
+        closed: false,
+      },
+    ]);
+    const api = action === "reset" ? resetAdmissionOperations : deleteAdmission;
+    vi.mocked(api).mockRejectedValueOnce(new Error("초기화 비밀번호가 올바르지 않습니다."));
+    const onCompleted = vi.fn();
+    const onClose = vi.fn();
+    if (action === "reset") {
+      render(
+        <AdmissionOperationsResetModal
+          token="token"
+          examName="시험"
+          admissionName="학생부교과"
+          onClose={onClose}
+          onCompleted={onCompleted}
+        />,
+      );
+      fireEvent.click(await screen.findByRole("checkbox", { name: /09:00 · 1교시/ }));
+      fireEvent.click(screen.getByRole("button", { name: "선택 교시 초기화" }));
+    } else {
+      render(
+        <AdmissionDeleteModal token="token" admissionName="학생부교과" onClose={onClose} onCompleted={onCompleted} />,
+      );
+    }
+    const field = screen.getByLabelText("초기화 비밀번호");
+    fireEvent.change(field, { target: { value: "wrong-password" } });
+    fireEvent.submit(field.closest("form")!);
+    expect(await screen.findByRole("alert")).toHaveTextContent("초기화 비밀번호가 올바르지 않습니다.");
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(field).toHaveValue("");
+    expect(
+      screen.getByRole("button", { name: action === "reset" ? "확인 후 초기화" : "전형 전체 삭제" }),
+    ).toBeDisabled();
+  },
+);
+
+it("비밀번호 창을 취소하거나 Escape로 닫으면 초기화하지 않고 선택한 교시를 유지한다", async () => {
+  vi.clearAllMocks();
+  vi.mocked(fetchAdmissionOperationSchedules).mockResolvedValue([
+    {
+      examDate: "2026-10-30",
+      examTime: "09:00",
+      periodName: "1교시",
+      buildingNames: [],
+      candidateCount: 1,
+      assignedCount: 1,
+      closed: false,
+    },
+  ]);
+  const onClose = vi.fn();
+  render(
+    <AdmissionOperationsResetModal
+      token="token"
+      examName="시험"
+      admissionName="학생부교과"
+      onClose={onClose}
+      onCompleted={vi.fn()}
+    />,
+  );
+  const checkbox = await screen.findByRole("checkbox", { name: /09:00 · 1교시/ });
+  expect(screen.getByRole("button", { name: "선택 교시 초기화" })).toBeDisabled();
+  fireEvent.click(checkbox);
+  for (const cancel of ["button", "escape"]) {
+    const trigger = screen.getByRole("button", { name: "선택 교시 초기화" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const password = screen.getByLabelText("초기화 비밀번호");
+    expect(password).toHaveValue("");
+    fireEvent.change(password, { target: { value: "do-not-save" } });
+    if (cancel === "button") fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    else fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "초기화 비밀번호 확인" })).not.toBeInTheDocument();
+    expect(checkbox).toBeChecked();
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(resetAdmissionOperations).not.toHaveBeenCalled();
+  }
+});
+
 describe("AdmissionDeleteModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("현재 비밀번호를 입력해야 전형 전체 삭제를 요청한다", async () => {
+  it("초기화 비밀번호를 입력해야 전형 전체 삭제를 요청한다", async () => {
     vi.mocked(deleteAdmission).mockResolvedValue({
       deleted: true,
       admissionName: "학생부교과",
@@ -97,7 +197,7 @@ describe("AdmissionDeleteModal", () => {
 
     const deleteButton = screen.getByRole("button", { name: "전형 전체 삭제" });
     expect(deleteButton).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("현재 로그인한 계정의 비밀번호"), { target: { value: "1234" } });
+    fireEvent.change(screen.getByLabelText("초기화 비밀번호"), { target: { value: "1234" } });
     fireEvent.click(deleteButton);
 
     await waitFor(() => expect(deleteAdmission).toHaveBeenCalledWith("token", "학생부교과", "1234"));
