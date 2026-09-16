@@ -48,6 +48,16 @@ echo Preparing database schema and missing initial accounts...
 call npm run db:setup >> "%__START_LOG%" 2>&1
 if errorlevel 1 goto FAILED
 
+echo Checking Windows Firewall for ExamCheck TCP 5173...
+echo Windows may request administrator permission if the rule needs to be added.
+where powershell.exe >nul 2>nul
+if errorlevel 1 (
+  echo Windows PowerShell is required to configure the firewall.
+  goto FAILED
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy\ensure-firewall.ps1" >> "%__START_LOG%" 2>&1
+if errorlevel 1 goto FAILED
+
 echo.
 echo Starting ExamCheck web and API servers...
 echo Web: http://localhost:5173

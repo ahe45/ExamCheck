@@ -15,6 +15,7 @@
     "build": "npm run build -w @examcheck/api && npm run build -w @examcheck/web",
     "test": "npm run test --workspaces --if-present",
     "test:windows-setup": "node --test tools/windows-env.test.mjs",
+    "test:windows-firewall": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/test-firewall.ps1",
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "test:e2e": "node e2e/run.mjs",
     "test:e2e:list": "node e2e/run.mjs --list",
