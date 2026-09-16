@@ -3,7 +3,11 @@ import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import type { OperationSchedule } from "../../shared/api/examinees";
 import { fetchActiveFormTemplates, type FormTemplate } from "../../shared/api/form-templates";
 import type { OperationNotice } from "./operation-candidate-state";
-import { buildOperationTemplatePages } from "./operation-template-pages";
+import {
+  buildOperationTemplatePages,
+  selectOperationPrintRows,
+  type OperationPrintTarget,
+} from "./operation-template-pages";
 import type { OperationRow } from "./operation-view-model";
 import { downloadTemplatePdf } from "../templates/template-renderer";
 import { isAbortError } from "../../shared/async/bounded-map";
@@ -28,6 +32,7 @@ interface Options {
   rows: OperationRow[];
   statusLoaded: boolean;
   operationClosed: boolean;
+  labelPrintingEnabled?: boolean;
   isCurrentSchedule(scheduleKey: string): boolean;
   onNotice(notice: OperationNotice | null): void;
 }
@@ -36,6 +41,7 @@ export function useOperationPrint(options: Options) {
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [selectedTemplateCode, setSelectedTemplateCode] = useState("");
+  const [printTarget, setPrintTarget] = useState<OperationPrintTarget>("ALL");
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<OperationPrintProgress | null>(null);
@@ -43,6 +49,12 @@ export function useOperationPrint(options: Options) {
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [signatureError, setSignatureError] = useState<string | null>(null);
   const generationControllerRef = useRef<AbortController | null>(null);
+  const attendanceContext = {
+    operationClosed: options.operationClosed,
+    labelPrintingEnabled: options.labelPrintingEnabled ?? options.schedule.labelPrintingEnabled,
+  };
+  const presentCount = selectOperationPrintRows(options.rows, "PRESENT", attendanceContext).length;
+  const targetCount = printTarget === "PRESENT" ? presentCount : options.rows.length;
 
   useEffect(() => {
     generationControllerRef.current?.abort(new DOMException("교시가 변경되어 PDF 생성을 취소했습니다.", "AbortError"));
@@ -54,6 +66,7 @@ export function useOperationPrint(options: Options) {
     setSignatureOpen(false);
     setSignatureError(null);
     setOpen(false);
+    setPrintTarget("ALL");
   }, [options.scheduleKey]);
 
   useEffect(
@@ -71,6 +84,7 @@ export function useOperationPrint(options: Options) {
     }
     const requestScheduleKey = options.scheduleKey;
     setOpen(true);
+    setPrintTarget("ALL");
     setLoading(true);
     setSignatureNames(emptyTemplateSignatureNames());
     options.onNotice(null);
@@ -98,6 +112,10 @@ export function useOperationPrint(options: Options) {
   async function generate() {
     const template = templates.find((item) => item.code === selectedTemplateCode);
     if (!template || generating || generationControllerRef.current) return;
+    if (printTarget === "PRESENT" && !targetCount) {
+      options.onNotice({ kind: "error", text: "응시한 수험생이 없어 출력할 수 없습니다." });
+      return;
+    }
     if (getRequiredTemplateSignatureFields(template.layout).length) {
       setSignatureError(null);
       setSignatureOpen(true);
@@ -133,7 +151,7 @@ export function useOperationPrint(options: Options) {
     const controller = new AbortController();
     generationControllerRef.current = controller;
     setGenerating(true);
-    setProgress({ label: "출력 데이터를 준비하고 있습니다.", completed: 0, total: Math.max(options.rows.length, 1) });
+    setProgress({ label: "출력 데이터를 준비하고 있습니다.", completed: 0, total: Math.max(targetCount, 1) });
     options.onNotice(null);
     try {
       const pages = await buildOperationTemplatePages(template, options.rows, {
@@ -142,6 +160,8 @@ export function useOperationPrint(options: Options) {
         schedule: options.schedule,
         examName: options.examName,
         operationClosed: options.operationClosed,
+        labelPrintingEnabled: attendanceContext.labelPrintingEnabled,
+        printTarget,
         signatureNames: Object.fromEntries(
           Object.entries(signatureNames).map(([key, value]) => [key, value.trim()]),
         ) as typeof signatureNames,
@@ -225,6 +245,13 @@ export function useOperationPrint(options: Options) {
     open,
     templates,
     selectedTemplateCode,
+    printTarget,
+    setPrintTarget: (target: OperationPrintTarget) => {
+      if (!generationControllerRef.current) setPrintTarget(target);
+    },
+    totalCount: options.rows.length,
+    presentCount,
+    targetCount,
     loading,
     generating,
     progress,

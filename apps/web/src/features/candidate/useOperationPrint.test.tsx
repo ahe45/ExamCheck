@@ -5,6 +5,7 @@ import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import type { OperationSchedule } from "../../shared/api/examinees";
 import type { FormTemplate } from "../../shared/api/form-templates";
 import { useOperationPrint } from "./useOperationPrint";
+import type { OperationRow } from "./operation-view-model";
 
 const mocks = vi.hoisted(() => ({
   fetchActiveFormTemplates: vi.fn(),
@@ -60,6 +61,78 @@ const template: FormTemplate = {
 };
 
 describe("useOperationPrint", () => {
+  it("forwards the target through signature confirmation and resets it when reopened", async () => {
+    const signed = {
+      ...template,
+      layout: {
+        settings: {
+          documentHtml: '<span data-template-tag-value="signature.author"></span>',
+          signatureNames: { enabled: true },
+        },
+      },
+    };
+    mocks.fetchActiveFormTemplates.mockResolvedValue([signed]);
+    mocks.buildOperationTemplatePages.mockResolvedValue(["<p>출력</p>"]);
+    const rows = [
+      { candidate: { absent: false, lastPrintedAt: "2026-10-30T01:00:00Z" }, assignment: { pseudonymNumber: "1" } },
+    ] as OperationRow[];
+    const { result } = renderHook(() =>
+      useOperationPrint({
+        token: "test",
+        systemProfile,
+        schedule,
+        scheduleKey: "schedule-1",
+        examName: "시험",
+        rows,
+        statusLoaded: true,
+        operationClosed: true,
+        labelPrintingEnabled: true,
+        isCurrentSchedule: () => true,
+        onNotice: vi.fn(),
+      }),
+    );
+    await act(async () => result.current.show());
+    expect(result.current.printTarget).toBe("ALL");
+    act(() => result.current.setPrintTarget("PRESENT"));
+    await act(async () => result.current.generate());
+    expect(result.current.signatureOpen).toBe(true);
+    act(() => result.current.updateSignatureName("signature.author", "작성자"));
+    await act(async () => result.current.confirmSignatures());
+    expect(mocks.buildOperationTemplatePages).toHaveBeenCalledWith(
+      signed,
+      rows,
+      expect.objectContaining({ printTarget: "PRESENT", labelPrintingEnabled: true }),
+    );
+    await act(async () => result.current.show());
+    expect(result.current.printTarget).toBe("ALL");
+  });
+
+  it("rejects present-only printing when preassigned candidates have not printed their labels", async () => {
+    const onNotice = vi.fn();
+    const { result } = renderHook(() =>
+      useOperationPrint({
+        token: "test",
+        systemProfile,
+        schedule,
+        scheduleKey: "schedule-1",
+        examName: "시험",
+        rows: [{ candidate: { absent: false }, assignment: { pseudonymNumber: "1" } }] as OperationRow[],
+        statusLoaded: true,
+        operationClosed: true,
+        labelPrintingEnabled: true,
+        isCurrentSchedule: () => true,
+        onNotice,
+      }),
+    );
+    await act(async () => result.current.show());
+    act(() => result.current.setPrintTarget("PRESENT"));
+    expect(result.current.totalCount).toBe(1);
+    expect(result.current.presentCount).toBe(0);
+    await act(async () => result.current.generate());
+    expect(mocks.buildOperationTemplatePages).not.toHaveBeenCalled();
+    expect(onNotice).toHaveBeenLastCalledWith({ kind: "error", text: "응시한 수험생이 없어 출력할 수 없습니다." });
+  });
+
   beforeEach(() => {
     mocks.fetchActiveFormTemplates.mockReset();
     mocks.buildOperationTemplatePages.mockReset();

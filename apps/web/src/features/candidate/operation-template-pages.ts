@@ -5,7 +5,17 @@ import { boundedMap, isAbortError, throwIfAborted } from "../../shared/async/bou
 import { getTemplateDocumentHtml, renderTemplateHtml } from "../templates/template-renderer";
 import { getPrintableCandidateGrid, renderCandidateGridPages } from "../templates/template-candidate-pages";
 import { emptyTemplateSignatureNames, type TemplateSignatureNames } from "../templates/template-signatures";
-import type { OperationRow } from "./operation-view-model";
+import { operationRowAttendance, type OperationGridContext, type OperationRow } from "./operation-view-model";
+
+export type OperationPrintTarget = "ALL" | "PRESENT";
+
+export function selectOperationPrintRows(
+  rows: OperationRow[],
+  target: OperationPrintTarget,
+  context: OperationGridContext,
+) {
+  return target === "PRESENT" ? rows.filter((row) => operationRowAttendance(row, context) === "응시") : rows;
+}
 
 export interface OperationTemplateContext {
   token: string;
@@ -13,6 +23,8 @@ export interface OperationTemplateContext {
   schedule: OperationSchedule;
   examName: string;
   operationClosed: boolean;
+  labelPrintingEnabled?: boolean;
+  printTarget?: OperationPrintTarget;
   signatureNames?: TemplateSignatureNames;
   signal?: AbortSignal;
   onPhotoProgress?(completed: number, total: number): void;
@@ -20,11 +32,19 @@ export interface OperationTemplateContext {
 
 export async function buildOperationTemplatePages(
   template: FormTemplate,
-  rows: OperationRow[],
+  sourceRows: OperationRow[],
   context: OperationTemplateContext,
 ) {
   throwIfAborted(context.signal);
+  const rows = selectOperationPrintRows(sourceRows, context.printTarget || "ALL", {
+    operationClosed: context.operationClosed,
+    labelPrintingEnabled: context.labelPrintingEnabled ?? context.schedule.labelPrintingEnabled ?? false,
+  });
+  if (!rows.length && context.printTarget === "PRESENT") throw new Error("응시한 수험생이 없어 출력할 수 없습니다.");
   if (!rows.length) throw new Error("PDF로 생성할 수험생 데이터가 없습니다.");
+  // Filtering changes which candidates are printed, not the actual room totals.
+  const statisticsGroups = template.usageScope === "ROOM" ? groupByRoom(sourceRows) : [sourceRows];
+  const statisticsFor = (row: OperationRow) => statisticsGroups.find((group) => group.includes(row))!;
   const requiresPhoto = getTemplateDocumentHtml(template.layout).includes("candidate.photo");
   const grid = getPrintableCandidateGrid(template.layout);
   if (grid) {
@@ -33,7 +53,7 @@ export async function buildOperationTemplatePages(
       rows,
       async (row) => {
         const photo = requiresPhoto ? await candidatePhoto(row, context) : "";
-        const group = template.usageScope === "ROOM" ? groups.find((items) => items.includes(row))! : rows;
+        const group = statisticsFor(row);
         return templateValues(row, group, 0, context, photo);
       },
       { concurrency: 4, signal: context.signal, onProgress: requiresPhoto ? context.onPhotoProgress : undefined },
@@ -54,7 +74,7 @@ export async function buildOperationTemplatePages(
         throwIfAborted(context.signal);
         const photo = requiresPhoto ? await candidatePhoto(row, context) : "";
         throwIfAborted(context.signal);
-        return renderTemplateHtml(template.layout, templateValues(row, rows, index, context, photo));
+        return renderTemplateHtml(template.layout, templateValues(row, statisticsFor(row), index, context, photo));
       },
       {
         concurrency: requiresPhoto ? 4 : 8,
@@ -74,10 +94,10 @@ export async function buildOperationTemplatePages(
         .values(),
     );
     return rooms.map((roomRows, index) =>
-      renderTemplateHtml(template.layout, templateValues(roomRows[0], roomRows, index, context, "")),
+      renderTemplateHtml(template.layout, templateValues(roomRows[0], statisticsFor(roomRows[0]), index, context, "")),
     );
   }
-  return [renderTemplateHtml(template.layout, templateValues(rows[0], rows, 0, context, ""))];
+  return [renderTemplateHtml(template.layout, templateValues(rows[0], sourceRows, 0, context, ""))];
 }
 
 function groupByRoom(rows: OperationRow[]) {
@@ -114,10 +134,12 @@ function templateValues(
 ) {
   const candidate = row?.candidate;
   const assignment = row?.assignment;
-  const absentCount = groupRows.filter(
-    (item) => item.candidate.absent || (context.operationClosed && !item.assignment),
-  ).length;
-  const presentCount = groupRows.filter((item) => item.assignment && !item.candidate.absent).length;
+  const attendanceContext = {
+    operationClosed: context.operationClosed,
+    labelPrintingEnabled: context.labelPrintingEnabled ?? context.schedule.labelPrintingEnabled ?? false,
+  };
+  const absentCount = groupRows.filter((item) => operationRowAttendance(item, attendanceContext) === "결시").length;
+  const presentCount = groupRows.filter((item) => operationRowAttendance(item, attendanceContext) === "응시").length;
   return {
     ...emptyTemplateSignatureNames(),
     ...(context.signatureNames || {}),
@@ -162,11 +184,7 @@ function templateValues(
     "candidate.roomCode": candidate?.roomCode || "",
     "candidate.roomName": candidate?.roomName || "",
     "candidate.seatNo": candidate?.seatNo || "",
-    "candidate.absent": candidate
-      ? candidate.absent || (context.operationClosed && !assignment)
-        ? "결시"
-        : "응시"
-      : "",
+    "candidate.absent": row ? operationRowAttendance(row, attendanceContext) : "",
     "candidate.photo": photo,
     "candidate.opt1": candidate?.opt1 || "",
     "candidate.opt2": candidate?.opt2 || "",

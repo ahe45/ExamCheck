@@ -1509,10 +1509,20 @@
   border-radius: 12px;
   background: #f4f7ff;
 }
-.operator-signature-modal { width: min(520px, calc(100vw - 32px)); }
-.operator-signature-modal .operator-print-signature-inputs label > span { font-size: 13px; }
-.operator-signature-modal .operator-print-signature-inputs input { font-size: 14px; }
-.operator-print-signature-inputs > p[role="alert"] { margin: 0; color: #b42318; font-size: 13px; }
+.operator-signature-modal {
+  width: min(520px, calc(100vw - 32px));
+}
+.operator-signature-modal .operator-print-signature-inputs label > span {
+  font-size: 13px;
+}
+.operator-signature-modal .operator-print-signature-inputs input {
+  font-size: 14px;
+}
+.operator-print-signature-inputs > p[role="alert"] {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+}
 .operator-print-signature-inputs > header {
   display: grid;
   gap: 3px;
@@ -2450,4 +2460,39 @@
 .operator-roster-heading button.operator-operation-close-button.closed:hover:not(:disabled) {
   border-color: #d7a35f;
   background: #ffebc7;
+}
+.operator-print-target {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin: 0 24px 16px;
+  padding: 12px 16px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.operator-print-target legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.operator-print-target label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.operator-print-target input {
+  accent-color: #315cfd;
+}
+.operator-print-target small {
+  color: #64748b;
+}
+.operator-print-target p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
 }

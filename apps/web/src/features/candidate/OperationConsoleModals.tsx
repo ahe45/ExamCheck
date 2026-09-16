@@ -5,7 +5,7 @@ import type { FormTemplate } from "../../shared/api/form-templates";
 import { CancelButtonIcon, ConfirmButtonIcon } from "../../shared/components/ActionIcons";
 import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
 import type { OperationScheduleMismatch } from "./operation-candidate-state";
-import { operationTemplateScopeLabel } from "./operation-template-pages";
+import { operationTemplateScopeLabel, type OperationPrintTarget } from "./operation-template-pages";
 import type { OperationPrintProgress } from "./useOperationPrint";
 import type { TemplateSignatureKey, TemplateSignatureNames } from "../templates/template-signatures";
 import { formatScheduleDate, operationRosterStats, type OperationRow } from "./operation-view-model";
@@ -201,6 +201,10 @@ export function OperationFinishModal({
 }
 
 interface OperationPrintModalProps {
+  printTarget: OperationPrintTarget;
+  onPrintTargetChange(target: OperationPrintTarget): void;
+  totalCount: number;
+  presentCount: number;
   schedule: OperationSchedule;
   templates: FormTemplate[];
   selectedTemplateCode: string;
@@ -219,6 +223,10 @@ export function OperationPrintModal({
   loading,
   generating,
   progress,
+  printTarget,
+  onPrintTargetChange,
+  totalCount,
+  presentCount,
   onSelect,
   onClose,
   onGenerate,
@@ -256,6 +264,36 @@ export function OperationPrintModal({
           </strong>
           <small>등록된 양식을 선택하면 현재 교시 데이터를 반영한 PDF 파일을 생성합니다.</small>
         </div>
+        <fieldset className="operator-print-target" disabled={generating}>
+          <legend>출력 대상</legend>
+          <label>
+            <input
+              type="radio"
+              name="operator-print-target"
+              value="ALL"
+              checked={printTarget === "ALL"}
+              onChange={() => onPrintTargetChange("ALL")}
+            />
+            <span>
+              전체 <small>({totalCount.toLocaleString()}명)</small>
+            </span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="operator-print-target"
+              value="PRESENT"
+              checked={printTarget === "PRESENT"}
+              onChange={() => onPrintTargetChange("PRESENT")}
+            />
+            <span>
+              응시만 <small>({presentCount.toLocaleString()}명)</small>
+            </span>
+          </label>
+          {(printTarget === "PRESENT" ? presentCount : totalCount) === 0 && (
+            <p>선택한 출력 대상에 해당하는 수험생이 없습니다.</p>
+          )}
+        </fieldset>
         {generating && progress && (
           <div className="operator-print-progress" aria-live="polite">
             <div>
@@ -278,6 +316,7 @@ export function OperationPrintModal({
                 <input
                   type="radio"
                   name="operator-print-template"
+                  disabled={generating}
                   value={template.code}
                   checked={selectedTemplateCode === template.code}
                   onChange={() => onSelect(template.code)}
@@ -313,7 +352,12 @@ export function OperationPrintModal({
             type="button"
             className="primary"
             onClick={onGenerate}
-            disabled={!selectedTemplateCode || loading || generating}
+            disabled={
+              !selectedTemplateCode ||
+              loading ||
+              generating ||
+              (printTarget === "PRESENT" ? presentCount : totalCount) === 0
+            }
           >
             <OperatorPrintIcon />
             <span>{generating ? "PDF 생성 중…" : "PDF 생성"}</span>

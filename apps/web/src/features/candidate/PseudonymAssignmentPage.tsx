@@ -211,6 +211,7 @@ export function PseudonymAssignmentPage(props: Props) {
     rows: operationRows,
     statusLoaded: operationStatusLoaded,
     operationClosed: operationStatus.closed,
+    labelPrintingEnabled,
     isCurrentSchedule,
     onNotice: setNotice,
   });
@@ -567,6 +568,10 @@ export function PseudonymAssignmentPage(props: Props) {
           generating={generatingPdf}
           progress={printProgress}
           onSelect={operationPrint.setSelectedTemplateCode}
+          printTarget={operationPrint.printTarget}
+          onPrintTargetChange={operationPrint.setPrintTarget}
+          totalCount={operationPrint.totalCount}
+          presentCount={operationPrint.presentCount}
           onClose={operationPrint.close}
           onGenerate={() => void operationPrint.generate()}
         />

@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { OperationSchedule } from "../../shared/api/examinees";
+import type { FormTemplate } from "../../shared/api/form-templates";
 import {
   OperationFinishModal,
   OperationPrintModal,
@@ -41,6 +42,36 @@ describe("operation console modal focus", () => {
 });
 
 describe("operation print modal", () => {
+  it("shows counts for both targets and disables generation for an empty target", () => {
+    const onTarget = vi.fn();
+    const props = {
+      schedule: { date: "2026-10-30", time: "10:00", periodName: "오전", admissionName: "면접" } as OperationSchedule,
+      templates: [
+        { id: 1, code: "PHOTO", name: "사진대장", category: "문서", usageScope: "CANDIDATE" },
+      ] as FormTemplate[],
+      selectedTemplateCode: "PHOTO",
+      loading: false,
+      generating: false,
+      progress: null,
+      printTarget: "ALL" as const,
+      totalCount: 10,
+      presentCount: 3,
+      onPrintTargetChange: onTarget,
+      onSelect: vi.fn(),
+      onClose: vi.fn(),
+      onGenerate: vi.fn(),
+    };
+    const view = render(<OperationPrintModal {...props} />);
+    expect(screen.getByRole("radio", { name: "전체 (10명)" })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: "응시만 (3명)" }));
+    expect(onTarget).toHaveBeenCalledWith("PRESENT");
+    view.rerender(<OperationPrintModal {...props} printTarget="PRESENT" presentCount={0} />);
+    expect(screen.getByRole("button", { name: "PDF 생성" })).toBeDisabled();
+    expect(screen.getByText("선택한 출력 대상에 해당하는 수험생이 없습니다.")).toBeInTheDocument();
+    view.rerender(<OperationPrintModal {...props} generating />);
+    for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
+  });
+
   it("collects signer names in a separate dialog with submit and cancel actions", async () => {
     const onConfirm = vi.fn(),
       onClose = vi.fn(),
@@ -87,6 +118,10 @@ describe("operation print modal", () => {
     };
     render(
       <OperationPrintModal
+        printTarget="ALL"
+        onPrintTargetChange={vi.fn()}
+        totalCount={10}
+        presentCount={8}
         schedule={schedule}
         templates={[]}
         selectedTemplateCode=""
