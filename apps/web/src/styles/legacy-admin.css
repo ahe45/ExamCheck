@@ -899,7 +899,7 @@
   height: calc(100vh - var(--exam-header-height));
   overflow: hidden;
 }
-.exam-admin-content.template-admin-main:has(> .examlist-template-library) {
+.exam-admin-content.template-admin-main:has(.examlist-template-library) {
   height: auto;
   overflow: visible;
 }

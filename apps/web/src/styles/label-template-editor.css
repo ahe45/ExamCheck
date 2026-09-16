@@ -5,6 +5,17 @@
   flex-direction: column;
 }
 
+/* Libraries grow with all card rows; editors retain their viewport-sized workspace. */
+.template-management-shell:has(> .examlist-template-library) {
+  height: auto;
+  min-height: calc(100dvh - var(--exam-header-height) - 16px);
+}
+
+.template-management-shell > .examlist-template-library {
+  flex: 1 0 auto;
+  min-height: 0;
+}
+
 .template-kind-tabs {
   display: flex;
   flex: 0 0 auto;

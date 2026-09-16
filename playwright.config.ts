@@ -60,6 +60,10 @@ export default defineConfig({
       ],
   projects: [
     {
+      name: "admin-card-layout",
+      testMatch: /admin-card-layout\.spec\.ts/,
+    },
+    {
       name: "hd",
       testMatch: /role-smoke\.spec\.ts/,
       use: { viewport: { width: 1366, height: 768 } },
