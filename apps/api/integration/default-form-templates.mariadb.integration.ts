@@ -30,6 +30,9 @@ describe("default operation form templates on MariaDB", () => {
     const harness = await createMariaDbIntegrationHarness();
     try {
       const repository = new FormTemplatesRepository(harness.pool);
+      expect((await repository.list(false)).map((template) => template.code).sort()).toEqual(
+        defaults.map((template) => template.code).sort(),
+      );
       for (const seed of defaults) {
         const template = await repository.findActive(seed.code);
         expect(template).toMatchObject({
@@ -85,9 +88,14 @@ describe("default operation form templates on MariaDB", () => {
       const connection = await harness.pool.getConnection();
       try {
         const result = await runMigrations(connection, migrations);
-        expect(result.applied).toEqual(["050_default_operation_form_templates.sql"]);
+        expect(result.applied).toEqual([
+          "050_default_operation_form_templates.sql",
+          "051_remove_legacy_default_form_templates.sql",
+        ]);
         // The seed itself must also be safe to execute again without duplicate rows.
-        await connection.query(migrations.at(-1)!.sql);
+        await connection.query(
+          migrations.find((migration) => migration.version === "050_default_operation_form_templates.sql")!.sql,
+        );
       } finally {
         connection.release();
       }
@@ -108,6 +116,41 @@ describe("default operation form templates on MariaDB", () => {
         name: defaults[2].name,
         active: true,
       });
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("removes only the two legacy default codes from existing installations", async () => {
+    const harness = await createMariaDbIntegrationHarness({
+      migrateThrough: "050_default_operation_form_templates.sql",
+    });
+    try {
+      const repository = new FormTemplatesRepository(harness.pool);
+      expect(await repository.list(false)).toHaveLength(5);
+      await harness.pool.execute(
+        `INSERT INTO form_template
+           (code, name, category, usage_scope, layout_json, active, created_by)
+         SELECT 'CUSTOM_SLIP', '가번호표', '사용자 양식', 'CANDIDATE', '{}', TRUE, id
+         FROM app_user WHERE login_id = 'system'`,
+      );
+      await harness.pool.execute("UPDATE form_template SET name = ?, active = FALSE WHERE code = ?", [
+        "사용자가 수정한 부여대장",
+        defaults[0].code,
+      ]);
+      const before = (await repository.list(false)).filter(
+        (template) => !["PSEUDONYM_SLIP", "CANDIDATE_CONFIRMATION"].includes(template.code),
+      );
+      const connection = await harness.pool.getConnection();
+      try {
+        const migrations = await loadMigrationFiles(migrationDirectory);
+        const result = await runMigrations(connection, migrations);
+        expect(result.applied).toEqual(["051_remove_legacy_default_form_templates.sql"]);
+        expect((await runMigrations(connection, migrations)).applied).toEqual([]);
+      } finally {
+        connection.release();
+      }
+      expect(await repository.list(false)).toEqual(before);
     } finally {
       await harness.cleanup();
     }
