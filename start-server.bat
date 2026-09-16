@@ -51,6 +51,7 @@ if errorlevel 1 goto FAILED
 echo.
 echo Starting ExamCheck web and API servers...
 echo Web: http://localhost:5173
+echo Other PCs: http://SERVER-IP:5173 - see Vite's Network URL below.
 echo API default: http://localhost:3100/api/v1/health
 echo Keep this window open. Press Ctrl+C to stop both servers.
 echo.

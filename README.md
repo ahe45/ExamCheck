@@ -25,6 +25,10 @@ npm run dev
 - 가번호 부여 담당자 로그인 후: `http://localhost:5173/operation/select`
 - API 상태: `http://localhost:3100/api/v1/health`
 
+같은 네트워크의 다른 PC에서는 `http://서버IP:5173`으로 접속합니다. 실행 창의 Vite `Network` 주소에서도 확인할 수 있습니다. 웹 서버는 네트워크 접속을 받으며 `/api` 요청을 서버 내부 API로 전달하므로 접속 PC마다 API 주소를 설정할 필요가 없습니다. 기존 `.env`의 `VITE_API_BASE_URL=http://localhost:3100/api/v1`도 자동으로 같은 서버 경유 방식으로 처리합니다. API 포트를 변경하면 루트 `.env`의 `PORT`가 전달 대상에 반영됩니다. 별도 API 서버를 사용하는 경우에만 `VITE_API_BASE_URL`에 해당 URL을 지정합니다.
+
+서버 PC에서는 열리지만 다른 PC에서 접속되지 않으면 서버 Windows 방화벽의 TCP 5173 인바운드 허용과 PC 간 네트워크 연결을 확인합니다. 기본 구성에서는 브라우저가 API 포트 3100에 직접 접속하지 않습니다.
+
 ### Windows 배치 파일로 실행·업데이트
 
 Node.js 22 또는 24 LTS와 npm, 실행 중인 MariaDB/MySQL 서버가 필요합니다. 업데이트에는 Git for Windows와 원격 추적 브랜치가 설정된 Git 복제본도 필요합니다.

@@ -1,6 +1,6 @@
 import type { z } from "zod";
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3100/api/v1";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 const DEFAULT_API_TIMEOUT_MS = 60_000;
 const INVALID_RESPONSE_MESSAGE = "서버 응답을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.";
 
