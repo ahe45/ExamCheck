@@ -55,6 +55,7 @@ export class LabelTemplatesRepository {
                 yMm: element.yMm,
                 widthMm: element.widthMm,
                 heightMm: element.heightMm,
+                rotation: element.rotation,
                 content:
                   element.kind === "text"
                     ? element.content?.replace(/\{\{[^{}]+\}\}/g, "데이터").slice(0, 80)

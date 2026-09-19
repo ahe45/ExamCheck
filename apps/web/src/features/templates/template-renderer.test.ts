@@ -103,6 +103,32 @@ describe("template renderer security boundary", () => {
     expect(html).toContain(">오전 8:40</span>");
   });
 
+  it("바코드마다 선택한 데이터로 출력 값을 치환한다", () => {
+    const keys = ["candidate.examNo", "candidate.temporaryNo", "candidate.preassignedNo"];
+    const values = {
+      "candidate.examNo": "20260001",
+      "candidate.temporaryNo": "1501",
+      "candidate.preassignedNo": "2001",
+    };
+    const html = renderTemplateHtml(
+      keys
+        .map(
+          (key) =>
+            `<img class="template-generated-object" data-template-object-type="barcode" data-template-object-source="${key}">`,
+        )
+        .join(""),
+      values,
+    );
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const images = Array.from(document.querySelectorAll("img"));
+    expect(images.map((image) => image.alt)).toEqual([
+      "20260001 Code128 바코드",
+      "1501 Code128 바코드",
+      "2001 Code128 바코드",
+    ]);
+    expect(new Set(images.map((image) => image.src)).size).toBe(3);
+  });
+
   it.each([
     ["barcode", "Code128 바코드"],
     ["qrcode", "QR코드"],

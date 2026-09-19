@@ -23,6 +23,7 @@ export interface LabelTemplateElement {
   yMm: number;
   widthMm: number;
   heightMm: number;
+  rotation?: 0 | 90 | 180 | 270;
   content?: string;
   fontSizeMm?: number;
   align?: "left" | "center" | "right";
@@ -101,28 +102,44 @@ export function buildLabelZpl(layoutValue: unknown): { layout: LabelTemplateLayo
   const layout = parseLabelTemplateLayout(layoutValue);
   const dotsPerMm = layout.dpi / 25.4;
   const dot = (millimeters: number, minimum = 0) => Math.max(minimum, Math.round(millimeters * dotsPerMm));
-  const commands = layout.elements.map((element) => {
-    const x = dot(element.xMm);
-    const y = dot(element.yMm);
-    const width = dot(element.widthMm, 1);
-    const height = dot(element.heightMm, 1);
-    if (element.kind === "text") {
-      const font = dot(element.fontSizeMm ?? 3, 8);
-      const alignment = element.align === "center" ? "C" : element.align === "right" ? "R" : "L";
-      return `^FO${x},${y}^A0N,${font},${font}^FB${width},1,0,${alignment},0^FD${toPrinterTemplateContent(element.content ?? "텍스트")}^FS`;
-    }
-    if (element.kind === "barcode") {
-      const moduleWidth = Math.max(1, Math.min(10, Math.round(width / 120)));
-      return `^FO${x},${y}^BY${moduleWidth},2,${height}^BCN,${height},${element.showText === false ? "N" : "Y"},N,N^FD${toPrinterTemplateContent(element.content ?? "{{candidate.temporaryNo}}")}^FS`;
-    }
-    const thickness = dot(element.strokeWidthMm ?? 0.4, 1);
-    const boxHeight = element.kind === "line" ? thickness : height;
-    return `^FO${x},${y}^GB${width},${boxHeight},${thickness},B,0^FS`;
-  });
+  const commands = layout.elements.map((element) =>
+    buildLabelElementZpl(element, layout.dpi, toPrinterTemplateContent(element.content ?? "")),
+  );
   return {
     layout,
     zplTemplate: `^XA^PW${dot(layout.widthMm, 1)}^LL${dot(layout.heightMm, 1)}^LH0,0${commands.join("")}^XZ`,
   };
+}
+
+export function buildLabelElementZpl(element: LabelTemplateElement, dpi: number, content: string): string {
+  const dot = (mm: number, minimum = 0) => Math.max(minimum, Math.round((mm * dpi) / 25.4));
+  let x = dot(element.xMm);
+  let y = dot(element.yMm);
+  const width = dot(element.widthMm, 1);
+  const height = dot(element.heightMm, 1);
+  const rotation = element.rotation ?? 0;
+  const orientation = { 0: "N", 90: "R", 180: "I", 270: "B" }[rotation];
+  // ^FO specifies the upper-left of the field area independently of rotation.
+  if (element.kind === "text") {
+    const font = dot(element.fontSizeMm ?? 3, 8);
+    const alignment = element.align === "center" ? "C" : element.align === "right" ? "R" : "L";
+    return `^FO${x},${y}^A0${orientation},${font},${font}^FB${width},1,0,${alignment},0^FD${content}^FS`;
+  }
+  if (element.kind === "barcode") {
+    const moduleWidth = Math.max(1, Math.min(10, Math.round(width / 120)));
+    return `^FO${x},${y}^BY${moduleWidth},2,${height}^BC${orientation},${height},${element.showText === false ? "N" : "Y"},N,N^FD${content}^FS`;
+  }
+  const thickness = dot(element.strokeWidthMm ?? 0.4, 1);
+  const sideways = rotation === 90 || rotation === 270;
+  let boxWidth = sideways ? height : width;
+  let boxHeight = sideways ? width : height;
+  if (element.kind === "line") {
+    if (sideways) boxWidth = thickness;
+    else boxHeight = thickness;
+    if (rotation === 90) x += Math.max(0, height - thickness);
+    if (rotation === 180) y += Math.max(0, height - thickness);
+  }
+  return `^FO${x},${y}^GB${boxWidth},${boxHeight},${thickness},B,0^FS`;
 }
 
 export function labelTemplateSampleValues(overrides: Record<string, string> = {}): Record<string, string> {
@@ -169,17 +186,23 @@ function parseElement(
   const yMm = finiteNumber(value.yMm, "세로 위치");
   const widthMm = finiteNumber(value.widthMm, "요소 너비");
   const heightMm = finiteNumber(value.heightMm, "요소 높이");
+  const rotation = value.rotation === undefined ? 0 : value.rotation;
+  if (rotation !== 0 && rotation !== 90 && rotation !== 180 && rotation !== 270) {
+    throw new BadRequestException("회전 각도는 0°, 90°, 180°, 270° 중에서 선택해 주세요.");
+  }
+  const sideways = rotation === 90 || rotation === 270;
   if (
     xMm < 0 ||
     yMm < 0 ||
     widthMm <= 0 ||
     heightMm <= 0 ||
-    xMm + widthMm > labelWidth ||
-    yMm + heightMm > labelHeight
+    xMm + (sideways ? heightMm : widthMm) > labelWidth ||
+    yMm + (sideways ? widthMm : heightMm) > labelHeight
   ) {
     throw new BadRequestException("라벨 요소가 출력 영역을 벗어났습니다.");
   }
   const element: LabelTemplateElement = { id, kind, xMm, yMm, widthMm, heightMm };
+  if (value.rotation !== undefined) element.rotation = rotation;
   if (kind === "text" || kind === "barcode") {
     const content = String(value.content ?? "").trim();
     if (!content || content.length > 200)
@@ -188,7 +211,8 @@ function parseElement(
     element.content = content;
   }
   if (kind === "text") {
-    const fontSizeMm = finiteNumber(value.fontSizeMm ?? 3, "글자 크기");
+    // Preserve point-to-mm conversions when the editor saves a font size in pt.
+    const fontSizeMm = finiteNumber(value.fontSizeMm ?? 3, "글자 크기", 6);
     if (fontSizeMm < 1.5 || fontSizeMm > 20)
       throw new BadRequestException("글자 크기는 1.5~20mm 범위로 설정해 주세요.");
     const align = value.align ?? "left";
@@ -240,10 +264,11 @@ function parseSampleData(value: unknown): Record<string, string> | undefined {
   return Object.fromEntries(entries.map(([key, sample]) => [key, String(sample).slice(0, 500)]));
 }
 
-function finiteNumber(value: unknown, label: string): number {
+function finiteNumber(value: unknown, label: string, decimalPlaces = 1): number {
   const number = Number(value);
   if (!Number.isFinite(number)) throw new BadRequestException(`${label} 값을 확인해 주세요.`);
-  return Math.round(number * 10) / 10;
+  const scale = 10 ** decimalPlaces;
+  return Math.round(number * scale) / scale;
 }
 
 function parseJson(value: string): unknown {

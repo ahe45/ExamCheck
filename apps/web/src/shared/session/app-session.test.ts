@@ -80,9 +80,12 @@ describe("session storage validation", () => {
     expect(readStoredOperationSchedule(storage, { ...user, admissionNames: [] })?.admissionName).toBe("실기");
   });
 
-  it("로그아웃 시 세션과 선택 교시를 함께 제거한다", () => {
+  it("로그아웃 시 세션과 선택 교시, 양식 편집 복원 정보를 함께 제거한다", () => {
     writeStoredSession(storage, session);
     writeStoredOperationSchedule(storage, user.id, schedule);
+    storage.setItem("examcheck.form-template-editor.session.v1", "{}");
+    storage.setItem("examcheck.label-template-editor.session.v1", "{}");
+    storage.setItem("examcheck.template-tab.session.v1", '"label"');
     clearStoredAuthentication(storage);
     expect(storage.values.size).toBe(0);
   });

@@ -10,6 +10,7 @@ export interface LabelTemplateElement {
   yMm: number;
   widthMm: number;
   heightMm: number;
+  rotation?: 0 | 90 | 180 | 270;
   content?: string;
   fontSizeMm?: number;
   align?: "left" | "center" | "right";

@@ -1,0 +1,68 @@
+diff --git a/src/runtime/template-editor-runtime-foundation.bundle.js b/src/runtime/template-editor-runtime-foundation.bundle.js
+--- a/src/runtime/template-editor-runtime-foundation.bundle.js
++++ b/src/runtime/template-editor-runtime-foundation.bundle.js
+@@ -4441,13 +4441,14 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+     objectSourceKey = "examineeNo",
+     getObjectValue = null,
+   } = {}) {
+-    const resolveObjectValue = (examinee) => {
++    const resolveObjectValue = (examinee, sourceKey = objectSourceKey) => {
+       if (typeof getObjectValue === "function") {
+-        const customValue = String(getObjectValue(examinee) ?? "").trim();
++        const customValue = String(getObjectValue(examinee, sourceKey) ?? "").trim();
+         return customValue || "-";
+       }
+ 
+-      const value = String(examinee?.[objectSourceKey] ?? "").trim();
++      const nestedValue = String(sourceKey).split(".").reduce((value, key) => value?.[key], examinee);
++      const value = String(examinee?.[sourceKey] ?? nestedValue ?? "").trim();
+       return value || "-";
+     };
+ 
+@@ -4455,8 +4456,8 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+       return TEMPLATE_GENERATED_OBJECT_CONFIG[String(objectType || "").trim().toLowerCase()] || null;
+     }
+ 
+-    function getTemplateGeneratedObjectValue(examinee) {
+-      return resolveObjectValue(examinee);
++    function getTemplateGeneratedObjectValue(examinee, sourceKey = objectSourceKey) {
++      return resolveObjectValue(examinee, sourceKey);
+     }
+ 
+     function resolveTemplateGeneratedObjectExaminee(examinee = null, getPreviewExaminee = null) {
+@@ -4471,14 +4472,14 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+       return {};
+     }
+ 
+-    function buildTemplateGeneratedObjectPreviewUrl(objectType, examinee) {
++    function buildTemplateGeneratedObjectPreviewUrl(objectType, examinee, sourceKey = objectSourceKey) {
+       const objectConfig = getTemplateGeneratedObjectConfig(objectType);
+ 
+       if (!objectConfig) {
+         return "";
+       }
+ 
+-      const value = getTemplateGeneratedObjectValue(examinee);
++      const value = getTemplateGeneratedObjectValue(examinee, sourceKey);
+       const query = new URLSearchParams({ value }).toString();
+       return buildApiUrl(`/api/template-objects/${encodeURIComponent(objectType)}.svg?${query}`);
+     }
+@@ -4503,13 +4504,14 @@ globalThis.ExamListEditorToolbar = Object.freeze({
+       }
+ 
+       const resolvedExaminee = resolveTemplateGeneratedObjectExaminee(examinee, getPreviewExaminee);
+-      const value = getTemplateGeneratedObjectValue(resolvedExaminee);
+-      const previewUrl = buildTemplateGeneratedObjectPreviewUrl(objectType, resolvedExaminee);
++      const sourceKey = String(imageElement.dataset.templateObjectSource || objectSourceKey).trim() || objectSourceKey;
++      const value = getTemplateGeneratedObjectValue(resolvedExaminee, sourceKey);
++      const previewUrl = buildTemplateGeneratedObjectPreviewUrl(objectType, resolvedExaminee, sourceKey);
+ 
+       imageElement.classList.add("template-generated-object", objectConfig.className);
+-      imageElement.dataset.templateObjectSource = objectSourceKey;
++      imageElement.dataset.templateObjectSource = sourceKey;
+       imageElement.alt = `${value} ${objectConfig.altSuffix}`;
+-      imageElement.title = objectConfig.label;
++      if (!imageElement.title) imageElement.title = objectConfig.label;
+ 
+       if (!String(imageElement.style.width || "").trim() && !imageElement.getAttribute("width")) {
+         imageElement.style.width = `${objectConfig.width}px`;

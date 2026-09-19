@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { sessionSchema, type AuthUser, type Session } from "../api/auth";
 import { operationScheduleSchema, type OperationSchedule } from "../api/examinees";
+import { FORM_EDITOR_SESSION_KEY, LABEL_EDITOR_SESSION_KEY, TEMPLATE_TAB_SESSION_KEY } from "./template-session";
 
 export const SESSION_KEY = "examcheck.session";
 export const OPERATION_SCHEDULE_KEY = "examcheck.operation-schedule";
@@ -53,6 +54,9 @@ export function clearStoredOperationSchedule(storage: SessionStorageLike) {
 export function clearStoredAuthentication(storage: SessionStorageLike) {
   storage.removeItem(SESSION_KEY);
   storage.removeItem(OPERATION_SCHEDULE_KEY);
+  storage.removeItem(FORM_EDITOR_SESSION_KEY);
+  storage.removeItem(LABEL_EDITOR_SESSION_KEY);
+  storage.removeItem(TEMPLATE_TAB_SESSION_KEY);
 }
 
 function readJson<T>(storage: SessionStorageLike, key: string, schema: z.ZodType<T>): T | null {

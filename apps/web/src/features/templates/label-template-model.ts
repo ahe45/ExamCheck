@@ -77,15 +77,50 @@ export function replaceLabelSamples(content: string, tags: DataTagDefinition[], 
 }
 
 export function clampLabelElement(element: LabelTemplateElement, layout: LabelTemplateLayout): LabelTemplateElement {
-  const widthMm = Math.min(Math.max(0.5, element.widthMm), layout.widthMm);
-  const heightMm = Math.min(Math.max(0.5, element.heightMm), layout.heightMm);
+  const sideways = element.rotation === 90 || element.rotation === 270;
+  const widthMm = round(Math.min(Math.max(0.5, element.widthMm), sideways ? layout.heightMm : layout.widthMm));
+  const heightMm = round(Math.min(Math.max(0.5, element.heightMm), sideways ? layout.widthMm : layout.heightMm));
   return {
     ...element,
     widthMm: round(widthMm),
     heightMm: round(heightMm),
-    xMm: round(Math.min(Math.max(0, element.xMm), layout.widthMm - widthMm)),
-    yMm: round(Math.min(Math.max(0, element.yMm), layout.heightMm - heightMm)),
+    xMm: round(Math.min(Math.max(0, element.xMm), layout.widthMm - (sideways ? heightMm : widthMm))),
+    yMm: round(Math.min(Math.max(0, element.yMm), layout.heightMm - (sideways ? widthMm : heightMm))),
   };
+}
+
+export function rotateLabelElement(
+  element: LabelTemplateElement,
+  delta: -90 | 90,
+  layout: LabelTemplateLayout,
+): LabelTemplateElement {
+  const sideways = element.rotation === 90 || element.rotation === 270;
+  const centerX = element.xMm + (sideways ? element.heightMm : element.widthMm) / 2;
+  const centerY = element.yMm + (sideways ? element.widthMm : element.heightMm) / 2;
+  const rotated = clampLabelElement(
+    {
+      ...element,
+      rotation: (((element.rotation ?? 0) + delta + 360) % 360) as LabelTemplateElement["rotation"],
+    },
+    layout,
+  );
+  const nextSideways = rotated.rotation === 90 || rotated.rotation === 270;
+  return clampLabelElement(
+    {
+      ...rotated,
+      xMm: centerX - (nextSideways ? rotated.heightMm : rotated.widthMm) / 2,
+      yMm: centerY - (nextSideways ? rotated.widthMm : rotated.heightMm) / 2,
+    },
+    layout,
+  );
+}
+
+// Stored X/Y describe the rotated bounding box; rotation commands keep its center fixed.
+export function labelElementTransform(rotation: LabelTemplateElement["rotation"]) {
+  if (rotation === 90) return "rotate(90deg) translateY(-100%)";
+  if (rotation === 180) return "rotate(180deg) translate(-100%, -100%)";
+  if (rotation === 270) return "rotate(270deg) translateX(-100%)";
+  return undefined;
 }
 
 function round(value: number) {

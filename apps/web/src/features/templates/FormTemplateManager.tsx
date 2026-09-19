@@ -14,30 +14,21 @@ import type { TemplateEditorWorkspaceHandle } from "./TemplateEditorWorkspace";
 import { TemplateLibrary } from "./TemplateLibrary";
 import { createBlankDraft, toDraft, type DraftTemplate } from "./template-manager-model";
 import type { TemplateNoticeValue } from "./TemplateNotice";
+import {
+  FORM_EDITOR_SESSION_KEY,
+  LABEL_EDITOR_SESSION_KEY,
+  TEMPLATE_TAB_SESSION_KEY,
+  readTemplateSession,
+  writeTemplateSession,
+  clearTemplateSession,
+} from "../../shared/session/template-session";
 
 const LazyTemplateEditorWorkspace = lazy(() => import("./TemplateEditorWorkspaceLazy"));
 
-export const formTemplateEditorSessionStorageKey = "examcheck.form-template-editor.session.v1";
+const formTemplateEditorSessionStorageKey = FORM_EDITOR_SESSION_KEY;
 
 interface FormTemplateEditorSession {
   sourceId: string;
-  draft?: DraftTemplate;
-}
-
-function isDraftTemplate(value: unknown): value is DraftTemplate {
-  if (!value || typeof value !== "object") return false;
-  const draft = value as Partial<DraftTemplate>;
-  return (
-    typeof draft.code === "string" &&
-    typeof draft.name === "string" &&
-    typeof draft.description === "string" &&
-    typeof draft.category === "string" &&
-    typeof draft.usageScope === "string" &&
-    typeof draft.layout === "object" &&
-    draft.layout !== null &&
-    typeof draft.active === "boolean" &&
-    typeof draft.isNew === "boolean"
-  );
 }
 
 function readEditorSession(): FormTemplateEditorSession | null {
@@ -48,24 +39,15 @@ function readEditorSession(): FormTemplateEditorSession | null {
     if (typeof value.sourceId !== "string" || !value.sourceId) return null;
     return {
       sourceId: value.sourceId,
-      ...(isDraftTemplate(value.draft) ? { draft: value.draft } : {}),
     };
   } catch {
     return null;
   }
 }
 
-function persistEditorSession(sourceId: string, draft?: DraftTemplate) {
+function persistEditorSession(sourceId: string) {
   if (!sourceId) return;
-  try {
-    window.sessionStorage.setItem(formTemplateEditorSessionStorageKey, JSON.stringify({ sourceId, draft }));
-  } catch {
-    try {
-      window.sessionStorage.setItem(formTemplateEditorSessionStorageKey, JSON.stringify({ sourceId }));
-    } catch {
-      // Storage may be unavailable or full. The editor remains usable without restoration.
-    }
-  }
+  writeTemplateSession(formTemplateEditorSessionStorageKey, { sourceId });
 }
 
 function clearEditorSession() {
@@ -92,28 +74,21 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
   function FormTemplateManager({ token, resetKey = 0, printerService, printerDiagnostic, onDirtyChange }, ref) {
     const workspaceRef = useRef<TemplateEditorWorkspaceHandle>(null);
     const labelManagerRef = useRef<LabelTemplateManagerHandle>(null);
-    const restoredSessionRef = useRef<FormTemplateEditorSession | null>(readEditorSession());
+    const [initialEditorSession] = useState(() =>
+      resetKey === 0 && readTemplateSession(TEMPLATE_TAB_SESSION_KEY) !== "label" ? readEditorSession() : null,
+    );
+    const restoredSessionRef = useRef<FormTemplateEditorSession | null>(initialEditorSession);
     const editorSourceIdRef = useRef("");
     const editRequest = useRef(0);
-    const pendingSession = useRef<FormTemplateEditorSession | null>(null);
-    const storageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const flushSession = useCallback(() => {
-      if (storageTimer.current) clearTimeout(storageTimer.current);
-      storageTimer.current = null;
-      const pending = pendingSession.current;
-      pendingSession.current = null;
-      if (pending && pending.sourceId === editorSourceIdRef.current)
-        persistEditorSession(pending.sourceId, pending.draft);
-    }, []);
+    const mounted = useRef(true);
     useEffect(() => {
+      mounted.current = true;
       const requestCounter = editRequest;
-      window.addEventListener("pagehide", flushSession);
       return () => {
+        mounted.current = false;
         requestCounter.current++;
-        flushSession();
-        window.removeEventListener("pagehide", flushSession);
       };
-    }, [flushSession]);
+    }, []);
     const [templates, setTemplates] = useState<FormTemplateSummary[]>([]);
     const [dataTags, setDataTags] = useState<DataTagCatalog | null>(null);
     const [draft, setDraft] = useState<DraftTemplate | null>(null);
@@ -121,7 +96,9 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [notice, setNotice] = useState<TemplateNoticeValue | null>(null);
-    const [templateKind, setTemplateKind] = useState<"document" | "label">("document");
+    const [templateKind, setTemplateKind] = useState<"document" | "label">(() =>
+      resetKey === 0 && readTemplateSession(TEMPLATE_TAB_SESSION_KEY) === "label" ? "label" : "document",
+    );
     const [sectionDirty, setSectionDirty] = useState(false);
 
     useImperativeHandle(
@@ -151,23 +128,27 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
           setTemplates(loadedTemplates);
           setDataTags(loadedTags);
           const restoredSession = restoredSessionRef.current;
-          restoredSessionRef.current = null;
           if (restoredSession) {
             const templateIdMatch = /^template-(\d+)$/.exec(restoredSession.sourceId);
             const storedTemplate = templateIdMatch
               ? loadedTemplates.find((template) => template.id === Number(templateIdMatch[1]))
               : null;
             const restoredDraft = restoredSession.sourceId.startsWith("new-")
-              ? restoredSession.draft || null
+              ? createBlankDraft(
+                  Date.now(),
+                  loadedTemplates.map((template) => template.code),
+                )
               : storedTemplate
-                ? restoredSession.draft || toDraft(await fetchFormTemplate(token, storedTemplate.code, true))
+                ? toDraft(await fetchFormTemplate(token, storedTemplate.code, true))
                 : null;
 
             if (!active) return;
+            restoredSessionRef.current = null;
             if (restoredDraft) {
               editorSourceIdRef.current = restoredSession.sourceId;
               setEditorSourceId(restoredSession.sourceId);
               setDraft(restoredDraft);
+              persistEditorSession(restoredSession.sourceId);
             } else {
               clearEditorSession();
             }
@@ -191,6 +172,8 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     useEffect(() => {
       if (resetKey > 0) {
         clearEditorSession();
+        clearTemplateSession(LABEL_EDITOR_SESSION_KEY);
+        writeTemplateSession(TEMPLATE_TAB_SESSION_KEY, "document");
         restoredSessionRef.current = null;
         editorSourceIdRef.current = "";
         setEditorSourceId("");
@@ -199,6 +182,11 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
         handleDirtyChange(false);
       }
     }, [handleDirtyChange, resetKey]);
+
+    function selectTemplateKind(kind: "document" | "label") {
+      setTemplateKind(kind);
+      writeTemplateSession(TEMPLATE_TAB_SESSION_KEY, kind);
+    }
 
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
@@ -220,7 +208,7 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
         const sourceId = `template-${template.id}`;
         editorSourceIdRef.current = sourceId;
         setEditorSourceId(sourceId);
-        persistEditorSession(sourceId, nextDraft);
+        persistEditorSession(sourceId);
       },
       [token],
     );
@@ -237,7 +225,7 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
       setDraft(nextDraft);
       editorSourceIdRef.current = sourceId;
       setEditorSourceId(sourceId);
-      persistEditorSession(sourceId, nextDraft);
+      persistEditorSession(sourceId);
     }, [templates]);
 
     const refreshTemplates = useCallback(async () => {
@@ -274,7 +262,6 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     }, []);
 
     const handleTemplateSaved = useCallback((saved: FormTemplate) => {
-      pendingSession.current = null;
       const nextDraft = toDraft(saved);
       if (!nextDraft) return;
       setTemplates((current) =>
@@ -286,12 +273,11 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
       const sourceId = `template-${saved.id}`;
       editorSourceIdRef.current = sourceId;
       setEditorSourceId(sourceId);
-      persistEditorSession(sourceId, nextDraft);
+      persistEditorSession(sourceId);
     }, []);
 
     const closeEditor = useCallback(() => {
       editRequest.current++;
-      pendingSession.current = null;
       clearEditorSession();
       editorSourceIdRef.current = "";
       setEditorSourceId("");
@@ -299,14 +285,10 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
       setNotice(null);
     }, []);
 
-    const updateDraft = useCallback(
-      (nextDraft: DraftTemplate) => {
-        setDraft(nextDraft);
-        pendingSession.current = { sourceId: editorSourceIdRef.current, draft: nextDraft };
-        if (!storageTimer.current) storageTimer.current = setTimeout(flushSession, 200);
-      },
-      [flushSession],
-    );
+    const updateDraft = useCallback((nextDraft: DraftTemplate) => {
+      if (!mounted.current || !editorSourceIdRef.current) return;
+      setDraft(nextDraft);
+    }, []);
 
     if (loading) {
       return <div className="admin-view-loading">양식 관리 화면을 준비하고 있습니다.</div>;
@@ -325,14 +307,14 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
           <nav className="template-kind-tabs" aria-label="양식 종류">
             <button
               className={templateKind === "document" ? "active" : ""}
-              onClick={() => setTemplateKind("document")}
+              onClick={() => selectTemplateKind("document")}
               disabled={sectionDirty && templateKind !== "document"}
             >
               문서 양식
             </button>
             <button
               className={templateKind === "label" ? "active" : ""}
-              onClick={() => setTemplateKind("label")}
+              onClick={() => selectTemplateKind("label")}
               disabled={sectionDirty && templateKind !== "label"}
             >
               라벨 양식

@@ -93,52 +93,45 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: 12px;
-  padding: 18px 24px 20px;
+  gap: 0;
+  padding: 0;
   overflow: hidden;
   color: #172033;
+  background: #eef1f5;
 }
 
-.label-template-heading {
-  display: grid;
-  grid-template-columns: minmax(170px, 1fr) 190px auto auto;
-  align-items: center;
-  gap: 12px;
+.template-management-shell:has(.label-template-manager) > .template-kind-tabs {
+  display: none;
 }
 
-.label-template-heading p,
-.label-template-heading h2 {
-  margin: 0;
+.label-editor-accessible-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.label-template-heading p {
-  color: #2563eb;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
+.label-template-manager .template-editor-context-bar {
+  flex: 0 0 auto;
+  padding: 6px 16px;
+  justify-content: stretch;
 }
 
-.label-template-heading h2 {
-  margin-top: 2px;
-  font-size: 19px;
+.label-template-manager .template-editor-context-fields {
+  width: min(100%, 1606px);
+  min-width: 0;
+  margin-inline: auto;
 }
 
-.label-template-heading > label,
-.label-template-properties label,
-.label-template-advanced span {
+.label-template-properties label {
   color: #475569;
   font-size: 12px;
   font-weight: 700;
 }
-
-.label-template-heading > label {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 7px;
-}
-
-.label-template-heading select,
 .label-template-properties input,
 .label-template-properties select {
   width: 100%;
@@ -153,63 +146,101 @@
   font-size: 12px;
 }
 
-.label-template-state {
-  padding: 5px 9px;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.label-template-state.published {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.label-template-state.draft {
-  background: #fef3c7;
-  color: #a16207;
-}
-
-.label-template-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 7px;
-}
-
-.label-template-actions button,
-.label-template-advanced button {
-  min-height: 34px;
-  white-space: nowrap;
-}
-
 .label-template-workspace {
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: 220px minmax(320px, 1fr) 250px;
-  overflow: hidden;
-  border: 1px solid #dbe3ef;
-  border-radius: 14px;
-  background: #f4f7fb;
+  grid-template-columns: 330px 210px minmax(320px, 1fr) 230px;
+  grid-template-rows: minmax(0, 1fr);
+  width: min(100%, 1630px);
+  min-width: 0;
+  margin-inline: auto;
+  gap: 6px;
+  padding: 12px;
+  overflow: auto;
+  background: #eef1f5;
 }
 
+.label-template-tools {
+  --text: #142033;
+  --text-dim: #475569;
+  --muted: #69788f;
+}
+
+.label-template-tools .label-insert-section {
+  margin-top: 24px;
+}
+
+.label-template-tools > .template-toolbar-section {
+  margin-bottom: 12px;
+}
+
+.label-object-heading {
+  margin-bottom: 10px;
+}
+
+.label-template-tools .examlist-object-size-input {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.label-template-tools .template-toolbar-section-label {
+  padding-right: 8px;
+}
+
+.label-template-tools .template-toolbar-combo-value:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.label-template-tools input:disabled,
+.label-template-tools select:disabled {
+  color: #94a3b8;
+  background: #f8fbff;
+  cursor: not-allowed;
+}
+
+.label-template-tools input:disabled::placeholder {
+  color: #94a3b8;
+  opacity: 1;
+}
+
+.label-font-custom {
+  display: grid;
+  gap: 4px;
+  padding: 5px;
+}
+
+.label-object-alignment {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.label-object-alignment > .template-toolbar-section {
+  grid-column: 1 / -1;
+}
+
+.label-canvas-element:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
 .label-template-toolbox,
 .label-template-properties {
   min-height: 0;
-  padding: 16px;
+  padding: 12px;
   overflow-y: auto;
   background: #fff;
-}
-
-.label-template-toolbox {
-  border-right: 1px solid #dbe3ef;
-}
-
-.label-template-properties {
-  border-left: 1px solid #dbe3ef;
+  border: 1px solid #dfe5f0;
+  border-radius: 18px;
+  scrollbar-gutter: stable;
+  min-width: 0;
 }
 
 .label-template-toolbox h3,
@@ -218,12 +249,18 @@
   font-size: 13px;
 }
 
+.label-template-properties h4 {
+  margin: 14px 0 8px;
+  font-size: 12px;
+  color: #50617b;
+}
+
 .label-template-toolbox h3:not(:first-child) {
   margin-top: 22px;
 }
 
 .label-template-data-tags {
-  margin-top: 22px;
+  margin-top: 0;
   overflow: visible;
 }
 
@@ -239,74 +276,21 @@
   overflow: visible;
 }
 
-.label-template-tool-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 7px;
-}
-
-.label-template-tool-grid button,
-.label-template-tag-list button {
-  border: 1px solid #d7e0ec;
-  border-radius: 9px;
-  background: #fff;
-  color: #334155;
-  cursor: pointer;
-}
-
-.label-template-tool-grid button {
-  display: grid;
-  place-items: center;
-  gap: 3px;
-  min-height: 58px;
-}
-
-.label-template-tool-grid button:hover,
-.label-template-tag-list button:hover {
-  border-color: #93b4fc;
-  background: #f8faff;
-}
-
-.label-template-tool-grid b {
-  color: #2563eb;
-  font-size: 18px;
-}
-
-.label-template-tool-grid span,
-.label-template-tag-list span {
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.label-template-tag-list {
-  display: grid;
-  gap: 6px;
-}
-
-.label-template-tag-list button {
-  display: grid;
-  gap: 2px;
-  padding: 8px 9px;
-  text-align: left;
-}
-
-.label-template-tag-list small {
-  overflow: hidden;
-  color: #94a3b8;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .label-template-stage {
   display: flex;
+  width: auto;
+  max-width: none;
+  margin: 0;
   min-width: 0;
   min-height: 0;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  padding: 20px 24px;
+  padding: 20px 12px;
   overflow: auto;
+  border-radius: 18px;
+  background: #e7edf4;
+  justify-content: safe center;
 }
 
 .label-template-ruler {
@@ -333,6 +317,8 @@
   margin: 10px 0 0;
   color: #64748b;
   font-size: 11px;
+  max-width: 100%;
+  text-align: center;
 }
 
 .label-canvas-element {
@@ -443,71 +429,24 @@
   height: 14px;
 }
 
-.label-element-delete {
-  width: 100%;
-  min-height: 34px;
-  border: 1px solid #fecaca;
-  border-radius: 8px;
-  background: #fff;
-  color: #dc2626;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.label-template-advanced {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.label-template-advanced button {
-  padding: 0 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  background: #fff;
-  color: #334155;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.label-template-advanced span {
-  min-width: 0;
-  overflow: hidden;
-  color: #94a3b8;
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.label-template-advanced pre {
-  width: 100%;
-  max-height: 100px;
-  margin: 0;
-  padding: 10px;
-  overflow: auto;
-  border-radius: 8px;
-  background: #172033;
-  color: #dbeafe;
-  font-size: 10px;
-  white-space: pre-wrap;
-}
-
-@media (max-width: 1280px) {
-  .label-template-heading {
-    grid-template-columns: minmax(150px, 1fr) 170px auto;
+@media (max-width: 1500px) {
+  .label-template-manager .template-editor-context-fields {
+    grid-template-columns: minmax(170px, 1fr) minmax(240px, 1.5fr) auto;
   }
-
-  .label-template-actions {
-    grid-column: 1 / -1;
+  .label-template-manager .template-editor-context-actions {
+    position: static;
+    transform: none;
   }
-
   .label-template-workspace {
-    grid-template-columns: 200px minmax(280px, 1fr) 225px;
+    grid-template-columns: 280px 190px minmax(320px, 1fr) 210px;
+  }
+}
+
+@media (max-width: 1150px) {
+  .label-template-manager .template-editor-context-fields {
+    grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.5fr);
+  }
+  .label-template-manager .template-editor-context-actions {
+    grid-column: 1 / -1;
   }
 }

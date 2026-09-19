@@ -1,3 +1,6 @@
+import { TemplateEditorMetadataBar } from "./TemplateEditorMetadataBar";
+import { BarcodeSourcePicker } from "./BarcodeSourcePicker";
+import { bindBarcodeSourceControl, type BarcodeSourceRequest } from "./barcode-source-control";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ListButtonIcon, PreviewButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
 import { saveFormTemplate, type FormTemplate } from "../../shared/api/form-templates";
@@ -102,6 +105,7 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
     const [editorDirty, setEditorDirty] = useState(false);
     const [showInformation, setShowInformation] = useState(initialInformationOpen);
     const [showTagSettings, setShowTagSettings] = useState(false);
+    const [barcodeSource, setBarcodeSource] = useState<BarcodeSourceRequest | null>(null);
     const [tagSettingsRevision, setTagSettingsRevision] = useState(0);
     const [actionBusy, setActionBusy] = useState<"preview" | "save" | null>(null);
     const [overflowMessage, setOverflowMessage] = useState("");
@@ -221,6 +225,13 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       const pageProperties = enhanceTemplatePageProperties(root);
       const disposeDataBlock = enhanceTemplateDataBlock(root, editor, transactions);
       const disposeEditorControls = enhanceTemplateEditorControls(root, editor, transactions, commands);
+      const disposeBarcodeSource = bindBarcodeSourceControl({
+        root,
+        editor,
+        commands,
+        catalog: editorDataTags,
+        onOpen: setBarcodeSource,
+      });
       const disposeTagPanel = enhanceDataTagPanel({
         root,
         catalog: editorDataTags,
@@ -236,6 +247,7 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
         flushDraftRef.current();
         transactions.dispose();
         disposeTagPanel();
+        disposeBarcodeSource();
         disposeEditorControls();
         disposeDataBlock();
         pageProperties.dispose();
@@ -316,56 +328,35 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
 
     return (
       <section className="examlist-template-editor-view">
-        <div className="template-editor-context-bar">
-          <div className="template-editor-context-fields">
-            <label className="template-editor-context-field">
-              <span>제목</span>
-              <input
-                className="template-editor-title-input"
-                aria-label="양식 제목"
-                maxLength={200}
-                placeholder="양식 제목을 입력하세요."
-                value={draft.name}
-                onChange={(event) => updateMetadata("name", event.target.value)}
-              />
-            </label>
-            <label className="template-editor-context-field">
-              <span>설명</span>
-              <input
-                className="template-editor-description-input"
-                aria-label="양식 설명"
-                maxLength={500}
-                placeholder="양식 설명을 입력하세요."
-                value={draft.description}
-                onChange={(event) => updateMetadata("description", event.target.value)}
-              />
-            </label>
-            <div className="template-editor-context-actions">
-              <button className="exam-outline-button template-editor-list-button" type="button" onClick={closeEditor}>
-                <ListButtonIcon />
-                <span>양식 목록</span>
-              </button>
-              <button
-                className="exam-ghost-button ghost-button template-editor-preview-button"
-                type="button"
-                disabled={actionBusy !== null}
-                onClick={previewTemplate}
-              >
-                <PreviewButtonIcon />
-                <span>{actionBusy === "preview" ? "준비 중" : "미리보기"}</span>
-              </button>
-              <button
-                className="exam-primary-button primary-button template-editor-save-button"
-                type="button"
-                disabled={!dirty || actionBusy !== null || Boolean(overflowMessage)}
-                onClick={() => void saveTemplateVersion()}
-              >
-                <SaveButtonIcon />
-                <span>{actionBusy === "save" ? "저장 중" : "저장"}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <TemplateEditorMetadataBar
+          name={draft.name}
+          description={draft.description}
+          onNameChange={(value) => updateMetadata("name", value)}
+          onDescriptionChange={(value) => updateMetadata("description", value)}
+        >
+          <button className="exam-outline-button template-editor-list-button" type="button" onClick={closeEditor}>
+            <ListButtonIcon />
+            <span>양식 목록</span>
+          </button>
+          <button
+            className="exam-ghost-button ghost-button template-editor-preview-button"
+            type="button"
+            disabled={actionBusy !== null}
+            onClick={previewTemplate}
+          >
+            <PreviewButtonIcon />
+            <span>{actionBusy === "preview" ? "준비 중" : "미리보기"}</span>
+          </button>
+          <button
+            className="exam-primary-button primary-button template-editor-save-button"
+            type="button"
+            disabled={!dirty || actionBusy !== null || Boolean(overflowMessage)}
+            onClick={() => void saveTemplateVersion()}
+          >
+            <SaveButtonIcon />
+            <span>{actionBusy === "save" ? "저장 중" : "저장"}</span>
+          </button>
+        </TemplateEditorMetadataBar>
         {overflowMessage && (
           <div className="template-editor-status-bar error">
             {overflowMessage} 문서 영역 안으로 내용을 조정해야 저장할 수 있습니다.
@@ -378,6 +369,13 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
 
         {showInformation && (
           <TemplateInformationModal draft={draft} onChange={updateMetadata} onClose={() => setShowInformation(false)} />
+        )}
+        {barcodeSource && (
+          <BarcodeSourcePicker
+            catalog={barcodeSource.catalog}
+            onSelect={barcodeSource.insert}
+            onClose={() => setBarcodeSource(null)}
+          />
         )}
         {showTagSettings && (
           <DataTagSettingsModal

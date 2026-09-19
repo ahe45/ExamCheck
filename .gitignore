@@ -8,6 +8,7 @@ blob-report/
 .env
 .env.local
 *.log
+/log/
 .idea/
 apps/web/public/vendor/BrowserPrint.js
 

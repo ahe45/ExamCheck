@@ -1,6 +1,6 @@
 # ExamList editor local patches
 
-The application uses `examlist-template-editor-1.1.13-examcheck.21.tgz`.
+The application uses `examlist-template-editor-1.1.13-examcheck.22.tgz`.
 
 - `examcheck.1.patch` preserves data-tag formatting when native text formatting replaces token nodes.
 - `examcheck.2.patch` applies on top of `examcheck.1`: HTML normalization updates the current history entry, and text/token formatting stages produce one undo entry per user command. It also passes runtime state to the formatting controller. The `.2` archive includes both patches; its package version is `1.1.13-examcheck.2`.
@@ -31,7 +31,9 @@ The application uses `examlist-template-editor-1.1.13-examcheck.21.tgz`.
 
 - `examcheck.16.patch` applies on top of `examcheck.15`: inserting an inline data tag consumes the single placeholder BR in an otherwise empty paragraph or table cell, preserving formatting wrappers. Actual text, objects, multi-line spacing and non-collapsed selections are untouched. Tests cover empty/formatted paragraphs, table cells, intentional breaks and same-line typing after tag insertion.
 
-To rebuild the latest version, unpack the `.20` archive, apply the `.21` patch, update `package.json` to `1.1.13-examcheck.21`, and run `npm pack --ignore-scripts`. The published archive already contains the built runtime files, so the source repository's build scripts are not included. Update both application dependency references and the root lockfile when introducing a new archive version.
+To rebuild the latest version, unpack the `.21` archive, apply the `.22` patch, update `package.json` to `1.1.13-examcheck.22`, and run `npm pack --ignore-scripts`. The published archive already contains the built runtime files, so the source repository's build scripts are not included. Update both application dependency references and the root lockfile when introducing a new archive version.
+
+- `examcheck.22.patch` applies on top of `examcheck.21`: preserve each generated object's data source during runtime decoration and resolve preview values using that source (flat or nested data). Existing objects without a source retain the configured default. ExamCheck's shared barcode picker follows ExamList's grouped data selection, supports cancellation, and inserts at the document or data-block cursor through the command dispatcher.
 
 Regression coverage: `template-editor-history.integration.test.ts` checks undo/redo after canonicalization; `e2e/template-editor.spec.ts` covers line alignment and mixed text/tag formatting with keyboard undo/redo in Chromium. Explicit-line alignment is implemented in the application's `template-line-alignment.ts`.
 

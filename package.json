@@ -57,7 +57,7 @@
   },
   "dependencies": {
     "compression": "^1.8.2",
-    "examlist-template-editor": "file:vendor/examlist-template-editor-1.1.13-examcheck.21.tgz",
+    "examlist-template-editor": "file:vendor/examlist-template-editor-1.1.13-examcheck.22.tgz",
     "express": "^5.2.1"
   }
 }

@@ -1,6 +1,7 @@
 import { createWorkLimiter } from "../common/bounded-work.js";
 import sharp from "sharp";
 import {
+  buildLabelElementZpl,
   labelTemplateZplKey,
   parseLabelTemplateLayout,
   type LabelTemplateElement,
@@ -47,21 +48,18 @@ async function renderElement(
         height,
         font,
         element.align ?? "left",
+        element.rotation ?? 0,
         !element.content?.includes("{{"),
       );
       return `^FO${x},${y}^GFA,${graphic.totalBytes},${graphic.totalBytes},${graphic.bytesPerRow},${graphic.hex}^FS`;
     }
-    const alignment = element.align === "center" ? "C" : element.align === "right" ? "R" : "L";
-    return `^FO${x},${y}^A0N,${font},${font}^FB${width},1,0,${alignment},0^FD${content}^FS`;
+    return buildLabelElementZpl(element, layout.dpi, content);
   }
   if (element.kind === "barcode") {
-    const moduleWidth = Math.max(1, Math.min(10, Math.round(width / 120)));
     const content = renderContent(element.content ?? "{{candidate.temporaryNo}}", values);
-    return `^FO${x},${y}^BY${moduleWidth},2,${height}^BCN,${height},${element.showText === false ? "N" : "Y"},N,N^FD${content}^FS`;
+    return buildLabelElementZpl(element, layout.dpi, content);
   }
-  const thickness = dot(element.strokeWidthMm ?? 0.4, 1);
-  const boxHeight = element.kind === "line" ? thickness : height;
-  return `^FO${x},${y}^GB${width},${boxHeight},${thickness},B,0^FS`;
+  return buildLabelElementZpl(element, layout.dpi, "");
 }
 
 function renderContent(content: string, values: Readonly<Record<string, string | number>>): string {
@@ -79,6 +77,7 @@ async function rasterizeText(
   height: number,
   fontSize: number,
   align: "left" | "center" | "right",
+  rotation: NonNullable<LabelTemplateElement["rotation"]>,
 ) {
   const x = align === "center" ? width / 2 : align === "right" ? width : 0;
   const anchor = align === "center" ? "middle" : align === "right" ? "end" : "start";
@@ -88,6 +87,7 @@ async function rasterizeText(
       font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="600" fill="black">${escapeXml(content)}</text>
   </svg>`;
   const { data, info } = await sharp(Buffer.from(svg))
+    .rotate(rotation)
     .flatten({ background: "#ffffff" })
     .grayscale()
     .threshold(190)
@@ -133,9 +133,10 @@ async function cachedRaster(
   height: number,
   font: number,
   align: "left" | "center" | "right",
+  rotation: NonNullable<LabelTemplateElement["rotation"]>,
   cacheable: boolean,
 ) {
-  const key = JSON.stringify([FONT_FAMILY, content, width, height, font, align]);
+  const key = JSON.stringify([FONT_FAMILY, content, width, height, font, align, rotation]);
   const cached = cacheable ? graphicCache.get(key) : undefined;
   if (cached) {
     graphicCache.delete(key);
@@ -145,7 +146,7 @@ async function cachedRaster(
   return renderLimited(async () => {
     const concurrent = cacheable ? graphicCache.get(key) : undefined;
     if (concurrent) return concurrent;
-    const graphic = await rasterizeText(content, width, height, font, align);
+    const graphic = await rasterizeText(content, width, height, font, align, rotation);
     const size = graphic.hex.length * 2 + key.length * 2;
     if (cacheable && size <= 4 * 1024 * 1024) {
       while (graphicCache.size && (graphicCache.size >= 512 || cacheBytes + size > 4 * 1024 * 1024)) {

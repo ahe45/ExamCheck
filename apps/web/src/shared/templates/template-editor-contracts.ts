@@ -75,6 +75,7 @@ export interface TemplateEditorOverflowInfo {
 }
 
 export interface TemplateEditorRuntime {
+  insertHtml?(html: string): unknown;
   insertTag?(tag: string): unknown;
   sync?(options?: { preserveSelection?: boolean; focusEditor?: boolean }): unknown;
   setHtml(html: string, options?: { notify?: boolean; resetHistory?: boolean }): unknown;
