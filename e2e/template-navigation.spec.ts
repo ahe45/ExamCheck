@@ -28,7 +28,8 @@ test("데이터 블록 양식에서 헤더 메뉴로 반복 이동해도 편집�
   await page.route("**/api/v1/**", (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path.endsWith("/form-templates/admin")) return route.fulfill({ json: [record] });
+    if (path.startsWith("/api/v1/form-templates/admin/"))
+      return route.fulfill({ json: templateResponse(path, [record]) });
     if (request.method() === "GET" || path.endsWith("/auth/login")) return route.continue();
     return route.fulfill({ status: 409, json: { message: "Test writes disabled" } });
   });
@@ -74,3 +75,7 @@ test("데이터 블록 양식에서 헤더 메뉴로 반복 이동해도 편집�
   await expect(card.getByRole("button", { name: "수정", exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+function templateResponse(path: string, records: unknown[]) {
+  return path.endsWith("/summaries") ? records : records[0];
+}

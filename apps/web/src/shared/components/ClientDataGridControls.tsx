@@ -1,9 +1,11 @@
+import { useEffect, useMemo, useState } from "react";
 import { ConfirmButtonIcon, ResetButtonIcon } from "./ActionIcons";
 import type { GridFilterMenu } from "../hooks/useClientDataGrid";
 
 const clientGridPageSizes = [10, 30, 50, 100, 500, 1000, 2000, 0] as const;
 
 interface ClientGridFilterMenuProps {
+  loading?: boolean;
   label: string;
   x: number;
   y: number;
@@ -20,6 +22,7 @@ interface ClientGridFilterMenuProps {
 
 export function ClientGridFilterMenu({
   label,
+  loading = false,
   x,
   y,
   search,
@@ -32,7 +35,11 @@ export function ClientGridFilterMenu({
   onReset,
   onApply,
 }: ClientGridFilterMenuProps) {
-  const allVisibleSelected = options.length > 0 && options.every((value) => draft.includes(value));
+  const selected = useMemo(() => new Set(draft), [draft]);
+  const allVisibleSelected = options.length > 0 && options.every((value) => selected.has(value));
+  const [optionPage, setOptionPage] = useState(0);
+  useEffect(() => setOptionPage(0), [options]);
+  const visibleOptions = options.slice(optionPage * 200, (optionPage + 1) * 200);
 
   return (
     <div className="candidate-filter-menu" style={{ left: x, top: y }} role="dialog" aria-label={`${label} 필터`}>
@@ -52,23 +59,38 @@ export function ClientGridFilterMenu({
         전체 선택
       </label>
       <div className="candidate-filter-options">
-        {options.map((value) => (
+        {loading && <p>선택지를 불러오는 중…</p>}
+        {visibleOptions.map((value) => (
           <label key={value || "__blank"}>
             <input
               type="checkbox"
-              checked={draft.includes(value)}
+              checked={selected.has(value)}
               onChange={(event) => onToggleOption(value, event.target.checked)}
             />
             <span>{value || "(빈 값)"}</span>
           </label>
         ))}
       </div>
+      {options.length > 200 && (
+        <div className="candidate-filter-pages">
+          <button onClick={() => setOptionPage((page) => page - 1)} disabled={!optionPage}>
+            이전 선택지
+          </button>
+          <small>
+            {optionPage * 200 + 1}–{Math.min((optionPage + 1) * 200, options.length)} /{" "}
+            {options.length.toLocaleString()}
+          </small>
+          <button onClick={() => setOptionPage((page) => page + 1)} disabled={(optionPage + 1) * 200 >= options.length}>
+            다음 선택지
+          </button>
+        </div>
+      )}
       <footer>
         <button onClick={onReset}>
           <ResetButtonIcon />
           <span>초기화</span>
         </button>
-        <button className="primary" onClick={onApply}>
+        <button className="primary" onClick={onApply} disabled={loading}>
           <ConfirmButtonIcon />
           <span>적용</span>
         </button>
@@ -94,6 +116,7 @@ export function ClientGridFilterLayer<K extends string>({
 }
 
 interface ClientGridPaginationProps {
+  pageSizes?: readonly number[];
   count: number;
   page: number;
   pageSize: number;
@@ -105,6 +128,7 @@ interface ClientGridPaginationProps {
 }
 
 export function ClientGridPagination({
+  pageSizes = clientGridPageSizes,
   count,
   page,
   pageSize,
@@ -123,7 +147,7 @@ export function ClientGridPagination({
       <label>
         표시 개수
         <select value={pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
-          {clientGridPageSizes.map((size) => (
+          {pageSizes.map((size) => (
             <option key={size} value={size}>
               {size ? `${size}개` : "모두 표시"}
             </option>

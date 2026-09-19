@@ -4,7 +4,7 @@ import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import type { Examinee, OperationSchedule } from "../../shared/api/examinees";
 import type { FormTemplate } from "../../shared/api/form-templates";
 import { isAbortError } from "../../shared/async/bounded-map";
-import { buildOperationTemplatePages } from "./operation-template-pages";
+import { buildOperationTemplatePages, createOperationTemplatePages } from "./operation-template-pages";
 import type { OperationRow } from "./operation-view-model";
 
 const mocks = vi.hoisted(() => ({
@@ -53,6 +53,20 @@ describe("buildOperationTemplatePages", () => {
     mocks.renderTemplateHtml.mockImplementation((_layout: unknown, values: Record<string, unknown>) =>
       String(values["candidate.examNo"]),
     );
+  });
+
+  it("does not fetch photos or render other pages before the PDF consumer requests them", async () => {
+    mocks.fetchExamineePhoto.mockResolvedValue(new Blob(["photo"], { type: "image/png" }));
+    const pages = createOperationTemplatePages(
+      candidateTemplate(),
+      Array.from({ length: 1000 }, (_, i) => operationRow(i + 1)),
+      { token: "token", systemProfile, schedule, examName: "시험", operationClosed: false },
+    );
+    expect(pages.length).toBe(1000);
+    expect(mocks.fetchExamineePhoto).not.toHaveBeenCalled();
+    await pages.getPage(0);
+    expect(mocks.fetchExamineePhoto).toHaveBeenCalledTimes(1);
+    expect(mocks.renderTemplateHtml).toHaveBeenCalledTimes(1);
   });
 
   it("loads candidate photos with at most four requests and preserves page order", async () => {

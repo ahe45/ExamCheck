@@ -115,8 +115,9 @@ describe("PrintJobsService", () => {
     expect(repository.findCandidateForUpdate).toHaveBeenCalledWith(
       connection,
       expect.objectContaining({ examineeNo: "10001", admissionName: "배정 전형" }),
+      true,
     );
-    expect(repository.findActiveLabelTemplate).toHaveBeenCalledWith(connection, 9);
+    expect(repository.findActiveLabelTemplate).toHaveBeenCalledWith(connection, 9, true);
     expect(repository.insertPrintJob).toHaveBeenCalledWith(
       connection,
       expect.objectContaining({
@@ -226,6 +227,7 @@ function createService(
 
 function createConnectionMock() {
   return {
+    query: vi.fn().mockResolvedValue([[], []]),
     beginTransaction: vi.fn().mockResolvedValue(undefined),
     commit: vi.fn().mockResolvedValue(undefined),
     rollback: vi.fn().mockResolvedValue(undefined),
@@ -247,6 +249,8 @@ function createRepositoryMock(overrides: Partial<Record<keyof PrintJobsRepositor
       labelTemplateId: 9,
     }),
     findByIdempotencyKey: vi.fn().mockResolvedValue(null),
+    hasPendingLabel: vi.fn().mockResolvedValue(false),
+    roomCounts: vi.fn().mockResolvedValue({ roomAssignedCount: 0, roomPresentCount: 0, roomAbsentCount: 0 }),
     hasPrintedLabel: vi.fn().mockResolvedValue(false),
     findCandidateForUpdate: vi.fn().mockResolvedValue({
       candidateRecordId: 202,

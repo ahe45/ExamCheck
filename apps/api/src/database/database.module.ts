@@ -1,3 +1,4 @@
+import { instrumentDatabasePool } from "../common/database/database-metrics.js";
 import { Global, Inject, Injectable, Module, type OnApplicationShutdown } from "@nestjs/common";
 import mysql, { type Pool } from "mysql2/promise";
 import { APP_CONFIG, type AppConfig } from "../config/app-config.js";
@@ -22,10 +23,12 @@ export class DatabasePoolLifecycle implements OnApplicationShutdown {
       provide: DATABASE_POOL,
       inject: [APP_CONFIG],
       useFactory: (config: Readonly<AppConfig>): Pool => {
-        return mysql.createPool({
-          ...config.database,
-          waitForConnections: true,
-        });
+        return instrumentDatabasePool(
+          mysql.createPool({
+            ...config.database,
+            waitForConnections: true,
+          }),
+        );
       },
     },
     DatabasePoolLifecycle,

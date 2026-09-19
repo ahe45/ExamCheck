@@ -327,11 +327,7 @@ export class IdentityShadowSnapshotRepository {
        WHERE range_row.source_time_range_id IS NOT NULL
        ORDER BY range_row.source_time_range_id, range_row.id`,
     );
-    return pair(
-      "identity-shadow.pseudonym-range.v1",
-      legacy.map(mapRange),
-      target.map(mapRange),
-    );
+    return pair("identity-shadow.pseudonym-range.v1", legacy.map(mapRange), target.map(mapRange));
   }
 
   async loadOperations(executor: SqlExecutor): Promise<IdentityShadowSnapshotPair> {

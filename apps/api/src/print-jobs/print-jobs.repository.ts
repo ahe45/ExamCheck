@@ -137,6 +137,7 @@ export class PrintJobsRepository {
     executor: SqlExecutor,
     examName: string,
     admissionName: string,
+    locking = true,
   ): Promise<PrintPolicyRecord | null> {
     const [rows] = await executor.execute<Array<RowDataPacket & PrintPolicyRecord>>(
       `SELECT assignment_method AS assignmentMethod,
@@ -145,7 +146,7 @@ export class PrintJobsRepository {
        FROM pseudonym_setting
        WHERE exam_name = ? AND admission_name IN (?, '') AND active = TRUE
        ORDER BY CASE WHEN admission_name = ? THEN 0 ELSE 1 END
-       LIMIT 1 FOR UPDATE`,
+       LIMIT 1${locking ? " LOCK IN SHARE MODE" : ""}`,
       [examName, admissionName, admissionName],
     );
     return rows[0] ?? null;
@@ -157,7 +158,7 @@ export class PrintJobsRepository {
     idempotencyKey: string,
   ): Promise<StoredPrintJob | null> {
     const [rows] = await executor.execute<PrintJobResponseRow[]>(
-      `SELECT pj.id, pj.job_no AS jobNo, pj.status, pj.copies, pjp.format, pjp.payload,
+      `SELECT pj.id, pj.job_no AS jobNo, CASE WHEN pj.status = 'READY' AND pj.expires_at <= NOW(3) THEN 'EXPIRED' ELSE pj.status END AS status, pj.copies, pjp.format, pjp.payload,
               pj.request_fingerprint AS requestFingerprint
        FROM print_job pj
        INNER JOIN print_job_payload pjp ON pjp.print_job_id = pj.id
@@ -183,6 +184,7 @@ export class PrintJobsRepository {
   async findCandidateForUpdate(
     executor: SqlExecutor,
     schedule: PrintJobScheduleKey,
+    locking = true,
   ): Promise<PrintCandidateRecord | null> {
     const [rows] = await executor.execute<Array<RowDataPacket & PrintCandidateRecord>>(
       `SELECT cr.id AS candidateRecordId, cr.examinee_no AS examineeNo, cr.name AS candidateName,
@@ -198,41 +200,57 @@ export class PrintJobsRepository {
               cr.temporary_no AS preassignedNumber,
               COALESCE(pa.pseudonym_no, NULLIF(cr.temporary_no, '')) AS pseudonymNumber,
               COALESCE(pa.is_absentee, FALSE) AS absent,
-              COALESCE(sp.school_name, '') AS schoolName, COALESCE(sp.academic_year, YEAR(cr.exam_date)) AS academicYear,
-              COALESCE(sp.system_name, '') AS systemName,
-              (SELECT COUNT(*) FROM candidate_record room_candidate
-                WHERE room_candidate.exam_date = cr.exam_date AND room_candidate.start_time = cr.start_time
-                  AND room_candidate.period_name = cr.period_name AND room_candidate.admission = cr.admission
-                  AND room_candidate.building_name = cr.building_name AND room_candidate.room_name = cr.room_name
-                  AND room_candidate.status = 'ACTIVE') AS roomAssignedCount,
-              (SELECT COUNT(*) FROM candidate_record room_candidate
-                INNER JOIN pseudonym_assignment room_assignment ON room_assignment.candidate_record_id = room_candidate.id
-                WHERE room_candidate.exam_date = cr.exam_date AND room_candidate.start_time = cr.start_time
-                  AND room_candidate.period_name = cr.period_name AND room_candidate.admission = cr.admission
-                  AND room_candidate.building_name = cr.building_name AND room_candidate.room_name = cr.room_name
-                  AND room_candidate.status = 'ACTIVE' AND room_assignment.is_absentee = FALSE) AS roomPresentCount,
-              (SELECT COUNT(*) FROM candidate_record room_candidate
-                INNER JOIN pseudonym_assignment room_assignment ON room_assignment.candidate_record_id = room_candidate.id
-                WHERE room_candidate.exam_date = cr.exam_date AND room_candidate.start_time = cr.start_time
-                  AND room_candidate.period_name = cr.period_name AND room_candidate.admission = cr.admission
-                  AND room_candidate.building_name = cr.building_name AND room_candidate.room_name = cr.room_name
-                  AND room_candidate.status = 'ACTIVE' AND room_assignment.is_absentee = TRUE) AS roomAbsentCount
+              COALESCE((SELECT school_name FROM system_profile WHERE id = 1), '') AS schoolName, COALESCE((SELECT academic_year FROM system_profile WHERE id = 1), YEAR(cr.exam_date)) AS academicYear,
+              COALESCE((SELECT system_name FROM system_profile WHERE id = 1), '') AS systemName,
+              0 AS roomAssignedCount, 0 AS roomPresentCount, 0 AS roomAbsentCount
        FROM candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
-       LEFT JOIN system_profile sp ON sp.id = 1
        WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
          AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE'
-         AND (pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL) LIMIT 1 FOR UPDATE`,
+         AND (pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL) LIMIT 1${locking ? " FOR UPDATE" : ""}`,
       scheduleParameters(schedule),
     );
     return rows[0] ?? null;
   }
 
+  async roomCounts(executor: SqlExecutor, candidate: PrintCandidateRecord) {
+    const [rows] = await executor.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS roomAssignedCount,
+      COALESCE(SUM(pa.id IS NOT NULL AND pa.is_absentee = FALSE), 0) AS roomPresentCount,
+      COALESCE(SUM(pa.id IS NOT NULL AND pa.is_absentee = TRUE), 0) AS roomAbsentCount
+      FROM candidate_record cr LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+      WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.admission = ?
+        AND cr.building_name = ? AND cr.room_name = ? AND cr.status = 'ACTIVE'`,
+      [
+        candidate.examDate,
+        candidate.examStartTime,
+        candidate.periodName,
+        candidate.admissionName,
+        candidate.buildingName,
+        candidate.roomName,
+      ],
+    );
+    return {
+      roomAssignedCount: Number(rows[0].roomAssignedCount),
+      roomPresentCount: Number(rows[0].roomPresentCount),
+      roomAbsentCount: Number(rows[0].roomAbsentCount),
+    };
+  }
+
+  async hasPendingLabel(executor: SqlExecutor, candidateRecordId: number) {
+    const [rows] = await executor.execute<RowDataPacket[]>(
+      "SELECT id FROM print_job WHERE candidate_record_id = ? AND label_type = 'PSEUDONYM_LABEL' AND status IN ('CREATED', 'READY', 'DISPATCHING') AND expires_at > NOW(3) LIMIT 1 FOR UPDATE",
+      [candidateRecordId],
+    );
+    return rows.length > 0;
+  }
+
   async findActiveLabelTemplate(
     executor: SqlExecutor,
     labelTemplateId: number | null,
+    locking = false,
   ): Promise<LabelTemplateRecord | null> {
-    return findActiveLabelTemplate(executor, labelTemplateId);
+    return findActiveLabelTemplate(executor, labelTemplateId, locking);
   }
 
   async findEnabledWorkstationId(executor: SqlExecutor, workstationCode: string): Promise<number | null> {

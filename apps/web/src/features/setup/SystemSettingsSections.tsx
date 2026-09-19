@@ -1,5 +1,5 @@
 import type { PseudonymAssignmentMethod } from "../../shared/api/pseudonyms";
-import type { LabelTemplate } from "../../shared/api/label-templates";
+import type { LabelTemplateSummary } from "../../shared/api/label-templates";
 import { RefreshButtonIcon, SettingsButtonIcon } from "../../shared/components/ActionIcons";
 import { formatRangeNumber, scheduleIdentity, type RangeDraft } from "./system-settings-domain";
 
@@ -57,7 +57,7 @@ export function AssignmentMethodSection({
   printPreassignedLabel: boolean;
   onPrintPreassignedLabelChange(value: boolean): void;
   labelTemplateId: number | null;
-  labelTemplates: LabelTemplate[];
+  labelTemplates: LabelTemplateSummary[];
   onLabelTemplateIdChange(value: number | null): void;
 }) {
   return (

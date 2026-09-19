@@ -58,8 +58,8 @@ describe("ExamineesRepository", () => {
       "면접",
     );
 
-    expect(execute.mock.calls[0]?.[0]).toContain("MAX(sent_at) AS last_printed_at");
+    expect(execute.mock.calls[0]?.[0]).toContain("MAX(pj.sent_at)");
     expect(execute.mock.calls[0]?.[0]).toContain("status = 'SENT'");
-    expect(execute.mock.calls[0]?.[0]).toContain("printed.last_printed_at AS lastPrintedAt");
+    expect(execute.mock.calls[0]?.[0]).toContain("pj.candidate_record_id = cr.id");
   });
 });

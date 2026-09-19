@@ -201,9 +201,9 @@ async function insertRange(executor, settingId, range) {
   await executor.execute(
     `INSERT INTO pseudonym_time_range (
        setting_id, exam_date, exam_time, period_name, admission, unit_name, major,
-       building_name, room_name, schedule_key, range_start, range_end, next_sequence, updated_by
+       building_name, room_name, schedule_key, range_start, range_end, next_sequence, display_width, updated_by
      )
-     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, id
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 4, id
      FROM app_user WHERE login_id = 'system'`,
     [
       settingId,

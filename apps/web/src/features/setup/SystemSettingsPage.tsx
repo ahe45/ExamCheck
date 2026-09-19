@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type FormEvent } from "react";
 import { fetchCandidates, type CandidateRecord } from "../../shared/api/candidates";
-import { fetchLabelTemplates, type LabelTemplate } from "../../shared/api/label-templates";
+import { fetchLabelTemplates, type LabelTemplateSummary } from "../../shared/api/label-templates";
 import {
   fetchPseudonymSetting,
   updatePseudonymSetting,
@@ -61,7 +61,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [autoDrawDelaySeconds, setAutoDrawDelaySeconds] = useState(3);
     const [printPreassignedLabel, setPrintPreassignedLabel] = useState(true);
     const [labelTemplateId, setLabelTemplateId] = useState<number | null>(null);
-    const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([]);
+    const [labelTemplates, setLabelTemplates] = useState<LabelTemplateSummary[]>([]);
     const [autoAssignAbsenteesOnClose, setAutoAssignAbsenteesOnClose] = useState(false);
     const [deleteAbsenteeInfoOnReopen, setDeleteAbsenteeInfoOnReopen] = useState(false);
     const [useCandidatePhotos, setUseCandidatePhotos] = useState(true);

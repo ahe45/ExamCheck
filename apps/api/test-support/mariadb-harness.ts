@@ -21,6 +21,7 @@ export interface MariaDbIntegrationHarness {
 
 export interface MariaDbIntegrationHarnessOptions {
   migrateThrough?: string;
+  connectionLimit?: number;
 }
 
 export async function createMariaDbIntegrationHarness(
@@ -46,7 +47,7 @@ export async function createMariaDbIntegrationHarness(
       ...connectionConfig,
       database: databaseName,
       multipleStatements: true,
-      connectionLimit: 6,
+      connectionLimit: options.connectionLimit ?? 6,
       waitForConnections: true,
     });
     await assertPoolUsesOwnedDatabase(pool, databaseName);

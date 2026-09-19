@@ -52,7 +52,8 @@ for (const sample of cases) {
     await page.route("**/api/v1/**", (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
-      if (path.endsWith("/form-templates/admin")) return route.fulfill({ json: [record] });
+      if (path.startsWith("/api/v1/form-templates/admin/"))
+        return route.fulfill({ json: templateResponse(path, [record]) });
       if (path.endsWith("/form-templates/QA_FONT_HEIGHT") && request.method() === "PUT") {
         record = { ...record, ...request.postDataJSON() };
         saved = true;
@@ -149,4 +150,8 @@ async function measureLines(surface: Locator) {
       tokenLineHeight: token ? Number.parseFloat(getComputedStyle(token).lineHeight) : null,
     };
   });
+}
+
+function templateResponse(path: string, records: unknown[]) {
+  return path.endsWith("/summaries") ? records : records[0];
 }

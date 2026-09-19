@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { DeleteButtonIcon, RefreshButtonIcon } from "../../shared/components/ActionIcons";
 import { ClientGridHeaderCell } from "../../shared/components/ClientGridHeaderCell";
 import type { GridFilters, GridSort } from "../../shared/hooks/useClientDataGrid";
@@ -73,7 +73,48 @@ export function OperationRosterPanel({
   state,
   actions,
 }: Props) {
-  const stats = operationRosterStats(allRows, context);
+  const stats = useMemo(() => operationRosterStats(allRows, context), [allRows, context]);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({ top: 0, height: 700, rowHeight: 48 });
+  const virtual = rows.length > 100;
+  const first = virtual
+    ? Math.min(Math.max(0, Math.floor(viewport.top / viewport.rowHeight) - 8), Math.max(0, rows.length - 1))
+    : 0;
+  const last = virtual
+    ? Math.min(rows.length, first + Math.ceil(viewport.height / viewport.rowHeight) + 20)
+    : rows.length;
+  useLayoutEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const measure = () =>
+      setViewport((current) => ({
+        ...current,
+        height: element.clientHeight || 700,
+        rowHeight: element.querySelector("tr[data-roster-index]")?.getBoundingClientRect().height || current.rowHeight,
+      }));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [virtual]);
+  useEffect(() => {
+    if (!viewportRef.current) return;
+    viewportRef.current.scrollTop = 0;
+    setViewport((current) => ({ ...current, top: 0 }));
+  }, [grid.filters, grid.sort]);
+  function focusRow(index: number) {
+    const element = viewportRef.current;
+    if (!element || index < 0 || index >= rows.length) return;
+    const top = index * viewport.rowHeight;
+    if (top < element.scrollTop || top + viewport.rowHeight > element.scrollTop + element.clientHeight - 60) {
+      element.scrollTop = Math.max(0, top - element.clientHeight / 2);
+      setViewport((current) => ({ ...current, top: element.scrollTop }));
+    }
+    requestAnimationFrame(() =>
+      element.querySelector<HTMLElement>(`tr[data-roster-index="${index}"]`)?.focus({ preventScroll: true }),
+    );
+  }
   const printerReady = state.printerDiagnostic.status === "READY" && Boolean(state.printerDiagnostic.printer);
 
   return (
@@ -194,8 +235,19 @@ export function OperationRosterPanel({
           </button>
         </div>
       </header>
-      <div className="operator-roster-table-wrap">
-        <table className={`candidate-data-table operator-roster-table ${rows.length ? "" : "is-empty"}`}>
+      <div
+        className="operator-roster-table-wrap"
+        ref={viewportRef}
+        onScroll={(event) => {
+          const top = event.currentTarget.scrollTop;
+          setViewport((current) => ({ ...current, top }));
+        }}
+      >
+        <table
+          aria-rowcount={rows.length + 1}
+          style={virtual ? { height: "auto" } : undefined}
+          className={`candidate-data-table operator-roster-table ${rows.length ? "" : "is-empty"}`}
+        >
           <thead>
             <tr>
               <th className="candidate-row-number">순번</th>
@@ -214,22 +266,42 @@ export function OperationRosterPanel({
             </tr>
           </thead>
           <tbody>
+            {first > 0 && (
+              <tr aria-hidden="true">
+                <td
+                  colSpan={columns.length + 1}
+                  style={{ height: first * viewport.rowHeight, padding: 0, border: 0 }}
+                />
+              </tr>
+            )}
             {rows.length ? (
-              rows.map((row, index) => (
+              rows.slice(first, last).map((row, index) => (
                 <tr
                   key={row.candidate.examineeNo}
+                  data-roster-index={first + index}
+                  aria-rowindex={first + index + 2}
                   className={selectedExamineeNo === row.candidate.examineeNo ? "is-selected" : ""}
                   tabIndex={0}
                   aria-label={`${row.candidate.examineeNo} ${row.candidate.name} 조회`}
                   onClick={() => actions.select(row.candidate.examineeNo)}
                   onKeyDown={(event) => {
+                    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+                      event.preventDefault();
+                      focusRow(
+                        event.key === "Home"
+                          ? 0
+                          : event.key === "End"
+                            ? rows.length - 1
+                            : first + index + (event.key === "ArrowDown" ? 1 : -1),
+                      );
+                    }
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       actions.select(row.candidate.examineeNo);
                     }
                   }}
                 >
-                  <td className="candidate-row-number">{index + 1}</td>
+                  <td className="candidate-row-number">{first + index + 1}</td>
                   {columns.map((column) => {
                     const value = operationRowValue(row, column.key, context);
                     const valueClass =
@@ -261,6 +333,14 @@ export function OperationRosterPanel({
                       : "선택한 전형과 교시의 수험생 데이터를 확인해 주세요."}
                   </span>
                 </td>
+              </tr>
+            )}
+            {last < rows.length && (
+              <tr aria-hidden="true">
+                <td
+                  colSpan={columns.length + 1}
+                  style={{ height: (rows.length - last) * viewport.rowHeight, padding: 0, border: 0 }}
+                />
               </tr>
             )}
           </tbody>

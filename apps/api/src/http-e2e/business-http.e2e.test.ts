@@ -1,3 +1,4 @@
+import { CandidateUploadService } from "../candidates/candidate-upload.service.js";
 import "reflect-metadata";
 import { Module, type INestApplication } from "@nestjs/common";
 import { NestFactory, Reflector } from "@nestjs/core";
@@ -65,6 +66,7 @@ const printJobsServiceStub = { create: printJobCreate };
     { provide: APP_CONFIG, useValue: resolveAppConfig({ NODE_ENV: "test", JWT_SECRET: TEST_SECRET }) },
     { provide: AuthService, useValue: authServiceStub },
     { provide: CandidatesService, useValue: candidatesServiceStub },
+    { provide: CandidateUploadService, useValue: { enqueue: candidateImport } },
     { provide: PseudonymsService, useValue: pseudonymsServiceStub },
     { provide: FormTemplatesService, useValue: formTemplatesServiceStub },
     { provide: PrintJobsService, useValue: printJobsServiceStub },
@@ -77,7 +79,7 @@ describe("business controller HTTP boundaries", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    app = await NestFactory.create(BusinessHttpE2eModule, { logger: false });
+    app = await NestFactory.create(BusinessHttpE2eModule, { logger: false, abortOnError: false });
     configureApplication(app, {
       frontendOrigin: "http://localhost:5173",
       requestLogWriter: () => undefined,
@@ -148,7 +150,7 @@ describe("business controller HTTP boundaries", () => {
     expect(pseudonymSettingUpdate).toHaveBeenCalledWith(expect.objectContaining(settingInput()), administrator);
     expect(templateSave).toHaveBeenCalledWith(expect.objectContaining(templateInput()), administrator);
     expect(templateUpdateActive).toHaveBeenCalledWith("ROOM_LIST", { active: false }, administrator);
-    expect(candidateImport).toHaveBeenCalledWith(expect.any(Buffer), "all", "signed-preview-ticket", administrator.id);
+    expect(candidateImport).toHaveBeenCalledWith("signed-preview-ticket", administrator.id, "all", "WORKBOOK");
   });
 
   it("saves a template larger than the default 100 KB JSON parser limit without truncation", async () => {

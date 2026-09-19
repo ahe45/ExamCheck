@@ -9,6 +9,8 @@ import { CandidateUploadModal } from "./CandidateUploadModal";
 
 const candidatesApi = vi.hoisted(() => ({
   downloadCandidateTemplate: vi.fn(),
+  pendingCandidateUpload: vi.fn().mockReturnValue(null),
+  waitForCandidateUpload: vi.fn(),
   importCandidatePhotoArchive: vi.fn(),
   importCandidateWorkbook: vi.fn(),
   previewCandidatePhotoArchive: vi.fn(),
@@ -95,6 +97,7 @@ describe("CandidateUploadModal", () => {
         file,
         "insert-update",
         "signed-preview-token",
+        expect.objectContaining({ signal: expect.any(AbortSignal), onProgress: expect.any(Function) }),
       );
     });
     expect(onClose).toHaveBeenCalledOnce();
@@ -133,6 +136,7 @@ describe("CandidateUploadModal", () => {
         archive,
         "insert-update",
         "signed-photo-preview-token",
+        expect.objectContaining({ signal: expect.any(AbortSignal), onProgress: expect.any(Function) }),
       );
     });
     expect(onComplete).toHaveBeenCalledWith("수험생 사진 2건을 저장했습니다. 신규 2건 · 교체 0건 · 건너뜀 0건");

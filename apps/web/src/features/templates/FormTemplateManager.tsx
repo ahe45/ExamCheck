@@ -1,5 +1,11 @@
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { fetchAdminFormTemplates, fetchFormTemplateDataTags, type FormTemplate } from "../../shared/api/form-templates";
+import {
+  fetchFormTemplate,
+  type FormTemplateSummary,
+  fetchAdminFormTemplates,
+  fetchFormTemplateDataTags,
+  type FormTemplate,
+} from "../../shared/api/form-templates";
 import type { DataTagCatalog } from "../../shared/templates/template-editor-contracts";
 import type { PrinterService } from "../printer/PrinterService";
 import type { PrinterDiagnostic } from "../printer/printer.types";
@@ -88,7 +94,27 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     const labelManagerRef = useRef<LabelTemplateManagerHandle>(null);
     const restoredSessionRef = useRef<FormTemplateEditorSession | null>(readEditorSession());
     const editorSourceIdRef = useRef("");
-    const [templates, setTemplates] = useState<FormTemplate[]>([]);
+    const editRequest = useRef(0);
+    const pendingSession = useRef<FormTemplateEditorSession | null>(null);
+    const storageTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const flushSession = useCallback(() => {
+      if (storageTimer.current) clearTimeout(storageTimer.current);
+      storageTimer.current = null;
+      const pending = pendingSession.current;
+      pendingSession.current = null;
+      if (pending && pending.sourceId === editorSourceIdRef.current)
+        persistEditorSession(pending.sourceId, pending.draft);
+    }, []);
+    useEffect(() => {
+      const requestCounter = editRequest;
+      window.addEventListener("pagehide", flushSession);
+      return () => {
+        requestCounter.current++;
+        flushSession();
+        window.removeEventListener("pagehide", flushSession);
+      };
+    }, [flushSession]);
+    const [templates, setTemplates] = useState<FormTemplateSummary[]>([]);
     const [dataTags, setDataTags] = useState<DataTagCatalog | null>(null);
     const [draft, setDraft] = useState<DraftTemplate | null>(null);
     const [editorSourceId, setEditorSourceId] = useState("");
@@ -120,7 +146,7 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     useEffect(() => {
       let active = true;
       void Promise.all([fetchAdminFormTemplates(token), fetchFormTemplateDataTags(token)])
-        .then(([loadedTemplates, loadedTags]) => {
+        .then(async ([loadedTemplates, loadedTags]) => {
           if (!active) return;
           setTemplates(loadedTemplates);
           setDataTags(loadedTags);
@@ -134,9 +160,10 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
             const restoredDraft = restoredSession.sourceId.startsWith("new-")
               ? restoredSession.draft || null
               : storedTemplate
-                ? restoredSession.draft || toDraft(storedTemplate)
+                ? restoredSession.draft || toDraft(await fetchFormTemplate(token, storedTemplate.code, true))
                 : null;
 
+            if (!active) return;
             if (restoredDraft) {
               editorSourceIdRef.current = restoredSession.sourceId;
               setEditorSourceId(restoredSession.sourceId);
@@ -175,18 +202,31 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
 
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
-    const editTemplate = useCallback((template: FormTemplate) => {
-      const nextDraft = toDraft(template);
-      if (!nextDraft) return;
-      setNotice(null);
-      setDraft(nextDraft);
-      const sourceId = `template-${template.id}`;
-      editorSourceIdRef.current = sourceId;
-      setEditorSourceId(sourceId);
-      persistEditorSession(sourceId, nextDraft);
-    }, []);
+    const editTemplate = useCallback(
+      async (template: FormTemplateSummary) => {
+        const request = ++editRequest.current;
+        let detail: FormTemplate;
+        try {
+          detail = await fetchFormTemplate(token, template.code, true);
+        } catch (reason) {
+          setNotice({ kind: "error", text: reason instanceof Error ? reason.message : "양식을 불러오지 못했습니다." });
+          return;
+        }
+        if (request !== editRequest.current) return;
+        const nextDraft = toDraft(detail);
+        if (!nextDraft) return;
+        setNotice(null);
+        setDraft(nextDraft);
+        const sourceId = `template-${template.id}`;
+        editorSourceIdRef.current = sourceId;
+        setEditorSourceId(sourceId);
+        persistEditorSession(sourceId, nextDraft);
+      },
+      [token],
+    );
 
     const createTemplate = useCallback(() => {
+      editRequest.current++;
       const now = Date.now();
       setNotice(null);
       const nextDraft = createBlankDraft(
@@ -233,10 +273,15 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
       setTemplates((current) => current.filter((item) => item.code !== code));
     }, []);
 
-    const handleTemplateSaved = useCallback((saved: FormTemplate, refreshed: FormTemplate[]) => {
+    const handleTemplateSaved = useCallback((saved: FormTemplate) => {
+      pendingSession.current = null;
       const nextDraft = toDraft(saved);
       if (!nextDraft) return;
-      setTemplates(refreshed);
+      setTemplates((current) =>
+        current.some((item) => item.code === saved.code)
+          ? current.map((item) => (item.code === saved.code ? saved : item))
+          : [...current, saved],
+      );
       setDraft(nextDraft);
       const sourceId = `template-${saved.id}`;
       editorSourceIdRef.current = sourceId;
@@ -245,6 +290,8 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     }, []);
 
     const closeEditor = useCallback(() => {
+      editRequest.current++;
+      pendingSession.current = null;
       clearEditorSession();
       editorSourceIdRef.current = "";
       setEditorSourceId("");
@@ -252,10 +299,14 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
       setNotice(null);
     }, []);
 
-    const updateDraft = useCallback((nextDraft: DraftTemplate) => {
-      setDraft(nextDraft);
-      persistEditorSession(editorSourceIdRef.current, nextDraft);
-    }, []);
+    const updateDraft = useCallback(
+      (nextDraft: DraftTemplate) => {
+        setDraft(nextDraft);
+        pendingSession.current = { sourceId: editorSourceIdRef.current, draft: nextDraft };
+        if (!storageTimer.current) storageTimer.current = setTimeout(flushSession, 200);
+      },
+      [flushSession],
+    );
 
     if (loading) {
       return <div className="admin-view-loading">양식 관리 화면을 준비하고 있습니다.</div>;

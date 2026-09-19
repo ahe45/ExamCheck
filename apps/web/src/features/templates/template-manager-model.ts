@@ -1,4 +1,9 @@
-import type { FormTemplate, FormTemplateScope, SaveFormTemplateInput } from "../../shared/api/form-templates";
+import type {
+  FormTemplateSummary,
+  FormTemplate,
+  FormTemplateScope,
+  SaveFormTemplateInput,
+} from "../../shared/api/form-templates";
 import type {
   DataTagCatalog,
   DataTagDefinition,
@@ -29,14 +34,14 @@ export interface CardMetadataUpdate {
   description: string;
 }
 
-export function groupTemplatesByCategory(templates: readonly FormTemplate[]) {
-  return templates.reduce<Record<string, FormTemplate[]>>((groups, template) => {
+export function groupTemplatesByCategory(templates: readonly FormTemplateSummary[]) {
+  return templates.reduce<Record<string, FormTemplateSummary[]>>((groups, template) => {
     (groups[template.category] ||= []).push(template);
     return groups;
   }, {});
 }
 
-export function createCardMetadataEdit(template: FormTemplate, field: TemplateMetadataField): CardMetadataEdit {
+export function createCardMetadataEdit(template: FormTemplateSummary, field: TemplateMetadataField): CardMetadataEdit {
   return {
     templateId: template.id,
     field,
@@ -44,7 +49,7 @@ export function createCardMetadataEdit(template: FormTemplate, field: TemplateMe
   };
 }
 
-export function buildCardMetadataUpdate(template: FormTemplate, edit: CardMetadataEdit): CardMetadataUpdate {
+export function buildCardMetadataUpdate(template: FormTemplateSummary, edit: CardMetadataEdit): CardMetadataUpdate {
   const value = edit.value.trim();
   if (edit.templateId !== template.id) {
     throw new Error("수정 중인 양식 정보가 일치하지 않습니다.");
@@ -68,7 +73,7 @@ export function buildTemplateActiveUpdate(template: FormTemplate, active: boolea
 
 export function buildTemplateCopyInput(
   template: FormTemplate,
-  templates: readonly FormTemplate[],
+  templates: readonly FormTemplateSummary[],
 ): SaveFormTemplateInput {
   const existingCodes = new Set(templates.map((item) => item.code));
   const existingNames = new Set(templates.map((item) => item.name));

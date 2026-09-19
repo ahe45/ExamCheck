@@ -179,8 +179,8 @@ async function insertCandidate(executor, fixture) {
        designated_sort, track, admission, admission_code, series, series_code,
        unit_name, unit_code, major, major_code, exam_date, start_time, end_time,
        period_name, period_code, building_name, building_code, room_name, room_code,
-       examinee_no, temporary_no, name, birth_date, group_name
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '')
+       examinee_no, temporary_no, name, birth_date, group_name, exam_name, label_barcode, status
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, '', ?, ?, 'ACTIVE')
      ON DUPLICATE KEY UPDATE
        designated_sort = VALUES(designated_sort), admission = VALUES(admission),
        unit_name = VALUES(unit_name), major = VALUES(major), building_name = VALUES(building_name),
@@ -208,22 +208,7 @@ async function insertCandidate(executor, fixture) {
       fixture.examineeNo,
       fixture.name,
       fixture.birthDate,
-    ],
-  );
-  await executor.execute(
-    `INSERT INTO examinee
-       (examinee_no, name, exam_name, exam_date, room_name, seat_no, label_barcode, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
-     ON DUPLICATE KEY UPDATE
-       name = VALUES(name), exam_name = VALUES(exam_name), exam_date = VALUES(exam_date),
-       room_name = VALUES(room_name), seat_no = VALUES(seat_no), status = 'ACTIVE'`,
-    [
-      fixture.examineeNo,
-      fixture.name,
       DEFAULT_EXAM_NAME,
-      fixture.date,
-      fixture.room,
-      fixture.designatedSort,
       `CI-E2E-BARCODE-${fixture.examineeNo}`,
     ],
   );
@@ -235,9 +220,9 @@ async function upsertSetting(executor, input) {
        exam_name, admission_name, range_start, range_end, next_sequence, assignment_method,
        auto_draw_enabled, auto_draw_delay_seconds, print_preassigned_label,
        auto_assign_absentees_on_close, delete_absentee_info_on_reopen,
-       use_candidate_photos, enable_bulk_draw, active, updated_by, version
+       use_candidate_photos, enable_bulk_draw, active, updated_by, version, display_width
      )
-     SELECT ?, ?, ?, ?, ?, 'SEQUENTIAL', FALSE, 3, FALSE, FALSE, FALSE, ?, FALSE, TRUE, id, 1
+     SELECT ?, ?, ?, ?, ?, 'SEQUENTIAL', FALSE, 3, FALSE, FALSE, FALSE, ?, FALSE, TRUE, id, 1, 4
      FROM app_user WHERE login_id = 'system'
      ON DUPLICATE KEY UPDATE
        range_start = VALUES(range_start), range_end = VALUES(range_end),
@@ -272,9 +257,9 @@ async function upsertSetting(executor, input) {
     await executor.execute(
       `INSERT INTO pseudonym_time_range (
          setting_id, exam_date, exam_time, period_name, admission, unit_name, major,
-         building_name, room_name, schedule_key, range_start, range_end, next_sequence, updated_by
+         building_name, room_name, schedule_key, range_start, range_end, next_sequence, updated_by, display_width
        )
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, id
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, id, 4
        FROM app_user WHERE login_id = 'system'`,
       [
         setting.id,

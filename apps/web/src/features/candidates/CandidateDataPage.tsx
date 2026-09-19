@@ -1,8 +1,16 @@
 import { ToastNotice } from "../../shared/components/ToastNotice";
-import { useCallback, useEffect, useState } from "react";
-import { downloadCandidateData, fetchCandidates, type CandidateRecord } from "../../shared/api/candidates";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  downloadCandidateData,
+  fetchCandidatePage,
+  fetchCandidateFilterValues,
+  type CandidateRecord,
+  type CandidateFieldKey,
+} from "../../shared/api/candidates";
 import { DownloadButtonIcon, RefreshButtonIcon, UploadButtonIcon } from "../../shared/components/ActionIcons";
 import { CandidateDataGrid } from "./CandidateDataGrid";
+import { useClientDataGrid } from "../../shared/hooks/useClientDataGrid";
+import { candidateColumnValue } from "./candidate-data-model";
 import { messageOf } from "./candidate-data-model";
 import { CandidateUploadModal } from "./CandidateUploadModal";
 
@@ -18,27 +26,63 @@ export function CandidateDataPage({ token }: Props) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
 
-  const load = useCallback(async () => {
+  const [total, setTotal] = useState(0);
+  const [revision, setRevision] = useState(0);
+  const facets = useRef(new Map<CandidateFieldKey, Promise<string[]>>());
+  const loadValues = useCallback(
+    (key: CandidateFieldKey) => {
+      let pending = facets.current.get(key);
+      if (!pending) {
+        pending = fetchCandidateFilterValues(token, key).catch((error) => {
+          facets.current.delete(key);
+          throw error;
+        });
+        facets.current.set(key, pending);
+      }
+      return pending;
+    },
+    [token],
+  );
+  const onError = useCallback((reason: unknown) => setError(messageOf(reason, "조회하지 못했습니다.")), []);
+  const server = useMemo(() => ({ total, loadValues, onError }), [total, loadValues, onError]);
+  const grid = useClientDataGrid<CandidateRecord, CandidateFieldKey>({ rows, valueOf: candidateColumnValue, server });
+  const setPage = grid.setPage;
+  const query = useMemo(
+    () => ({ page: grid.page, pageSize: grid.pageSize, sort: grid.sort, filters: grid.filters }),
+    [grid.page, grid.pageSize, grid.sort, grid.filters],
+  );
+  const load = useCallback(() => {
+    facets.current.clear();
+    setRevision((value) => value + 1);
+  }, []);
+  useEffect(() => {
+    facets.current.clear();
+  }, [token]);
+  useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    try {
-      setRows(await fetchCandidates(token));
-    } catch (reason) {
-      setError(messageOf(reason, "수험생 데이터를 불러오지 못했습니다."));
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+    void fetchCandidatePage(token, query, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setRows(result.rows);
+        setTotal(result.total);
+        if (result.page !== query.page) setPage(result.page);
+      })
+      .catch((reason) => {
+        if (!controller.signal.aborted) onError(reason);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [token, query, revision, onError, setPage]);
 
   async function downloadData() {
     setDownloadBusy(true);
     setError(null);
     try {
-      await downloadCandidateData(token);
+      await downloadCandidateData(token, query);
     } catch (reason) {
       setError(messageOf(reason, "파일을 다운로드하지 못했습니다."));
     } finally {
@@ -46,10 +90,13 @@ export function CandidateDataPage({ token }: Props) {
     }
   }
 
-  async function completeUpload(message: string) {
-    setNotice(message);
-    await load();
-  }
+  const completeUpload = useCallback(
+    async (message: string) => {
+      setNotice(message);
+      load();
+    },
+    [load],
+  );
 
   return (
     <section className="candidate-data-view">
@@ -86,7 +133,7 @@ export function CandidateDataPage({ token }: Props) {
         </header>
         {notice && <ToastNotice notice={{ kind: "success", text: notice }} onClose={() => setNotice(null)} />}
         {error && !uploadOpen && <ToastNotice notice={{ kind: "error", text: error }} onClose={() => setError(null)} />}
-        <CandidateDataGrid loading={loading} rows={rows} />
+        <CandidateDataGrid loading={loading} grid={grid} />
       </article>
 
       <CandidateUploadModal

@@ -59,6 +59,7 @@ export default defineConfig({
         },
       ],
   projects: [
+    { name: "performance-fhd", testMatch: /performance\.spec\.ts/, use: { viewport: { width: 1920, height: 1080 } } },
     {
       name: "admin-card-layout",
       testMatch: /admin-card-layout\.spec\.ts/,

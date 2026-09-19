@@ -117,7 +117,7 @@ describe("026 to current schema migration upgrade", () => {
         "046_simplify_label_templates.sql",
         "047_pseudonym_display_width.sql",
       ]);
-      const beforeSimplification = migrations.filter((migration) => !finalMigrations.has(migration.version));
+      const beforeSimplification = migrations.filter((migration) => migration.version < "041");
       const expansion = await runMigrations(connection, beforeSimplification);
       expect(expansion.applied).toEqual(laterMigrations.slice(0, -7));
       expect(expansion.verified).toHaveLength(beforeSimplification.length - (laterMigrations.length - 7));
@@ -129,7 +129,10 @@ describe("026 to current schema migration upgrade", () => {
       );
 
       const simplification = await runMigrations(connection, migrations);
-      expect(simplification.applied).toEqual([
+      expect(simplification.applied).toEqual(
+        migrations.filter((migration) => migration.version >= "041").map((migration) => migration.version),
+      );
+      expect([...finalMigrations]).toEqual([
         "041_simplify_operational_schema.sql",
         "042_candidate_source_building_uniqueness.sql",
         "043_remove_unspecified_legacy_candidates.sql",
@@ -138,7 +141,7 @@ describe("026 to current schema migration upgrade", () => {
         "046_simplify_label_templates.sql",
         "047_pseudonym_display_width.sql",
       ]);
-      expect(simplification.verified).toHaveLength(migrations.length - 7);
+      expect(simplification.verified).toHaveLength(beforeSimplification.length);
 
       const verification = await runMigrations(connection, migrations);
       expect(verification.applied).toEqual([]);
@@ -184,7 +187,7 @@ describe("026 to current schema migration upgrade", () => {
     const [activeTemplateRows] = await harness.pool.execute<Array<RowDataPacket & { activeCount: number }>>(
       `SELECT COUNT(*) AS activeCount FROM form_template WHERE active = TRUE`,
     );
-    expect(Number(activeTemplateRows[0]?.activeCount)).toBe(2);
+    expect(Number(activeTemplateRows[0]?.activeCount)).toBe(3);
 
     const [removedColumns] = await harness.pool.execute<Array<RowDataPacket & { columnCount: number }>>(
       `SELECT COUNT(*) AS columnCount

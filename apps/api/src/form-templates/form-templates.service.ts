@@ -41,6 +41,16 @@ export class FormTemplatesService {
     return this.repository.list(activeOnly);
   }
 
+  listSummaries(activeOnly: boolean) {
+    return this.repository.listSummaries(activeOnly);
+  }
+
+  async findForAdmin(code: string) {
+    const template = await this.repository.findByCode(code.trim().toUpperCase());
+    if (!template) throw new NotFoundException("양식을 찾을 수 없습니다.");
+    return template;
+  }
+
   async findActive(code: string) {
     const template = await this.repository.findActive(code.trim().toUpperCase());
     if (!template) throw new NotFoundException("사용 가능한 양식 템플릿을 찾을 수 없습니다.");
@@ -160,8 +170,7 @@ export class FormTemplatesService {
   }
 
   private async loadSavedTemplate(code: string) {
-    const templates = await this.list(false);
-    const saved = templates.find((template) => template.code === code);
+    const saved = await this.repository.findByCode(code);
     if (!saved) throw new NotFoundException("저장한 양식을 불러오지 못했습니다.");
     return saved;
   }

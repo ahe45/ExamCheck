@@ -54,11 +54,7 @@ export function renderCandidateGridPages(
   grid: NonNullable<ReturnType<typeof getPrintableCandidateGrid>>,
   records: Values[],
 ) {
-  const key = `candidate.${sortTags[grid.config.sortKey] || grid.config.sortKey}`;
-  const direction = grid.config.sortDirection === "desc" ? -1 : 1;
-  const sorted = [...records].sort(
-    (a, b) => direction * String(a[key] ?? "").localeCompare(String(b[key] ?? ""), "ko", { numeric: true }),
-  );
+  const sorted = sortCandidateGridRecords(grid, records);
   const pages: string[] = [];
   for (let offset = 0; offset < sorted.length; offset += grid.capacity) {
     const pageRecords = sorted.slice(offset, offset + grid.capacity);
@@ -85,4 +81,14 @@ export function renderCandidateGridPages(
     pages.push(root.innerHTML);
   }
   return pages;
+}
+
+export function sortCandidateGridRecords<T extends Values>(
+  grid: NonNullable<ReturnType<typeof getPrintableCandidateGrid>>,
+  records: T[],
+) {
+  const key = `candidate.${sortTags[grid.config.sortKey] || grid.config.sortKey}`;
+  const direction = grid.config.sortDirection === "desc" ? -1 : 1;
+  const collator = new Intl.Collator("ko", { numeric: true });
+  return [...records].sort((a, b) => direction * collator.compare(String(a[key] ?? ""), String(b[key] ?? "")));
 }

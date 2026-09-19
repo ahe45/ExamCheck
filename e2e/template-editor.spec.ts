@@ -2,17 +2,35 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
   test("서명자명 입력 설정을 켜고 끈 상태가 저장과 새로고침 후 유지된다", async ({ page }) => {
-    const html = '<div class="template-doc"><p><span class="template-token" contenteditable="false" data-template-tag-value="signature.author">작성자</span></p></div>';
+    const html =
+      '<div class="template-doc"><p><span class="template-token" contenteditable="false" data-template-tag-value="signature.author">작성자</span></p></div>';
     let record = {
-      id: 99995, code: "QA_SIGNATURE_SETTING", name: "서명자 설정 검증", category: "문서", usageScope: "CANDIDATE", active: true,
-      layout: { id: "signature-template", name: "서명자 설정 검증", layout: { pages: [{
-        id: "signature-page", type: "content", settings: { documentHtml: html, signatureNames: { enabled: false } },
-      }] } },
+      id: 99995,
+      code: "QA_SIGNATURE_SETTING",
+      name: "서명자 설정 검증",
+      category: "문서",
+      usageScope: "CANDIDATE",
+      active: true,
+      layout: {
+        id: "signature-template",
+        name: "서명자 설정 검증",
+        layout: {
+          pages: [
+            {
+              id: "signature-page",
+              type: "content",
+              settings: { documentHtml: html, signatureNames: { enabled: false } },
+            },
+          ],
+        },
+      },
     };
     let saveCount = 0;
-    await page.route("**/api/v1/**", async route => {
-      const request = route.request(), path = new URL(request.url()).pathname;
-      if (path.endsWith("/form-templates/admin")) return route.fulfill({ json: [record] });
+    await page.route("**/api/v1/**", async (route) => {
+      const request = route.request(),
+        path = new URL(request.url()).pathname;
+      if (path.startsWith("/api/v1/form-templates/admin/"))
+        return route.fulfill({ json: templateResponse(path, [record]) });
       if (path.endsWith("/form-templates/QA_SIGNATURE_SETTING") && request.method() === "PUT") {
         record = { ...record, ...request.postDataJSON() };
         saveCount++;
@@ -114,7 +132,8 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
       await page.route("**/api/v1/**", (route) => {
         const request = route.request(),
           path = new URL(request.url()).pathname;
-        if (path.endsWith("/form-templates/admin")) return route.fulfill({ json: [record] });
+        if (path.startsWith("/api/v1/form-templates/admin/"))
+          return route.fulfill({ json: templateResponse(path, [record]) });
         if (request.method() === "PUT" && path.endsWith("/form-templates/QA_FOOTER_POSITION")) {
           record = { ...record, ...request.postDataJSON() };
           saveCount++;
@@ -143,7 +162,7 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
       const initial = await geometry();
       expect(initial.overflow).toBe(false);
       for (let cycle = 1; cycle <= 3; cycle++) {
-        await page.getByLabel("양식 제목").fill(`하단 표 위치 검증 ${cycle}`);
+        await page.getByLabel("양식 제목", { exact: true }).fill(`하단 표 위치 검증 ${cycle}`);
         await page.getByRole("button", { name: "저장", exact: true }).click();
         await expect.poll(() => saveCount).toBe(cycle);
         await page.reload();
@@ -154,32 +173,82 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
   }
 
   test("복사한 컬럼명 표와 데이터 표가 캔버스와 인쇄에서 같은 경계로 이어진다", async ({ page }) => {
-    const table = (height: number) => `<table style="width:297px;height:${height}px"><colgroup><col style="width:57px"><col style="width:140px"><col style="width:100px"></colgroup><tbody><tr style="height:${height}px">${'<td style="border:1px solid black;padding:0"><br></td>'.repeat(3)}</tr></tbody></table>`;
+    const table = (height: number) =>
+      `<table style="width:297px;height:${height}px"><colgroup><col style="width:57px"><col style="width:140px"><col style="width:100px"></colgroup><tbody><tr style="height:${height}px">${'<td style="border:1px solid black;padding:0"><br></td>'.repeat(3)}</tr></tbody></table>`;
     const header = `<div class="examlist-candidate-block examlist-candidate-block-column-name" data-candidate-block-column-name="true" data-candidate-block-grid-row="1" data-candidate-block-grid-column="1" style="grid-area:1/1">${table(33)}</div>`;
-    const rows = [2, 3, 4].map(row => `<div class="examlist-candidate-block" data-candidate-block-instance="${row - 1}" data-candidate-block-grid-row="${row}" data-candidate-block-grid-column="1" style="grid-area:${row}/1">${table(37)}</div>`).join("");
+    const rows = [2, 3, 4]
+      .map(
+        (row) =>
+          `<div class="examlist-candidate-block" data-candidate-block-instance="${row - 1}" data-candidate-block-grid-row="${row}" data-candidate-block-grid-column="1" style="grid-area:${row}/1">${table(37)}</div>`,
+      )
+      .join("");
     const html = `<div class="template-doc"><div class="examlist-candidate-block-grid has-candidate-block-column-name-row" data-candidate-block-grid="true" data-candidate-block-columns="1" data-candidate-block-rows="3" data-candidate-block-column-name-row-enabled="true" data-candidate-block-column-name-row-height-pt="27" style="display:grid;width:300px;height:156px;grid-template-columns:1fr;grid-template-rows:36px repeat(3,40px);gap:0">${header}${rows}</div><p><br></p></div>`;
-    await page.route("**/api/v1/**", route => {
-      const request = route.request(), path = new URL(request.url()).pathname;
-      if (path.endsWith("/form-templates/admin")) return route.fulfill({json:[{
-        id:99997, code:"QA_JOINED_HEADER", name:"컬럼명 표 연결", category:"문서", usageScope:"CANDIDATE", active:true,
-        layout:{id:"header-template",name:"컬럼명 표 연결",layout:{pages:[{id:"header-page",type:"content",settings:{documentHtml:html,candidateBlockGrid:{enabled:true,columns:1,rows:3,widthPt:225,heightPt:90,xPt:0,yPt:0,gapXPt:0,gapYPt:0,fillEmptyBlocks:true,blockTemplateHtml:table(37),columnNameRow:{enabled:true,heightPt:27,templateHtml:table(33)}}}}]}},
-      }]});
+    await page.route("**/api/v1/**", (route) => {
+      const request = route.request(),
+        path = new URL(request.url()).pathname;
+      if (path.startsWith("/api/v1/form-templates/admin/"))
+        return route.fulfill({
+          json: templateResponse(path, [
+            {
+              id: 99997,
+              code: "QA_JOINED_HEADER",
+              name: "컬럼명 표 연결",
+              category: "문서",
+              usageScope: "CANDIDATE",
+              active: true,
+              layout: {
+                id: "header-template",
+                name: "컬럼명 표 연결",
+                layout: {
+                  pages: [
+                    {
+                      id: "header-page",
+                      type: "content",
+                      settings: {
+                        documentHtml: html,
+                        candidateBlockGrid: {
+                          enabled: true,
+                          columns: 1,
+                          rows: 3,
+                          widthPt: 225,
+                          heightPt: 90,
+                          xPt: 0,
+                          yPt: 0,
+                          gapXPt: 0,
+                          gapYPt: 0,
+                          fillEmptyBlocks: true,
+                          blockTemplateHtml: table(37),
+                          columnNameRow: { enabled: true, heightPt: 27, templateHtml: table(33) },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ]),
+        });
       if (request.method() === "GET" || path.endsWith("/auth/login")) return route.continue();
-      return route.fulfill({status:409,json:{message:"Test writes disabled"}});
+      return route.fulfill({ status: 409, json: { message: "Test writes disabled" } });
     });
     await loginAsAdmin(page);
     await page.goto("/admin/templates");
-    await page.locator(".exam-template-card").first().getByRole("button", {name:"수정",exact:true}).click();
+    await page.locator(".exam-template-card").first().getByRole("button", { name: "수정", exact: true }).click();
     const surface = page.locator("[data-template-editor-runtime-surface]");
     const measure = (root: Element) => {
       const grid = root.querySelector("[data-candidate-block-grid]")!;
       const gridRect = grid.getBoundingClientRect();
-      return [...grid.querySelectorAll("table")].map(table => {
+      return [...grid.querySelectorAll("table")].map((table) => {
         const rect = table.getBoundingClientRect();
-        return {left:rect.left-gridRect.left,right:rect.right-gridRect.left,top:rect.top-gridRect.top,bottom:rect.bottom-gridRect.top,
-          cells:[...table.rows[0].cells].map(cell=>cell.getBoundingClientRect().right-gridRect.left),
-          borderTop:getComputedStyle(table.rows[0].cells[0]).borderTopWidth,
-          background:getComputedStyle(table.parentElement!).backgroundColor};
+        return {
+          left: rect.left - gridRect.left,
+          right: rect.right - gridRect.left,
+          top: rect.top - gridRect.top,
+          bottom: rect.bottom - gridRect.top,
+          cells: [...table.rows[0].cells].map((cell) => cell.getBoundingClientRect().right - gridRect.left),
+          borderTop: getComputedStyle(table.rows[0].cells[0]).borderTopWidth,
+          background: getComputedStyle(table.parentElement!).backgroundColor,
+        };
       });
     };
     await expect.poll(async () => (await surface.evaluate(measure))[0]?.left).toBe(0);
@@ -191,67 +260,117 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
       expect(canvas[index].cells).toEqual(canvas[0].cells);
       expect(canvas[index].background).toBe("rgb(255, 255, 255)");
       if (index) {
-        expect(canvas[index].top).toBe(canvas[index-1].bottom);
+        expect(canvas[index].top).toBe(canvas[index - 1].bottom);
         expect(canvas[index].borderTop).toBe("0px");
       }
     }
-    const [preview] = await Promise.all([page.waitForEvent("popup"),page.getByRole("button",{name:"미리보기",exact:true}).click()]);
+    const [preview] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.getByRole("button", { name: "미리보기", exact: true }).click(),
+    ]);
     await preview.waitForLoadState();
     for (const media of ["screen", "print"] as const) {
-      await preview.emulateMedia({media});
+      await preview.emulateMedia({ media });
       expect(await preview.locator("body").evaluate(measure)).toEqual(canvas);
     }
     await preview.close();
   });
 
   test("Shift 열 조절 후 기존 데이터 블록과 설정이 저장·재진입까지 유지된다", async ({ page }) => {
-    const table = '<table style="width:713px;height:37px"><colgroup><col style="width:238px"><col style="width:238px"><col style="width:237px"></colgroup><tbody><tr style="height:37px">' + '<td style="border:1px solid black;height:37px"><br></td>'.repeat(3) + '</tr></tbody></table>';
-    const blocks = Array.from({ length:20 }, (_,i) => `<div class="examlist-candidate-block" data-candidate-block-instance="${i+1}" data-candidate-block-grid-row="${i+1}" data-candidate-block-grid-column="1" style="grid-area:${i+1}/1">${table}</div>`).join("");
-    let record = { id:99999, code:"QA_SHIFT", name:"열 조절 검증", description:"", category:"문서", usageScope:"CANDIDATE", active:true,
-      createdAt:"2026-01-01", createdByLoginId:"admin", layout:{id:"qa-template",name:"열 조절 검증",layout:{pages:[{id:"qa-page",type:"content",settings:{
-        documentHtml: '<div class="template-doc"><p>가번호 부여대장</p><div class="examlist-candidate-block-grid" data-candidate-block-grid="true" data-candidate-block-columns="1" data-candidate-block-rows="20" data-candidate-block-variant="photo" style="display:grid;width:716px;height:780px;grid-template-columns:1fr;grid-template-rows:repeat(20,minmax(20px,1fr));gap:0px">'+blocks+'</div><p><br></p></div>'
-      } as {documentHtml:string;candidateBlockGrid?: {enabled:boolean;rows:number;columns:number;blockTemplateHtml:string}}}]}}};
+    const table =
+      '<table style="width:713px;height:37px"><colgroup><col style="width:238px"><col style="width:238px"><col style="width:237px"></colgroup><tbody><tr style="height:37px">' +
+      '<td style="border:1px solid black;height:37px"><br></td>'.repeat(3) +
+      "</tr></tbody></table>";
+    const blocks = Array.from(
+      { length: 20 },
+      (_, i) =>
+        `<div class="examlist-candidate-block" data-candidate-block-instance="${i + 1}" data-candidate-block-grid-row="${i + 1}" data-candidate-block-grid-column="1" style="grid-area:${i + 1}/1">${table}</div>`,
+    ).join("");
+    let record = {
+      id: 99999,
+      code: "QA_SHIFT",
+      name: "열 조절 검증",
+      description: "",
+      category: "문서",
+      usageScope: "CANDIDATE",
+      active: true,
+      createdAt: "2026-01-01",
+      createdByLoginId: "admin",
+      layout: {
+        id: "qa-template",
+        name: "열 조절 검증",
+        layout: {
+          pages: [
+            {
+              id: "qa-page",
+              type: "content",
+              settings: {
+                documentHtml:
+                  '<div class="template-doc"><p>가번호 부여대장</p><div class="examlist-candidate-block-grid" data-candidate-block-grid="true" data-candidate-block-columns="1" data-candidate-block-rows="20" data-candidate-block-variant="photo" style="display:grid;width:716px;height:780px;grid-template-columns:1fr;grid-template-rows:repeat(20,minmax(20px,1fr));gap:0px">' +
+                  blocks +
+                  "</div><p><br></p></div>",
+              } as {
+                documentHtml: string;
+                candidateBlockGrid?: { enabled: boolean; rows: number; columns: number; blockTemplateHtml: string };
+              },
+            },
+          ],
+        },
+      },
+    };
     let saved = false;
-    await page.route("**/api/v1/**", async route => {
-      const request = route.request(), path = new URL(request.url()).pathname;
-      if (path.endsWith("/form-templates/admin")) return route.fulfill({json:[record]});
+    await page.route("**/api/v1/**", async (route) => {
+      const request = route.request(),
+        path = new URL(request.url()).pathname;
+      if (path.startsWith("/api/v1/form-templates/admin/"))
+        return route.fulfill({ json: templateResponse(path, [record]) });
       if (request.method() === "PUT" && path.endsWith("/form-templates/QA_SHIFT")) {
-        record = {...record,...request.postDataJSON()}; saved = true;
-        return route.fulfill({json:record});
+        record = { ...record, ...request.postDataJSON() };
+        saved = true;
+        return route.fulfill({ json: record });
       }
       if (request.method() === "GET" || path.endsWith("/auth/login")) return route.continue();
-      return route.fulfill({status:409,json:{message:"Test writes disabled"}});
+      return route.fulfill({ status: 409, json: { message: "Test writes disabled" } });
     });
     await loginAsAdmin(page);
     await page.goto("/admin/templates");
-    await page.locator(".exam-template-card").first().getByRole("button",{name:"수정",exact:true}).click();
-    const source = page.locator('[data-template-editor-runtime-surface] [data-candidate-block-template-role="source"]').first();
+    await page.locator(".exam-template-card").first().getByRole("button", { name: "수정", exact: true }).click();
+    const source = page
+      .locator('[data-template-editor-runtime-surface] [data-candidate-block-template-role="source"]')
+      .first();
     await source.click();
-    const dialog = page.getByRole("dialog",{name:"데이터 블록 편집"});
-    const cells = dialog.locator('[data-candidate-block-modal-editor-surface] td');
-    const initial = await cells.evaluateAll(els=>els.map(el=>el.getBoundingClientRect().toJSON()));
-    const startX = initial[0].right, y = initial[0].y + initial[0].height/2;
+    const dialog = page.getByRole("dialog", { name: "데이터 블록 편집" });
+    const cells = dialog.locator("[data-candidate-block-modal-editor-surface] td");
+    const initial = await cells.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()));
+    const startX = initial[0].right,
+      y = initial[0].y + initial[0].height / 2;
     await page.keyboard.down("Shift");
-    await page.mouse.move(startX,y);await page.mouse.down();
-    for (const delta of [2,10,35,70]) {
-      await page.mouse.move(startX+delta,y);
-      const current = await cells.evaluateAll(els=>els.map(el=>el.getBoundingClientRect().toJSON()));
-      expect(Math.abs(current[0].width-initial[0].width-delta)).toBeLessThan(2);
-      expect(Math.abs(current[2].width-initial[2].width)).toBeLessThan(2);
-      expect(Math.abs(current[2].right-initial[2].right)).toBeLessThan(2);
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    for (const delta of [2, 10, 35, 70]) {
+      await page.mouse.move(startX + delta, y);
+      const current = await cells.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()));
+      expect(Math.abs(current[0].width - initial[0].width - delta)).toBeLessThan(2);
+      expect(Math.abs(current[2].width - initial[2].width)).toBeLessThan(2);
+      expect(Math.abs(current[2].right - initial[2].right)).toBeLessThan(2);
     }
-    await page.mouse.up();await page.keyboard.up("Shift");
-    await dialog.getByRole("button",{name:"적용",exact:true}).click();
+    await page.mouse.up();
+    await page.keyboard.up("Shift");
+    await dialog.getByRole("button", { name: "적용", exact: true }).click();
     await expect(source).toBeVisible();
-    await expect(page.locator('[data-template-editor-runtime-surface] [data-candidate-block-grid]')).toHaveCount(1);
-    await page.getByRole("button",{name:"저장",exact:true}).click();
-    await expect.poll(()=>saved).toBe(true);
-    expect(record.layout.layout.pages[0].settings.candidateBlockGrid).toMatchObject({enabled:true,rows:20,columns:1});
+    await expect(page.locator("[data-template-editor-runtime-surface] [data-candidate-block-grid]")).toHaveCount(1);
+    await page.getByRole("button", { name: "저장", exact: true }).click();
+    await expect.poll(() => saved).toBe(true);
+    expect(record.layout.layout.pages[0].settings.candidateBlockGrid).toMatchObject({
+      enabled: true,
+      rows: 20,
+      columns: 1,
+    });
     await page.reload();
     await expect(source).toBeVisible();
     await source.click();
     await expect(cells).toHaveCount(3);
-    await dialog.getByRole("button",{name:"적용",exact:true}).click();
+    await dialog.getByRole("button", { name: "적용", exact: true }).click();
     await expect(source).toBeVisible();
   });
 
@@ -262,29 +381,43 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
       page.evaluate(async () => {
         const modulePath = "/src/features/templates/template-renderer.ts";
         const { openTemplatePrintWindow } = await import(/* @vite-ignore */ modulePath);
-        const block = (width: number, height: number) => `<div class="examlist-candidate-block" data-candidate-block-instance="1"><table style="width:${width}px;height:${height}px"><tbody><tr style="height:${height}px"><td>수험생</td></tr></tbody></table></div>`;
-        const grid = (id: string, gap: number, width: number, height: number) => `<div id="${id}" class="examlist-candidate-block-grid" data-candidate-block-grid="true" style="width:600px;height:180px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:${gap}px">${Array.from({length:6},()=>block(width,height)).join("")}</div>`;
-        openTemplatePrintWindow("표 연결 검증", '<div class="template-doc">' + grid("joined", 0, 297, 57) + grid("spaced", 8, 293, 51) + grid("partial", 0, 100, 20) + '</div>');
+        const block = (width: number, height: number) =>
+          `<div class="examlist-candidate-block" data-candidate-block-instance="1"><table style="width:${width}px;height:${height}px"><tbody><tr style="height:${height}px"><td>수험생</td></tr></tbody></table></div>`;
+        const grid = (id: string, gap: number, width: number, height: number) =>
+          `<div id="${id}" class="examlist-candidate-block-grid" data-candidate-block-grid="true" style="width:600px;height:180px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:${gap}px">${Array.from({ length: 6 }, () => block(width, height)).join("")}</div>`;
+        openTemplatePrintWindow(
+          "표 연결 검증",
+          '<div class="template-doc">' +
+            grid("joined", 0, 297, 57) +
+            grid("spaced", 8, 293, 51) +
+            grid("partial", 0, 100, 20) +
+            "</div>",
+        );
       }),
     ]);
     await preview.waitForLoadState();
-    const measure = () => preview.evaluate(() => {
-      const tables = [...document.querySelectorAll("#joined table")].map(el => el.getBoundingClientRect());
-      const grid = document.querySelector("#joined")!.getBoundingClientRect();
-      const spaced = [...document.querySelectorAll("#spaced table")].map(el => el.getBoundingClientRect());
-      const partial = document.querySelector("#partial table") as HTMLTableElement;
-      return { horizontalGap: tables[1].left - tables[0].right,
-        verticalGaps: [tables[2].top - tables[0].bottom, tables[4].top - tables[2].bottom],
-        width: grid.width, height: grid.height,
-        lastBottom: grid.bottom - tables[5].bottom,
-        spacedGap: spaced[2].top - spaced[0].bottom,
-        partialWidth: partial.style.width, partialHeight: partial.style.height };
-    });
+    const measure = () =>
+      preview.evaluate(() => {
+        const tables = [...document.querySelectorAll("#joined table")].map((el) => el.getBoundingClientRect());
+        const grid = document.querySelector("#joined")!.getBoundingClientRect();
+        const spaced = [...document.querySelectorAll("#spaced table")].map((el) => el.getBoundingClientRect());
+        const partial = document.querySelector("#partial table") as HTMLTableElement;
+        return {
+          horizontalGap: tables[1].left - tables[0].right,
+          verticalGaps: [tables[2].top - tables[0].bottom, tables[4].top - tables[2].bottom],
+          width: grid.width,
+          height: grid.height,
+          lastBottom: grid.bottom - tables[5].bottom,
+          spacedGap: spaced[2].top - spaced[0].bottom,
+          partialWidth: partial.style.width,
+          partialHeight: partial.style.height,
+        };
+      });
     for (const media of ["screen", "print"] as const) {
       await preview.emulateMedia({ media });
       const result = await measure();
       expect(Math.abs(result.horizontalGap)).toBeLessThan(0.1);
-      result.verticalGaps.forEach(gap => expect(Math.abs(gap)).toBeLessThan(0.1));
+      result.verticalGaps.forEach((gap) => expect(Math.abs(gap)).toBeLessThan(0.1));
       expect(result.width).toBe(600);
       expect(result.height).toBe(180);
       expect(Math.abs(result.lastBottom)).toBeLessThan(0.1);
@@ -298,14 +431,20 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
   test("미리보기의 데이터 블록과 표 배치가 캔버스와 일치한다", async ({ page }) => {
     await page.route("**/api/v1/**", (route) => {
       const request = route.request();
-      if (request.method() === "GET" || new URL(request.url()).pathname.endsWith("/auth/login")) return route.continue();
+      if (request.method() === "GET" || new URL(request.url()).pathname.endsWith("/auth/login"))
+        return route.continue();
       return route.fulfill({ status: 409, json: { message: "Regression test: writes disabled" } });
     });
     await loginAsAdmin(page);
     await page.goto("/admin/templates");
     await page.getByRole("button", { name: "새 양식", exact: true }).click();
     await page.locator(".admin-modal-backdrop").getByRole("button", { name: "닫기", exact: true }).click();
-    for (const [key, value] of [["columns", "2"], ["rows", "3"], ["gapXPt", "0"], ["gapYPt", "0"]]) {
+    for (const [key, value] of [
+      ["columns", "2"],
+      ["rows", "3"],
+      ["gapXPt", "0"],
+      ["gapYPt", "0"],
+    ]) {
       const input = page.locator(`[data-examlist-block-grid-setting="${key}"]`);
       await input.fill(value);
       await input.press("Tab");
@@ -320,30 +459,56 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
     await dialog.getByRole("button", { name: "적용", exact: true }).click();
     const measure = (root: Element) => {
       const documentRect = root.querySelector(".template-doc")!.getBoundingClientRect();
-      return [...root.querySelectorAll("[data-candidate-block-grid], [data-candidate-block-instance], table, td")].map((element) => {
-        const rect = element.getBoundingClientRect();
-        const style = getComputedStyle(element);
-        return { x: rect.x - documentRect.x, y: rect.y - documentRect.y, width: rect.width, height: rect.height,
-          display: style.display, font: style.fontFamily, lineHeight: style.lineHeight };
-      });
+      return [...root.querySelectorAll("[data-candidate-block-grid], [data-candidate-block-instance], table, td")].map(
+        (element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            x: rect.x - documentRect.x,
+            y: rect.y - documentRect.y,
+            width: rect.width,
+            height: rect.height,
+            display: style.display,
+            font: style.fontFamily,
+            lineHeight: style.lineHeight,
+          };
+        },
+      );
     };
-    const gaps = () => surface.locator("[data-candidate-block-grid] table").evaluateAll((elements) => {
-      const rect = (row: string, column: string) => elements.find(element => {
-        const block = element.closest<HTMLElement>("[data-candidate-block-instance]")!;
-        return block.dataset.candidateBlockGridRow === row && block.dataset.candidateBlockGridColumn === column;
-      })!.getBoundingClientRect();
-      const first = rect("1", "1");
-      return [rect("1", "2").left - first.right, rect("2", "1").top - first.bottom].map(value => Math.round(value * 10) / 10);
-    });
+    const gaps = () =>
+      surface.locator("[data-candidate-block-grid] table").evaluateAll((elements) => {
+        const rect = (row: string, column: string) =>
+          elements
+            .find((element) => {
+              const block = element.closest<HTMLElement>("[data-candidate-block-instance]")!;
+              return block.dataset.candidateBlockGridRow === row && block.dataset.candidateBlockGridColumn === column;
+            })!
+            .getBoundingClientRect();
+        const first = rect("1", "1");
+        return [rect("1", "2").left - first.right, rect("2", "1").top - first.bottom].map(
+          (value) => Math.round(value * 10) / 10,
+        );
+      });
     await expect.poll(gaps).toEqual([0, 0]);
-    const tableHtml = await surface.locator("table").first().evaluate(element => element.outerHTML.replaceAll(';"', '"'));
+    const tableHtml = await surface
+      .locator("table")
+      .first()
+      .evaluate((element) => element.outerHTML.replaceAll(';"', '"'));
     await page.getByRole("button", { name: "캔버스 축소", exact: true }).click();
     await expect.poll(gaps).toEqual([0, 0]);
-    expect(await surface.locator("table").first().evaluate(element => element.outerHTML.replaceAll(';"', '"'))).toBe(tableHtml);
+    expect(
+      await surface
+        .locator("table")
+        .first()
+        .evaluate((element) => element.outerHTML.replaceAll(';"', '"')),
+    ).toBe(tableHtml);
     await page.locator('[data-action="reset-template-editor-canvas-zoom"]').click();
     await expect.poll(gaps).toEqual([0, 0]);
     const expected = await surface.evaluate(measure);
-    const [preview] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: "미리보기", exact: true }).click()]);
+    const [preview] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.getByRole("button", { name: "미리보기", exact: true }).click(),
+    ]);
     await preview.waitForLoadState();
     await preview.evaluate(() => document.fonts.ready);
     const actual = await preview.locator("body").evaluate(measure);
@@ -368,7 +533,10 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
       await page.goto("/admin/templates");
       await page.getByRole("button", { name: "새 양식", exact: true }).click();
       await page.locator(".admin-modal-backdrop").getByRole("button", { name: "닫기", exact: true }).click();
-      for (const [key, value] of [["columns", "1"], ["rows", String(blockRows)]]) {
+      for (const [key, value] of [
+        ["columns", "1"],
+        ["rows", String(blockRows)],
+      ]) {
         const input = page.locator(`[data-examlist-block-grid-setting="${key}"]`);
         await input.fill(value);
         await input.press("Tab");
@@ -385,7 +553,9 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 150, { steps: 5 });
         await page.mouse.up();
       }
-      const source = page.locator('[data-template-editor-runtime-surface] [data-candidate-block-template-role="source"]').first();
+      const source = page
+        .locator('[data-template-editor-runtime-surface] [data-candidate-block-template-role="source"]')
+        .first();
       await source.click();
       const dialog = page.getByRole("dialog", { name: "데이터 블록 편집" });
       await clearModalEditor(dialog);
@@ -400,13 +570,20 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
           rows: [...tableElement.rows].map((row) => row.style.height),
         };
       };
-      const modalGeometry = () => table.evaluate(element => {
-        const host = element.closest<HTMLElement>("[data-candidate-block-modal-editor-surface]")!;
-        const rect = element.getBoundingClientRect();
-        const hostRect = host.getBoundingClientRect();
-        return { width: host.dataset.candidateBlockLogicalWidth, height: host.dataset.candidateBlockLogicalHeight,
-          tableWidth: rect.width, tableHeight: rect.height, hostWidth: hostRect.width, hostHeight: hostRect.height };
-      });
+      const modalGeometry = () =>
+        table.evaluate((element) => {
+          const host = element.closest<HTMLElement>("[data-candidate-block-modal-editor-surface]")!;
+          const rect = element.getBoundingClientRect();
+          const hostRect = host.getBoundingClientRect();
+          return {
+            width: host.dataset.candidateBlockLogicalWidth,
+            height: host.dataset.candidateBlockLogicalHeight,
+            tableWidth: rect.width,
+            tableHeight: rect.height,
+            hostWidth: hostRect.width,
+            hostHeight: hostRect.height,
+          };
+        });
       const originalGeometry = await modalGeometry();
       const before = await table.evaluate(dimensions);
       expect(Number.parseFloat(before.width)).toBeGreaterThan(100);
@@ -473,6 +650,7 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
   }
 
   test("1열 20행 데이터 블록을 하단 조절점으로 크게 늘려도 편집 화면이 응답한다", async ({ page }) => {
+    await mockBlankEditorTemplate(page, "QA_RESIZE_TALL");
     await loginAsAdmin(page);
     await page.goto("/admin/templates");
     await page.locator(".exam-template-card").first().getByRole("button", { name: "수정", exact: true }).click();
@@ -495,6 +673,7 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
     await expect(grid.locator("[data-candidate-block-instance]")).toHaveCount(20);
     const initial = await grid.boundingBox();
     const paragraphCount = await surface.locator(".template-doc > p").count();
+    await selectGridFromOuterBorder(page, grid);
     const handle = grid.locator('[data-candidate-block-grid-resize-corner="bottom"]');
     await handle.scrollIntoViewIfNeeded();
     const box = await handle.boundingBox();
@@ -506,7 +685,7 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
     await page.mouse.up();
     // Allow the deferred overflow measurement to run before testing UI input.
     await page.waitForTimeout(300);
-    const title = page.getByLabel("양식 제목");
+    const title = page.getByLabel("양식 제목", { exact: true });
     await title.fill("크기 조절 응답 확인");
     await expect(title).toHaveValue("크기 조절 응답 확인");
     expect(Date.now() - releasedAt).toBeLessThan(3000);
@@ -670,6 +849,7 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
   }
 
   test("표 이동·크기 조절·앞 문단 줄바꿈이 편집 화면을 멈추게 하지 않는다", async ({ page }) => {
+    await mockBlankEditorTemplate(page, "QA_TABLE_POINTER");
     await loginAsAdmin(page);
     await page.goto("/admin/templates");
     const firstCard = page.locator(".exam-template-card").first();
@@ -783,6 +963,7 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
   });
 
   test("데이터블록 초안 취소·표 삽입 적용·8개 핸들 이동/크기 조절을 검증한다", async ({ page }, testInfo) => {
+    await mockBlankEditorTemplate(page, "QA_BLOCK_HANDLES");
     await loginAsAdmin(page);
     await page.goto("/admin/templates");
     const firstCard = page.locator(".exam-template-card").first();
@@ -790,7 +971,7 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
 
     const openedAt = Date.now();
     await firstCard.getByRole("button", { name: "수정", exact: true }).click();
-    await expect(page.getByLabel("양식 제목")).toBeVisible();
+    await expect(page.getByLabel("양식 제목", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "양식 목록" })).toBeVisible();
     await expect(page.getByRole("button", { name: "미리보기" })).toBeVisible();
     await expect(page.getByRole("button", { name: "저장", exact: true })).toBeDisabled();
@@ -874,8 +1055,10 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
     await expect(appliedGrid.locator("[data-candidate-block-template-role='source'] table td")).toHaveCount(2);
 
     await selectGridFromOuterBorder(page, appliedGrid);
-    const initialBox = await appliedGrid.boundingBox();
     const resizeHandle = appliedGrid.locator('[data-candidate-block-grid-resize-corner="bottom-right"]');
+    await resizeHandle.scrollIntoViewIfNeeded();
+    await expect(resizeHandle).toBeVisible();
+    const initialBox = await appliedGrid.boundingBox();
     const resizeBox = await resizeHandle.boundingBox();
     if (!initialBox || !resizeBox) throw new Error("데이터블록 크기 조절 위치를 확인할 수 없습니다.");
     await page.mouse.move(resizeBox.x + resizeBox.width / 2, resizeBox.y + resizeBox.height / 2);
@@ -886,7 +1069,9 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
     if (!resizedBox) throw new Error("조절된 데이터블록 크기를 확인할 수 없습니다.");
     expect(resizedBox.width).toBeLessThan(initialBox.width);
 
+    await selectGridFromOuterBorder(page, appliedGrid);
     const moveHandle = appliedGrid.locator("[data-candidate-block-grid-move-handle]");
+    await moveHandle.scrollIntoViewIfNeeded();
     const moveBox = await moveHandle.boundingBox();
     if (!moveBox) throw new Error("데이터블록 이동 핸들 위치를 확인할 수 없습니다.");
     const leftBeforeMove = Number.parseFloat(
@@ -900,7 +1085,7 @@ test.describe("양식 편집기 핵심 실제 브라우저 흐름", () => {
       (await appliedGrid.getAttribute("style"))?.match(/left:\s*([\d.]+)px/u)?.[1] || "0",
     );
     expect(leftAfterMove).toBeGreaterThan(leftBeforeMove);
-    const titleInput = page.getByLabel("양식 제목");
+    const titleInput = page.getByLabel("양식 제목", { exact: true });
     const baseTitle = (await titleInput.inputValue()).replace(/ · 저장 검증 \d+$/u, "");
     await titleInput.fill(`${baseTitle} · 저장 검증 ${testInfo.repeatEachIndex + 1}`);
     const saveButton = page.getByRole("button", { name: "저장", exact: true });
@@ -919,9 +1104,8 @@ async function loginAsAdmin(page: Page) {
 }
 
 async function selectGridFromOuterBorder(page: Page, grid: Locator) {
-  const box = await grid.boundingBox();
-  if (!box) throw new Error("데이터블록 외곽선 위치를 확인할 수 없습니다.");
-  await page.mouse.click(box.x + 1, box.y + box.height / 2);
+  // Click a visible outer border even when the block is taller than the viewport.
+  await grid.click({ position: { x: 1, y: 12 } });
 }
 
 async function selectTableFromOuterBorder(page: Page, table: Locator) {
@@ -943,4 +1127,44 @@ async function clearModalEditor(dialog: Locator) {
   const surface = dialog.locator("[data-candidate-block-modal-editor-surface]");
   await surface.fill("");
   await expect(surface.locator("table")).toHaveCount(0);
+}
+
+function templateResponse(path: string, records: unknown[]) {
+  return path.endsWith("/summaries") ? records : records[0];
+}
+
+async function mockBlankEditorTemplate(page: Page, code: string) {
+  // Resizing starts from an independent blank page, not a default form edited by earlier tests.
+  let record = {
+    id: 99991,
+    code,
+    name: "블록 조절 검증",
+    description: "",
+    category: "문서",
+    usageScope: "CANDIDATE",
+    active: true,
+    layout: {
+      id: code,
+      layout: {
+        pages: [
+          {
+            id: "blank-page",
+            type: "content",
+            settings: { documentHtml: '<div class="template-doc"><p><br></p></div>' },
+          },
+        ],
+      },
+    },
+  };
+  await page.route("**/api/v1/form-templates/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/v1/form-templates/admin/"))
+      return route.fulfill({ json: templateResponse(path, [record]) });
+    if (request.method() === "PUT" && path.endsWith("/" + code)) {
+      record = { ...record, ...request.postDataJSON() };
+      return route.fulfill({ json: record });
+    }
+    return route.continue();
+  });
 }

@@ -5,14 +5,14 @@
 ## 현재 구성
 
 - `apps/web`: React + TypeScript + Vite, 권한별 로그인·가번호 부여·관리자 양식 편집·선택적 라벨 출력
-- `apps/api`: NestJS + MariaDB 11.4/MySQL 호환 DB, 인증·수험생 조회·가번호 부여·양식 관리·출력 작업 API
-- `apps/api/src/database/migrations`: 버전 관리되는 MariaDB/MySQL 호환 SQL 스키마
-- `vendor/examlist-template-editor-1.1.0.tgz`: ExamList에서 가져온 동일 양식 편집기 패키지
+- `apps/api`: NestJS + MariaDB 11.4, 인증·수험생 조회·가번호 부여·양식 관리·출력 작업 API
+- `apps/api/src/database/migrations`: 버전 관리되는 MariaDB SQL 스키마
+- `vendor/examlist-template-editor-1.1.13-examcheck.21.tgz`: ExamList에서 가져온 동일 양식 편집기 패키지
 - `docs`: 실기기 POC 전에 채워야 할 환경/장비 체크 문서
 
 ## 시작하기
 
-Node.js 20 이상이 필요합니다.
+Node.js 22.15 이상 또는 24 LTS가 필요합니다.
 
 ```bash
 npm install
@@ -33,13 +33,13 @@ npm run dev
 
 ### Windows 배치 파일로 실행·업데이트
 
-Node.js 22 또는 24 LTS와 npm, 실행 중인 MariaDB/MySQL 서버가 필요합니다. 업데이트에는 Git for Windows와 원격 추적 브랜치가 설정된 Git 복제본도 필요합니다.
+Node.js 22.15 이상 또는 24 LTS와 npm, 실행 중인 MariaDB 11.4 서버를 기준으로 검증합니다. 서버 정렬에는 MariaDB의 `NATURAL_SORT_KEY`를 사용합니다. 업데이트에는 Git for Windows와 원격 추적 브랜치가 설정된 Git 복제본도 필요합니다.
 
-- `start-server.bat`: 필요한 의존성을 설치하고, `.env`가 없거나 DB 설정이 비어 있으면 설정 화면을 엽니다. ExamList처럼 **DB 아이디와 비밀번호만 입력**받으며, DB 호스트 `127.0.0.1`·포트 `3306`·DB 이름 `examcheck`는 자동 설정합니다. 입력값을 `.env`에 저장하고 DB 스키마·누락 초기 계정을 준비한 뒤 웹과 API 개발 서버를 함께 실행합니다. 비밀번호 입력은 숨김 처리하며, 기존 비밀번호가 있으면 Enter로 유지합니다. DB 이외의 기존 설정은 유지합니다. 접속 주소는 `http://localhost:5173`이며, 실행 창을 유지하고 종료할 때 `Ctrl+C`를 누릅니다.
+- `start-server.bat`: 필요한 의존성을 설치하고, `.env`가 없거나 DB 설정이 비어 있으면 설정 화면을 엽니다. ExamList처럼 **DB 아이디와 비밀번호만 입력**받으며, DB 호스트 `127.0.0.1`·포트 `3306`·DB 이름 `examcheck`는 자동 설정합니다. 입력값을 `.env`에 저장하고 DB 스키마·누락 초기 계정을 준비한 뒤 운영 빌드를 생성하고 웹과 API 서버를 함께 실행합니다. 비밀번호 입력은 숨김 처리하며, 기존 비밀번호가 있으면 Enter로 유지합니다. DB 이외의 기존 설정은 유지합니다. 접속 주소는 `http://localhost:5173`이며, 실행 창을 유지하고 종료할 때 `Ctrl+C`를 누릅니다.
 - `start-server.bat --setup`: 기존 `.env`가 있어도 DB 설정 화면을 다시 엽니다. 예전 실행 파일로 빈 설정을 복사했거나 잘못된 비밀번호를 입력한 경우 사용할 수 있습니다.
 - `update-server.bat`: 실행 중인 서버를 먼저 종료한 뒤 실행합니다. Git이 관리하는 파일에 로컬 변경이 없을 때 현재 브랜치의 원격 최신 코드를 fast-forward 방식으로 받고, 의존성 설치·빌드·DB 마이그레이션을 수행합니다. 완료 후 `start-server.bat`로 다시 실행합니다. `git_clone.txt` 같은 미등록 파일은 보존하고 업데이트를 진행하되, 원격 변경과 파일 경로가 겹쳐 덮어쓸 위험이 있으면 Git이 중단합니다. 관리 중인 파일의 로컬 변경이나 충돌이 있으면 중단합니다.
 
-준비·설정·업데이트 로그는 각각 `log/start-server.log`, `log/setup-windows.log`, `log/update-server.log`에 기록하며, 서버 실행 로그는 실행 창에서 확인합니다. `start-server.bat`의 준비 단계가 실패하면 로그를 실행 창에도 표시합니다. 설정 과정에서 비밀번호는 로그에 기록하지 않습니다. 배치 파일은 현재 `npm run dev` 실행 구성을 사용하며 Windows 서비스로 등록하지 않습니다.
+준비·설정·업데이트 로그는 각각 `log/start-server.log`, `log/setup-windows.log`, `log/update-server.log`에 기록하며, 서버 실행 로그는 실행 창에서 확인합니다. `start-server.bat`의 준비 단계가 실패하면 로그를 실행 창에도 표시합니다. 설정 과정에서 비밀번호는 로그에 기록하지 않습니다. 배치 파일은 `npm start`로 빌드된 서버를 실행합니다. 개발 작업에는 `npm run dev`를 사용하며 Windows 서비스 등록은 별도입니다. 기본 예제 JWT 키는 첫 운영 실행에서 무작위 키로 바꾸어 `.env`에 보관하며, 이 경우 기존 로그인은 다시 해야 합니다. 직접 설정한 키는 유지합니다.
 
 DB 준비 중 `unknown plugin auth_gssapi_client` 오류가 나면 MariaDB가 Windows 통합 인증을 요청한 상태입니다. Windows MariaDB는 비밀번호 인증 실패 후 통합 인증으로 넘어갈 수 있으므로, 먼저 프로젝트 `.env`의 `DB_USER`와 `DB_PASSWORD`를 확인합니다. 예제 설정의 `root` / 빈 비밀번호를 그대로 사용하지 말고 실제 비밀번호 인증 계정을 입력합니다. 비밀번호에 `#`이 있으면 값 전체를 큰따옴표로 감쌉니다. 같은 DB 서버에서 정상 작동하는 ExamList 등의 설정과 접속 계정을 비교할 수 있지만, `DB_NAME`은 반드시 `examcheck`로 유지하고 해당 DB 생성·관리 권한이 있는 계정을 사용합니다. Windows 인증 전용 계정이면 DB 관리자에게 별도의 비밀번호 인증 계정을 요청합니다. [MariaDB의 Windows 인증 동작 설명](https://mariadb.com/docs/server/reference/plugins/authentication-plugins/authentication-plugin-gssapi#passwordless-login-on-windows)
 
@@ -99,10 +99,10 @@ DB 트랜잭션으로 처리합니다.
 
 Crystal Reports는 사용하지 않습니다. 관리자 페이지의 `양식 편집기`에서 ExamList와 동일한 편집기를 사용해 일반 문서·명단 템플릿을 만들고, 저장할 때마다 새 버전으로 보관합니다.
 
-현재 적용 버전은 `examlist-template-editor 1.1.0`입니다. 다중 페이지 전환, 페이지별 설정, HTML 정리, 문서 영역 초과 검사, OPT10, 생성 객체와 최신 ExamList 편집기 레이아웃을 포함합니다. 편집기 UI와 CSS는 편집 화면에서만 lazy load하고, 일반 PDF 출력에 필요한 값 포맷팅은 패키지의 `core` 진입점만 사용합니다.
+현재 적용 버전은 `examlist-template-editor 1.1.13-examcheck.21`입니다. 다중 페이지 전환, 페이지별 설정, HTML 정리, 문서 영역 초과 검사, OPT10, 생성 객체와 최신 ExamList 편집기 레이아웃을 포함합니다. 편집기 UI와 CSS는 편집 화면에서만 lazy load하고, 일반 PDF 출력에 필요한 값 포맷팅은 패키지의 `core` 진입점만 사용합니다.
 
 - 제공 범위: 수험생별, 고사실별, 시험 전체
-- 기본 제공 양식: 가번호표, 수험생 확인표
+- 기본 제공 양식: 가번호 부여대장, 결시자 명단, 수험생 사진대장
 - 데이터 태그: 시스템·학교·수험생·시험 분류·고사실·결시·사진·옵션·집계 항목 54개
 - 사용자 제공: 활성 양식을 가번호 부여 완료 화면에서 선택하고 현재 운영 명단으로 PDF 생성
 
@@ -139,7 +139,7 @@ npm run db:migrate
 npm run db:bootstrap
 ```
 
-`db:setup`은 데이터베이스 생성, 마이그레이션, 누락 초기 계정 생성을 한 번에 수행합니다. `db:migrate`는 계정을 건드리지 않고 스키마만 준비하며, `db:bootstrap`은 이미 준비된 스키마에 누락 초기 계정만 생성합니다. 현재 소스와 로컬 검증 기준은 migration `001`~`026`이며, 적용 파일은 SHA-256 체크섬과 advisory lock으로 검증합니다. 실행 중에는 내부 `schema_migration.status`를 `APPLYING`→`APPLIED` 또는 `FAILED`로 기록하며, 중단·실패 상태가 남으면 승인된 forward repair나 전체 복원 전까지 다음 실행을 차단합니다. `026`은 HTTP request ID 계약에 맞춰 `audit_log.request_id`를 `VARCHAR(128)`로 확장한 현 모델 보강이며 목표 identity 모델 변경이 아닙니다. 이 로컬 검증은 운영 DB 배포 완료를 의미하지 않습니다.
+`db:setup`은 데이터베이스 생성, 마이그레이션, 누락 초기 계정 생성을 한 번에 수행합니다. `db:migrate`는 계정을 건드리지 않고 스키마만 준비하며, `db:bootstrap`은 이미 준비된 스키마에 누락 초기 계정만 생성합니다. 현재 소스와 로컬 검증 기준은 migration `001`~`054`이며, 적용 파일은 SHA-256 체크섬과 advisory lock으로 검증합니다. 실행 중에는 내부 `schema_migration.status`를 `APPLYING`→`APPLIED` 또는 `FAILED`로 기록하며, 중단·실패 상태가 남으면 승인된 forward repair나 전체 복원 전까지 다음 실행을 차단합니다. `026`은 HTTP request ID 계약에 맞춰 `audit_log.request_id`를 `VARCHAR(128)`로 확장한 현 모델 보강이며 목표 identity 모델 변경이 아닙니다. 이 로컬 검증은 운영 DB 배포 완료를 의미하지 않습니다.
 
 `npm run check`는 DB 없이 코드 형식·lint·전체 타입 검사·단위/HTTP 경계 테스트·빌드를 수행합니다.
 업무 서비스의 직접 SQL과 repository의 transaction 소유를 금지하는 architecture 회귀 테스트도 이
@@ -147,7 +147,7 @@ npm run db:bootstrap
 별도 업무 HTTP 경계 suite로 검증합니다.
 `npm run check:integration`은 `.env`의 MariaDB 서버에 임시 `examcheck_it_<nonce>` 데이터베이스를
 만들고 실제 병렬 트랜잭션을 검증한 뒤 자신이 만든 데이터베이스만 삭제합니다. 운영 `DB_NAME`은
-통합 테스트에서 사용하지 않습니다. fresh DB뿐 아니라 N-1(`025`)에서 latest(`026`)로 올릴 때
+통합 테스트에서 사용하지 않습니다. fresh DB뿐 아니라 N-1에서 latest로 올릴 때
 기존 행이 보존되고 재실행 가능한지도 확인합니다. `npm run test:e2e`는 Playwright가 관리하는
 번들 Chromium에서 역할별 핵심 화면 3개를 HD(1366×768), HD+(1600×900), FHD(1920×1080),
 QHD(2560×1440)로 검사하는 읽기 전용 smoke 12개, FHD 변경 작업 5개, 공식 시각 회귀 18개를
@@ -197,3 +197,5 @@ read/write cutover에 연결되지 않았습니다. 개인정보 backup/restore,
 레거시 데이터 삭제, 운영 cutover, Browser Print 재배포와 실제 GT800 검수는 별도 승인과 증거가
 있기 전까지 완료로 보지 않습니다. 최초 기준 commit `83c43e5`와
 `refactor-baseline-2026-08-28` 태그는 `origin/master`에 게시됐습니다.
+
+성능 개선 적용과 작업 복구·보관 정책은 [적용 결과](docs/performance-implementation-status.md)를 참고하세요.

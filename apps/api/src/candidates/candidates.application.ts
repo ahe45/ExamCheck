@@ -1,7 +1,8 @@
+import { readFile } from "node:fs/promises";
 import { ConflictException, Inject, Injectable } from "@nestjs/common";
-import type { Pool } from "mysql2/promise";
+import type { Pool, PoolConnection } from "mysql2/promise";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
-import { withTransaction } from "../common/database/transaction.js";
+import { withScopedTransaction } from "../common/database/transaction.js";
 import { APP_CONFIG, type AppConfig } from "../config/app-config.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import {
@@ -43,11 +44,26 @@ export class CandidatesApplicationService {
     checksum: string,
     actorUserId: number | null,
     expectedStateChecksum?: string,
+    completion?: (connection: PoolConnection, result: object) => Promise<void>,
+    progress?: (processed: number) => Promise<void>,
   ) {
     try {
-      return await withTransaction(this.pool, async (connection) => {
-        const uniqueness = await this.repository.loadExamineeNumberUniqueness(connection, { forUpdate: true });
-        const existing = await this.repository.loadExisting(connection, { forUpdate: true });
+      const examineeNos = [...new Set(candidates.map((row) => row.examineeNo))];
+      const observed = await this.repository.loadExisting(this.pool, { forUpdate: false, examineeNos });
+      return await withScopedTransaction(this.pool, async (connection) => {
+        const uniqueness = await this.repository.loadExamineeNumberUniqueness(connection, {
+          forUpdate: false,
+          shared: true,
+        });
+        await this.repository.lockImportNumbers(connection, examineeNos);
+        await this.repository.lockImportAdmissions(connection, this.examName, [...observed.values(), ...candidates]);
+        await this.repository.lockImportOperations(connection, this.examName, [...observed.values(), ...candidates]);
+        const existing = await this.repository.loadExisting(connection, { forUpdate: true, examineeNos });
+        for (const [key, row] of existing) {
+          const prior = observed.get(key);
+          if (!prior || hasCandidateOperationalChanges(prior, row))
+            throw new ConflictException("등록 준비 중 수험생 정보가 변경되었습니다. 미리보기를 다시 확인해 주세요.");
+        }
         if (expectedStateChecksum) {
           assertCandidatePreviewState(
             expectedStateChecksum,
@@ -84,15 +100,16 @@ export class CandidatesApplicationService {
           await this.repository.deleteTimeRangesByIds(connection, affectedRangeIds(affectedScopeCandidates, guards));
         }
 
-        for (const item of plan.items) {
-          if (item.action === "skip") {
-            continue;
-          } else if (item.action === "update") {
-            await this.repository.updateCandidate(connection, item.current.id, item.candidate, this.examName);
-          } else {
-            await this.repository.insertCandidate(connection, item.candidate, this.examName);
-          }
-        }
+        await this.repository.writeCandidateBatch(
+          connection,
+          plan.items.flatMap((item) =>
+            item.action === "skip"
+              ? []
+              : [{ candidate: item.candidate, ...(item.action === "update" ? { id: item.current.id } : {}) }],
+          ),
+          this.examName,
+          progress,
+        );
 
         const result = {
           totalRows: plan.totalRows,
@@ -105,6 +122,7 @@ export class CandidatesApplicationService {
           actorUserId,
           details: { ...result, policy, checksum },
         });
+        await completion?.(connection, result);
         return result;
       });
     } catch (error) {
@@ -118,10 +136,20 @@ export class CandidatesApplicationService {
     checksum: string,
     actorUserId: number | null,
     expectedStateChecksum?: string,
+    completion?: (connection: PoolConnection, result: object) => Promise<void>,
+    progress?: (processed: number) => Promise<void>,
   ) {
     try {
-      return await withTransaction(this.pool, async (connection) => {
-        const candidateRows = await this.repository.listCandidatePhotos(connection, { forUpdate: true });
+      return await withScopedTransaction(this.pool, async (connection) => {
+        const observed = await this.repository.listCandidatePhotos(connection, { forUpdate: false });
+        const targetNumbers = matchCandidatePhotos(archive, observed).photos.flatMap((photo) =>
+          photo.candidateRows.map((row) => row.examineeNo),
+        );
+        await this.repository.lockImportNumbers(connection, targetNumbers);
+        const candidateRows = await this.repository.listCandidatePhotos(connection, {
+          forUpdate: true,
+          examineeNos: [...new Set(targetNumbers)],
+        });
         if (expectedStateChecksum) {
           assertCandidatePreviewState(
             expectedStateChecksum,
@@ -131,13 +159,33 @@ export class CandidatesApplicationService {
         const matches = matchCandidatePhotos(archive, candidateRows);
         const plan = buildCandidatePhotoImportPlan(matches, policy);
 
+        const packetLimit = (await this.repository.maxPacketBytes(connection)) - 65536;
+        const batchLimit = Math.min(packetLimit, 8 * 1024 * 1024);
+        let batch: { id: number; fileName: string; mimeType: string; content: Buffer; contentHash: string }[] = [];
+        let bytes = 0;
+        let processed = 0;
+        const flush = async () => {
+          await this.repository.upsertCandidatePhotoBatch(connection, batch);
+          processed += batch.length;
+          await progress?.(processed);
+          batch = [];
+          bytes = 0;
+        };
         for (const item of plan.items) {
           if (item.action === "skip") continue;
+          const content = item.photo.contentPath ? await readFile(item.photo.contentPath) : item.photo.content;
+          if (content.length + 2048 > packetLimit)
+            throw new ConflictException(
+              "사진 크기가 DB의 한 번에 저장 가능한 크기를 초과합니다. 사진 크기를 줄여 주세요.",
+            );
           for (const candidate of item.photo.candidateRows) {
             if (policy === "insert-only" && candidate.photoHash) continue;
-            await this.repository.upsertCandidatePhoto(connection, candidate.id, item.photo);
+            if (batch.length && (batch.length >= 100 || bytes + content.length + 2048 > batchLimit)) await flush();
+            batch.push({ id: candidate.id, ...item.photo, content });
+            bytes += content.length + 2048;
           }
         }
+        await flush();
 
         const result = {
           totalFiles: plan.totalFiles,
@@ -151,6 +199,7 @@ export class CandidatesApplicationService {
           actorUserId,
           details: { ...result, policy, checksum },
         });
+        await completion?.(connection, result);
         return result;
       });
     } catch (error) {

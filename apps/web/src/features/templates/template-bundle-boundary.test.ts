@@ -12,7 +12,7 @@ describe("template editor bundle boundary", () => {
 
     expect(renderer).toContain('from "./editor/examlist-template-formatting"');
     expect(renderer).not.toContain("examlist-template-editor-adapter");
-    expect(formatting).toContain('from "examlist-template-editor/core"');
+    expect(formatting).toContain('from "../data-tag-formatting"');
     expect(formatting).not.toMatch(/from ["']examlist-template-editor["']/u);
   });
 
@@ -43,9 +43,9 @@ describe("template editor bundle boundary", () => {
       (match) => match.groups?.body || "",
     ).find((body) => body.includes("100dvh"));
 
-    expect(adminStyles).toContain(".exam-admin-content.template-admin-main:has(> .examlist-template-library)");
+    expect(adminStyles).toContain(".exam-admin-content.template-admin-main:has(.examlist-template-library)");
     expect(adminStyles).toMatch(
-      /\.exam-admin-content\.template-admin-main:has\(> \.examlist-template-library\)\s*\{[^}]*height: auto;[^}]*overflow: visible;/su,
+      /\.exam-admin-content\.template-admin-main:has\(\.examlist-template-library\)\s*\{[^}]*height: auto;[^}]*overflow: visible;/su,
     );
     expect(libraryRule).toContain("min-height: calc(100dvh");
     expect(libraryRule).toContain("overflow: visible");

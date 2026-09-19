@@ -10,7 +10,7 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     let templateCount = 5;
-    await page.route("**/api/v1/form-templates/admin", (route) =>
+    await page.route("**/api/v1/form-templates/admin/summaries", (route) =>
       route.fulfill({
         json: Array.from({ length: templateCount }, (_, index) => ({
           id: 90000 + index,
@@ -27,7 +27,24 @@ for (const viewport of [
         })),
       }),
     );
-    await page.route("**/api/v1/label-templates", async (route) => {
+    await page.route("**/api/v1/form-templates/admin/LAYOUT_*", (route) =>
+      route.fulfill({
+        json: {
+          id: 90008,
+          code: "LAYOUT_8",
+          name: "양식 9",
+          description: "",
+          category: "문서",
+          usageScope: "CANDIDATE",
+          active: true,
+          layout: {
+            id: "layout-8",
+            layout: { pages: [{ id: "page-1", type: "content", settings: { documentHtml: "<p>확인</p>" } }] },
+          },
+        },
+      }),
+    );
+    await page.route("**/api/v1/label-templates/summaries", async (route) => {
       const response = await route.fetch();
       const result = await response.json();
       expect(result.templates.length).toBeGreaterThan(0);

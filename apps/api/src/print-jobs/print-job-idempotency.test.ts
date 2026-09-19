@@ -1,10 +1,7 @@
 import { ConflictException } from "@nestjs/common";
 import { describe, expect, it } from "vitest";
 import type { CreatePrintJobDto } from "./print-jobs.dto.js";
-import {
-  assertMatchingPrintJobRequest,
-  createPrintJobRequestFingerprint,
-} from "./print-job-idempotency.js";
+import { assertMatchingPrintJobRequest, createPrintJobRequestFingerprint } from "./print-job-idempotency.js";
 
 const baseRequest: CreatePrintJobDto = {
   idempotencyKey: "5f4955d9-4625-4b24-802f-f4f19b60c422",

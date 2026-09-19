@@ -80,6 +80,8 @@ function createFixture() {
   } as unknown as PoolConnection;
   const setting = settingRow();
   const repository = {
+    lockAdmissionNumbers: vi.fn(),
+    insertAbsenteeAssignments: vi.fn().mockResolvedValue([1]),
     loadPseudonymNumberPolicyForUpdate: vi.fn().mockResolvedValue("ADMISSION"),
     findExactSettingForUpdate: vi.fn().mockResolvedValue(setting),
     listScheduleCounts: vi.fn().mockResolvedValue([]),
@@ -141,3 +143,8 @@ function settingRow(): SettingRow {
     enableBulkDraw: false,
   } as SettingRow;
 }
+
+vi.mock("../common/database/transaction.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../common/database/transaction.js")>()),
+  beginScopedWrite: async (connection: { beginTransaction(): Promise<void> }) => connection.beginTransaction(),
+}));

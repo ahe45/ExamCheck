@@ -1,3 +1,4 @@
+import compression from "compression";
 import { ValidationPipe, type INestApplication } from "@nestjs/common";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { JSON_BODY_LIMIT_BYTES } from "./common/http/request-body-limits.js";
@@ -34,6 +35,7 @@ export function configureApplication(app: INestApplication, options: Application
   });
   configureHttpBoundary(app, { requestLogWriter: options.requestLogWriter });
   app.use(securityHeadersMiddleware);
+  app.use(compression({ threshold: 1024 }));
   (app as NestExpressApplication).useBodyParser("json", { limit: JSON_BODY_LIMIT_BYTES });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   return app;

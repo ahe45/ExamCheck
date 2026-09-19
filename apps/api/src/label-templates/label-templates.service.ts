@@ -21,6 +21,10 @@ export class LabelTemplatesService {
     @Inject(MutationAuditRepository) private readonly audit: MutationAuditRepository,
   ) {}
 
+  async listSummaries() {
+    return { dataTags: LABEL_DATA_TAG_CATALOG, templates: await this.repository.listSummaries(this.pool) };
+  }
+
   async list(activeOnly = false) {
     return {
       dataTags: LABEL_DATA_TAG_CATALOG,
@@ -148,8 +152,8 @@ export class LabelTemplatesService {
     }
   }
 
-  private async find(code: string) {
-    const template = (await this.repository.list(this.pool)).find((item) => item.code === code);
+  async find(code: string) {
+    const template = await this.repository.find(this.pool, code);
     if (!template) throw new NotFoundException("저장한 라벨 양식을 불러오지 못했습니다.");
     return template;
   }

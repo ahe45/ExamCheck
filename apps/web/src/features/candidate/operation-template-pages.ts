@@ -3,7 +3,11 @@ import { fetchExamineePhoto, type OperationSchedule } from "../../shared/api/exa
 import type { FormTemplate } from "../../shared/api/form-templates";
 import { boundedMap, isAbortError, throwIfAborted } from "../../shared/async/bounded-map";
 import { getTemplateDocumentHtml, renderTemplateHtml } from "../templates/template-renderer";
-import { getPrintableCandidateGrid, renderCandidateGridPages } from "../templates/template-candidate-pages";
+import {
+  getPrintableCandidateGrid,
+  renderCandidateGridPages,
+  sortCandidateGridRecords,
+} from "../templates/template-candidate-pages";
 import { emptyTemplateSignatureNames, type TemplateSignatureNames } from "../templates/template-signatures";
 import { operationRowAttendance, type OperationGridContext, type OperationRow } from "./operation-view-model";
 
@@ -35,69 +39,85 @@ export async function buildOperationTemplatePages(
   sourceRows: OperationRow[],
   context: OperationTemplateContext,
 ) {
+  const pages = createOperationTemplatePages(template, sourceRows, context);
+  return boundedMap(
+    Array.from({ length: pages.length }, (_, i) => i),
+    (i) => pages.getPage(i),
+    {
+      concurrency: 4,
+      signal: context.signal,
+    },
+  );
+}
+
+// Keep only the current page's photos and HTML alive during production PDF generation.
+export function createOperationTemplatePages(
+  template: FormTemplate,
+  sourceRows: OperationRow[],
+  context: OperationTemplateContext,
+) {
   throwIfAborted(context.signal);
-  const rows = selectOperationPrintRows(sourceRows, context.printTarget || "ALL", {
+  const attendanceContext = {
     operationClosed: context.operationClosed,
     labelPrintingEnabled: context.labelPrintingEnabled ?? context.schedule.labelPrintingEnabled ?? false,
-  });
-  if (!rows.length && context.printTarget === "PRESENT") throw new Error("응시한 수험생이 없어 출력할 수 없습니다.");
-  if (!rows.length) throw new Error("PDF로 생성할 수험생 데이터가 없습니다.");
-  // Filtering changes which candidates are printed, not the actual room totals.
-  const statisticsGroups = template.usageScope === "ROOM" ? groupByRoom(sourceRows) : [sourceRows];
-  const statisticsFor = (row: OperationRow) => statisticsGroups.find((group) => group.includes(row))!;
+  };
+  const rows = selectOperationPrintRows(sourceRows, context.printTarget || "ALL", attendanceContext);
+  if (!rows.length)
+    throw new Error(
+      context.printTarget === "PRESENT"
+        ? "응시한 수험생이 없어 출력할 수 없습니다."
+        : "PDF로 생성할 수험생 데이터가 없습니다.",
+    );
+  const statistics = new Map<OperationRow, { total: number; present: number; absent: number }>();
+  for (const group of template.usageScope === "ROOM" ? groupByRoom(sourceRows) : [sourceRows]) {
+    const counts = { total: group.length, present: 0, absent: 0 };
+    for (const row of group) {
+      const attendance = operationRowAttendance(row, attendanceContext);
+      counts.present += Number(attendance === "응시");
+      counts.absent += Number(attendance === "결시");
+      statistics.set(row, counts);
+    }
+  }
+  const printedAt = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date());
+  const valuesFor = (row: OperationRow, index: number, photo = "") =>
+    templateValues(row, statistics.get(row)!, index, context, photo, printedAt);
   const requiresPhoto = getTemplateDocumentHtml(template.layout).includes("candidate.photo");
   const grid = getPrintableCandidateGrid(template.layout);
+  const groups = template.usageScope === "ROOM" ? groupByRoom(rows) : [rows];
+  const pageRows: OperationRow[][] = [];
   if (grid) {
-    const groups = template.usageScope === "ROOM" ? groupByRoom(rows) : [rows];
-    const values = await boundedMap(
-      rows,
-      async (row) => {
-        const photo = requiresPhoto ? await candidatePhoto(row, context) : "";
-        const group = statisticsFor(row);
-        return templateValues(row, group, 0, context, photo);
-      },
-      { concurrency: 4, signal: context.signal, onProgress: requiresPhoto ? context.onPhotoProgress : undefined },
-    );
-    throwIfAborted(context.signal);
-    const byRow = new Map(rows.map((row, index) => [row, values[index]]));
-    return groups.flatMap((group) =>
-      renderCandidateGridPages(
+    for (const group of groups) {
+      const sorted = sortCandidateGridRecords(
         grid,
-        group.map((row) => byRow.get(row)!),
-      ),
-    );
-  }
-  if (template.usageScope === "CANDIDATE") {
-    return boundedMap(
-      rows,
-      async (row, index) => {
-        throwIfAborted(context.signal);
-        const photo = requiresPhoto ? await candidatePhoto(row, context) : "";
-        throwIfAborted(context.signal);
-        return renderTemplateHtml(template.layout, templateValues(row, statisticsFor(row), index, context, photo));
-      },
-      {
-        concurrency: requiresPhoto ? 4 : 8,
-        signal: context.signal,
-        onProgress: requiresPhoto ? context.onPhotoProgress : undefined,
-      },
-    );
-  }
-  if (template.usageScope === "ROOM") {
-    const rooms = Array.from(
-      rows
-        .reduce<Map<string, OperationRow[]>>((groups, row) => {
-          const key = `${row.candidate.buildingName}|${row.candidate.roomName}`;
-          groups.set(key, [...(groups.get(key) || []), row]);
-          return groups;
-        }, new Map())
-        .values(),
-    );
-    return rooms.map((roomRows, index) =>
-      renderTemplateHtml(template.layout, templateValues(roomRows[0], statisticsFor(roomRows[0]), index, context, "")),
-    );
-  }
-  return [renderTemplateHtml(template.layout, templateValues(rows[0], sourceRows, 0, context, ""))];
+        group.map((row) => ({ ...valuesFor(row, 0), row })),
+      );
+      for (let i = 0; i < sorted.length; i += grid.capacity)
+        pageRows.push(sorted.slice(i, i + grid.capacity).map((item) => item.row));
+    }
+  } else if (template.usageScope === "CANDIDATE") rows.forEach((row) => pageRows.push([row]));
+  else pageRows.push(...groups);
+  let completed = 0;
+  return {
+    length: pageRows.length,
+    async getPage(index: number): Promise<string> {
+      throwIfAborted(context.signal);
+      const group = pageRows[index];
+      if (!group) throw new Error("출력 페이지를 찾을 수 없습니다.");
+      const items = grid ? group : [group[0]];
+      const values = await boundedMap(
+        items,
+        async (row, slot) => {
+          const withPhoto = requiresPhoto && (Boolean(grid) || template.usageScope === "CANDIDATE");
+          const photo = withPhoto ? await candidatePhoto(row, context) : "";
+          if (withPhoto) context.onPhotoProgress?.(++completed, rows.length);
+          return valuesFor(row, grid ? slot : index, photo);
+        },
+        { concurrency: 4, signal: context.signal },
+      );
+      throwIfAborted(context.signal);
+      return grid ? renderCandidateGridPages(grid, values)[0] : renderTemplateHtml(template.layout, values[0]);
+    },
+  };
 }
 
 function groupByRoom(rows: OperationRow[]) {
@@ -127,10 +147,11 @@ async function candidatePhoto(row: OperationRow, context: OperationTemplateConte
 
 function templateValues(
   row: OperationRow | undefined,
-  groupRows: OperationRow[],
+  counts: { total: number; present: number; absent: number },
   index: number,
   context: OperationTemplateContext,
   photo: string,
+  printedAt: string,
 ) {
   const candidate = row?.candidate;
   const assignment = row?.assignment;
@@ -138,15 +159,11 @@ function templateValues(
     operationClosed: context.operationClosed,
     labelPrintingEnabled: context.labelPrintingEnabled ?? context.schedule.labelPrintingEnabled ?? false,
   };
-  const absentCount = groupRows.filter((item) => operationRowAttendance(item, attendanceContext) === "결시").length;
-  const presentCount = groupRows.filter((item) => operationRowAttendance(item, attendanceContext) === "응시").length;
   return {
     ...emptyTemplateSignatureNames(),
     ...(context.signatureNames || {}),
     "system.title": context.systemProfile.systemName,
-    "system.printedAt": new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(
-      new Date(),
-    ),
+    "system.printedAt": printedAt,
     "school.code": "",
     "school.name": context.systemProfile.schoolName,
     "candidate.examNo": candidate?.examineeNo || "",
@@ -189,9 +206,9 @@ function templateValues(
     "candidate.opt1": candidate?.opt1 || "",
     "candidate.opt2": candidate?.opt2 || "",
     "candidate.opt3": candidate?.opt3 || "",
-    "room.assignedCount": groupRows.length,
-    "room.presentCount": presentCount,
-    "room.absentCount": absentCount,
+    "room.assignedCount": counts.total,
+    "room.presentCount": counts.present,
+    "room.absentCount": counts.absent,
     "row.indexInPage": index + 1,
   };
 }

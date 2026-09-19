@@ -162,12 +162,12 @@ export class PseudonymsRepository {
     executor: SqlExecutor,
     examName: string,
     admissionName: string,
-    options: { forUpdate: boolean },
+    options: { forUpdate: boolean; shared?: boolean },
   ): Promise<SettingRow | undefined> {
     const [rows] = await executor.execute<SettingRow[]>(
       `${settingSelectSql}
        WHERE exam_name = ? AND admission_name IN (?, '') AND active = TRUE
-       ORDER BY CASE WHEN admission_name = ? THEN 0 ELSE 1 END LIMIT 1${options.forUpdate ? " FOR UPDATE" : ""}`,
+       ORDER BY CASE WHEN admission_name = ? THEN 0 ELSE 1 END LIMIT 1${options.shared ? " LOCK IN SHARE MODE" : options.forUpdate ? " FOR UPDATE" : ""}`,
       [examName, admissionName, admissionName],
     );
     return rows[0];
@@ -214,6 +214,18 @@ export class PseudonymsRepository {
       [examName, ...settingAdmissions],
     );
     return rows;
+  }
+
+  async listRangeSummariesForOverview(executor: SqlExecutor, settingIds: number[], admissionNames: string[]) {
+    if (!settingIds.length || !admissionNames.length) return [];
+    const [rows] = await executor.execute<
+      Array<RowDataPacket & { settingId: number; admission: string; count: number; start: number; end: number }>
+    >(
+      `SELECT setting_id AS settingId, admission, COUNT(*) AS count, MIN(range_start) AS start, MAX(range_end) AS end
+      FROM pseudonym_time_range WHERE setting_id IN (${settingIds.map(() => "?").join(",")}) AND admission IN (${admissionNames.map(() => "?").join(",")}) GROUP BY setting_id, admission`,
+      [...settingIds, ...admissionNames],
+    );
+    return rows.map((row) => ({ ...row, count: Number(row.count), start: Number(row.start), end: Number(row.end) }));
   }
 
   async listTimeRangesForOverview(
@@ -501,7 +513,11 @@ export class PseudonymsRepository {
     return rows;
   }
 
-  async listTimeRangesForUpdate(executor: SqlExecutor, settingId: number): Promise<TimeRangeRow[]> {
+  async listTimeRangesForUpdate(
+    executor: SqlExecutor,
+    settingId: number,
+    scope?: PseudonymOperationScopeInput,
+  ): Promise<TimeRangeRow[]> {
     const [rows] = await executor.execute<TimeRangeRow[]>(
       `SELECT id, schedule_key AS scheduleKey,
               DATE_FORMAT(exam_date, '%Y-%m-%d') AS date, exam_time AS time,
@@ -510,10 +526,10 @@ export class PseudonymsRepository {
               range_start AS rangeStart, range_end AS rangeEnd, display_width AS displayWidth,
               next_sequence AS nextSequence
        FROM pseudonym_time_range
-       WHERE setting_id = ?
+       WHERE setting_id = ?${scope ? " AND exam_date = ? AND exam_time = ? AND period_name = ? AND admission = ?" : ""}
        ORDER BY schedule_key
        FOR UPDATE`,
-      [settingId],
+      [settingId, ...(scope ? [scope.examDate, scope.examTime, scope.periodName, scope.admissionName] : [])],
     );
     return rows;
   }
@@ -728,6 +744,10 @@ export class PseudonymsRepository {
   }
 
   async ensureOperation(executor: SqlExecutor, input: PseudonymOperationScopeInput): Promise<void> {
+    await executor.execute(
+      "INSERT INTO pseudonym_operation_mutex (exam_name, exam_date, exam_time, period_name, admission_name) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE admission_name = VALUES(admission_name)",
+      operationParams(input),
+    );
     await executor.execute(ensureOperationSql, operationParams(input));
   }
 
@@ -774,6 +794,39 @@ export class PseudonymsRepository {
       [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName],
     );
     return rows;
+  }
+
+  async insertAbsenteeAssignments(
+    executor: SqlExecutor,
+    items: readonly { candidate: CandidateRow; number: string }[],
+    admissionName: string,
+    scopeKey: string,
+    mode: PseudonymAssignmentMode,
+    actorUserId: number,
+  ): Promise<number[]> {
+    const ids: number[] = [];
+    for (let offset = 0; offset < items.length; offset += 100) {
+      const batch = items.slice(offset, offset + 100);
+      await executor.execute(
+        `INSERT INTO pseudonym_assignment (candidate_record_id, exam_name, admission_name, uniqueness_scope_key, pseudonym_no, assignment_mode, is_absentee, auto_assigned_on_close, assigned_by)
+        VALUES ${batch.map(() => "(?, ?, ?, ?, ?, ?, TRUE, TRUE, ?)").join(",")}`,
+        batch.flatMap((item) => [
+          item.candidate.candidateRecordId,
+          item.candidate.examName,
+          admissionName,
+          scopeKey,
+          item.number,
+          mode,
+          actorUserId,
+        ]),
+      );
+      const [rows] = await executor.execute<IdRow[]>(
+        `SELECT id FROM pseudonym_assignment WHERE candidate_record_id IN (${batch.map(() => "?").join(",")})`,
+        batch.map((item) => item.candidate.candidateRecordId),
+      );
+      ids.push(...rows.map((row) => Number(row.id)));
+    }
+    return ids;
   }
 
   async insertAbsenteeAssignment(
@@ -942,12 +995,19 @@ export class PseudonymsRepository {
     return result.insertId;
   }
 
-  async loadPseudonymNumberPolicyForUpdate(executor: SqlExecutor): Promise<PseudonymNoUniqueness> {
+  async loadPseudonymNumberPolicyForUpdate(executor: SqlExecutor, shared = false): Promise<PseudonymNoUniqueness> {
     const [rows] = await executor.execute<PseudonymPolicyRow[]>(
       `SELECT pseudonym_no_uniqueness AS pseudonymNoUniqueness
-       FROM system_profile WHERE id = 1 LIMIT 1 FOR UPDATE`,
+       FROM system_profile WHERE id = 1 LIMIT 1 ${shared ? "LOCK IN SHARE MODE" : "FOR UPDATE"}`,
     );
     return rows[0]?.pseudonymNoUniqueness ?? "ADMISSION";
+  }
+
+  async lockAdmissionNumbers(executor: SqlExecutor, examName: string, admissionName: string) {
+    await executor.execute(
+      "INSERT INTO pseudonym_admission_lock (exam_name, admission_name) VALUES (?, ?) ON DUPLICATE KEY UPDATE admission_name = VALUES(admission_name)",
+      [examName, admissionName],
+    );
   }
 
   async loadReservedNumbers(
@@ -956,41 +1016,24 @@ export class PseudonymsRepository {
     admissionName: string,
     policy: PseudonymNoUniqueness,
     scope: PseudonymScheduleScope,
+    boundsFilter?: { start: number; end: number },
   ): Promise<Set<number>> {
     const scopeKey = pseudonymUniquenessScopeKey(policy, scope);
-    const [rows] = await executor.execute<NumberRow[]>(
-      `SELECT pseudonym_no AS pseudonymNumber
-       FROM pseudonym_assignment
-       WHERE exam_name = ? AND admission_name = ?
-         AND (
-           uniqueness_scope_key = ?
-           OR (? = 'SCHEDULE' AND candidate_record_id IS NULL AND uniqueness_scope_key = '')
-         )
-       UNION
-       SELECT NULLIF(cr.temporary_no, '') AS pseudonymNumber
-       FROM candidate_record cr
-       WHERE cr.exam_name = ? AND cr.admission = ? AND cr.temporary_no <> ''
-         AND (? = 'ADMISSION' OR (
-           cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?
-         ))
-         AND EXISTS (
-           SELECT 1 FROM candidate_record active_candidate
-           WHERE active_candidate.id = cr.id AND active_candidate.status = 'ACTIVE'
-         )`,
-      [
-        examName,
-        admissionName,
-        scopeKey,
-        policy,
-        examName,
-        admissionName,
-        policy,
-        scope.date,
-        scope.time,
-        scope.period,
-      ],
+    const bounds = boundsFilter ? [boundsFilter.start, boundsFilter.end] : [];
+    const [assigned] = await executor.execute<NumberRow[]>(
+      `SELECT pseudonym_no AS pseudonymNumber FROM pseudonym_assignment
+      WHERE exam_name = ? AND admission_name = ? AND (uniqueness_scope_key = ? OR (? = 'SCHEDULE' AND candidate_record_id IS NULL AND uniqueness_scope_key = ''))
+      ${boundsFilter ? "AND CAST(pseudonym_no AS UNSIGNED) BETWEEN ? AND ?" : ""} FOR UPDATE`,
+      [examName, admissionName, scopeKey, policy, ...bounds],
     );
-    return new Set(rows.map((row) => parsePseudonym(row.pseudonymNumber)));
+    const [preassigned] = await executor.execute<NumberRow[]>(
+      `SELECT cr.temporary_no AS pseudonymNumber FROM candidate_record cr
+      WHERE cr.exam_name = ? AND cr.admission = ? AND cr.temporary_no <> '' AND cr.status = 'ACTIVE'
+        AND (? = 'ADMISSION' OR (cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?))
+        ${boundsFilter ? "AND CAST(cr.temporary_no AS UNSIGNED) BETWEEN ? AND ?" : ""} LOCK IN SHARE MODE`,
+      [examName, admissionName, policy, scope.date, scope.time, scope.period, ...bounds],
+    );
+    return new Set([...assigned, ...preassigned].map((row) => parsePseudonym(row.pseudonymNumber)));
   }
 
   async findPreassignedOwner(
@@ -1012,7 +1055,7 @@ export class PseudonymsRepository {
            SELECT 1 FROM candidate_record active_candidate
            WHERE active_candidate.id = cr.id AND active_candidate.status = 'ACTIVE'
          )
-       ORDER BY cr.id LIMIT 1`,
+       ORDER BY cr.id LIMIT 1 LOCK IN SHARE MODE`,
       [examName, admissionName, number, policy, scope.date, scope.time, scope.period],
     );
     return rows[0]?.candidateRecordId ?? null;

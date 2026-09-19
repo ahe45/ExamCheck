@@ -170,6 +170,8 @@ function createAssignmentFixture() {
   const connection = createConnection();
   const candidate = candidateRow();
   const repository = {
+    lockAdmissionNumbers: vi.fn(),
+    insertAbsenteeAssignments: vi.fn().mockResolvedValue([91]),
     loadPseudonymNumberPolicyForUpdate: vi.fn().mockResolvedValue("ADMISSION"),
     findCandidateInScope: vi.fn().mockResolvedValue(candidate),
     ensureOperation: vi.fn().mockResolvedValue(undefined),
@@ -215,6 +217,8 @@ function createOperationFixture(
 ) {
   const connection = createConnection();
   const repository = {
+    lockAdmissionNumbers: vi.fn(),
+    insertAbsenteeAssignments: vi.fn().mockResolvedValue([91]),
     loadPseudonymNumberPolicyForUpdate: vi.fn().mockResolvedValue("ADMISSION"),
     ensureOperation: vi.fn().mockResolvedValue(undefined),
     lockOperation: vi.fn().mockResolvedValue({ id: 7, closed: false }),
@@ -322,3 +326,8 @@ function settingRow(
     ...overrides,
   } as SettingRow;
 }
+
+vi.mock("../common/database/transaction.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../common/database/transaction.js")>()),
+  beginScopedWrite: async (connection: { beginTransaction(): Promise<void> }) => connection.beginTransaction(),
+}));

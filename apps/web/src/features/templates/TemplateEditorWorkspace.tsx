@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ListButtonIcon, PreviewButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
-import { fetchAdminFormTemplates, saveFormTemplate, type FormTemplate } from "../../shared/api/form-templates";
+import { saveFormTemplate, type FormTemplate } from "../../shared/api/form-templates";
 import type {
   DataTagCatalog,
   DataTagViewOptions,
@@ -50,7 +50,7 @@ interface TemplateEditorWorkspaceProps {
   onDraftChange(draft: DraftTemplate): void;
   onDirtyChange?(dirty: boolean): void;
   onNoticeChange(notice: TemplateNoticeValue | null): void;
-  onTemplateSaved(template: FormTemplate, templates: FormTemplate[]): void;
+  onTemplateSaved(template: FormTemplate): void;
 }
 
 export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle, TemplateEditorWorkspaceProps>(
@@ -73,6 +73,28 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
     const rootRef = useRef<HTMLDivElement>(null);
     const editorRef = useRef<TemplateEditorInstance | null>(null);
     const draftRef = useRef(draft);
+    const pendingLayoutRef = useRef<DraftTemplate["layout"] | null>(null);
+    const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const flushDraftRef = useRef<() => void>(() => {});
+    flushDraftRef.current = () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+      const layout = pendingLayoutRef.current;
+      pendingLayoutRef.current = null;
+      if (layout) {
+        const next = { ...draftRef.current, layout: serializeTemplateEditorValue(layout) };
+        draftRef.current = next;
+        onDraftChange(next);
+      }
+    };
+    useEffect(() => {
+      const flush = () => flushDraftRef.current();
+      window.addEventListener("pagehide", flush);
+      return () => {
+        window.removeEventListener("pagehide", flush);
+        flush();
+      };
+    }, []);
     const saveInFlightRef = useRef<Promise<boolean> | null>(null);
     const imperativeSaveRef = useRef<() => Promise<boolean>>(() => Promise.resolve(true));
     const viewOptionsRef = useRef<DataTagViewOptions>(readDataTagViewOptions());
@@ -154,9 +176,11 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
                 active: metadata.active,
                 layout: serializedTemplate,
               });
-              const refreshed = await fetchAdminFormTemplates(token);
               initialMetadataSnapshotRef.current = createDraftMetadataSnapshot(metadata);
-              onTemplateSaved(saved, refreshed);
+              pendingLayoutRef.current = null;
+              if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+              draftTimerRef.current = null;
+              onTemplateSaved(saved);
               setEditorDirty(false);
               onNoticeChange({
                 kind: "success",
@@ -173,8 +197,8 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
         },
         onChange: (layout) => {
           if (typeof layout !== "string") {
-            const current = draftRef.current;
-            onDraftChange({ ...current, layout: serializeTemplateEditorValue(layout) });
+            pendingLayoutRef.current = layout;
+            if (!draftTimerRef.current) draftTimerRef.current = setTimeout(() => flushDraftRef.current(), 200);
           }
         },
         onDirtyChange: setEditorDirty,
@@ -209,6 +233,7 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
         onOpenSettings: () => setShowTagSettings(true),
       });
       return () => {
+        flushDraftRef.current();
         transactions.dispose();
         disposeTagPanel();
         disposeEditorControls();
@@ -221,10 +246,12 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
     }, [decoratedDataTags, onDraftChange, onNoticeChange, onTemplateSaved, sourceId, tagSettingsRevision, token]);
 
     function updateMetadata<K extends keyof DraftTemplate>(key: K, value: DraftTemplate[K]) {
+      flushDraftRef.current();
       onDraftChange(updateDraftMetadata(draftRef.current, key, value));
     }
 
     function closeEditor() {
+      flushDraftRef.current();
       if (dirty && !window.confirm("저장하지 않은 변경 내용이 있습니다. 양식 목록으로 이동할까요?")) {
         return;
       }
@@ -234,6 +261,7 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
     }
 
     function previewTemplate() {
+      flushDraftRef.current();
       const editor = editorRef.current;
       const metadata = draftRef.current;
       if (!editor) return;
@@ -254,6 +282,7 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
     }
 
     async function saveTemplateVersion() {
+      flushDraftRef.current();
       if (saveInFlightRef.current) return saveInFlightRef.current;
       const editor = editorRef.current;
       if (!editor) return false;

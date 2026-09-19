@@ -1,3 +1,5 @@
+import { beginScopedWrite } from "../common/database/transaction.js";
+import type { SqlExecutor } from "../common/database/sql-executor.js";
 import { randomUUID } from "node:crypto";
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import type { Pool } from "mysql2/promise";
@@ -40,37 +42,58 @@ export class PrintJobsService {
     });
     const idempotencyKey = input.idempotencyKey.toLowerCase();
     const requestFingerprint = createPrintJobRequestFingerprint(input);
+    const prepared = await this.loadPrintContext(this.pool, input, admissionName, false);
+    const { candidate, template, examName, workstationId } = prepared;
+    const templateValues = toLabelTemplateZplValues({
+      "system.title": candidate.systemName,
+      "system.printedAt": new Intl.DateTimeFormat("ko-KR", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "Asia/Seoul",
+      }).format(new Date()),
+      "school.name": candidate.schoolName,
+      "candidate.admissionYear": candidate.academicYear,
+      "candidate.examName": candidate.examName || examName,
+      "candidate.examDate": candidate.examDate,
+      "candidate.examStartTime": candidate.examStartTime,
+      "candidate.examEndTime": candidate.examEndTime,
+      "candidate.periodName": candidate.periodName,
+      "candidate.admissionTypeName": candidate.admissionName,
+      "candidate.departmentName": candidate.unitName,
+      "candidate.majorName": candidate.majorName,
+      "candidate.examNo": candidate.examineeNo,
+      "candidate.name": candidate.candidateName,
+      "candidate.birthDate": candidate.birthDate,
+      "candidate.temporaryNo": candidate.pseudonymNumber,
+      "candidate.preassignedNo": candidate.preassignedNumber,
+      "candidate.groupName": candidate.groupName,
+      "candidate.absent": candidate.absent ? "결시" : "응시",
+      "candidate.photo": "",
+      "candidate.buildingName": candidate.buildingName,
+      "candidate.waitingRoomName": candidate.waitingRoom || "",
+      "candidate.roomName": candidate.roomName,
+      "candidate.seatNo": candidate.seatNo,
+      "candidate.opt1": candidate.opt1,
+      "candidate.opt2": candidate.opt2,
+      "candidate.opt3": candidate.opt3,
+      "candidate.labelBarcode": candidate.labelBarcode,
+      "room.assignedCount": candidate.roomAssignedCount,
+      "room.presentCount": candidate.roomPresentCount,
+      "room.absentCount": candidate.roomAbsentCount,
+      "signature.author": "",
+      "signature.reviewer": "",
+      "row.indexInPage": 1,
+    });
+    const payload = template.layout
+      ? await renderLabelPayload(template.layout, templateValues)
+      : renderZplTemplate(template.zplTemplate, templateValues);
     const connection = await this.pool.getConnection();
     try {
-      await connection.beginTransaction();
-      const examName = await this.repository.findAssignedExamName(
-        connection,
-        {
-          examineeNo: input.examineeNo.trim(),
-          examDate: input.examDate,
-          examTime: input.examTime,
-          periodName: input.periodName,
-          admissionName: input.admissionName.trim(),
-        },
-        this.defaultExamName,
-      );
-      if (examName === null) throw new NotFoundException("가번호가 부여된 수험생을 찾을 수 없습니다.");
-      const printPolicy = await this.repository.findPrintPolicyForUpdate(connection, examName, admissionName);
-      if (printPolicy?.assignmentMethod !== "PREASSIGNED" || !printPolicy.printPreassignedLabel) {
-        throw new ForbiddenException("사전부여 방식에서 라벨 출력 사용이 설정된 전형만 라벨을 출력할 수 있습니다.");
-      }
-      const candidate = await this.repository.findCandidateForUpdate(connection, {
-        examineeNo: input.examineeNo.trim(),
-        examDate: input.examDate,
-        examTime: input.examTime,
-        periodName: input.periodName,
-        admissionName,
-      });
-      if (!candidate) throw new NotFoundException("가번호가 부여된 수험생을 찾을 수 없습니다.");
-      if (await this.repository.hasPrintedLabel(connection, candidate.candidateRecordId)) {
+      await beginScopedWrite(connection);
+      const current = await this.loadPrintContext(connection, input, admissionName, true);
+      if (await this.repository.hasPrintedLabel(connection, current.candidate.candidateRecordId)) {
         throw new ConflictException("이미 출력된 수험생은 라벨을 재출력할 수 없습니다.");
       }
-
       const existingJob = await this.repository.findByIdempotencyKey(connection, user.id, idempotencyKey);
       if (existingJob) {
         assertMatchingPrintJobRequest(existingJob.requestFingerprint, requestFingerprint);
@@ -79,56 +102,12 @@ export class PrintJobsService {
         await connection.commit();
         return existingJob.response;
       }
-
-      const template = await this.repository.findActiveLabelTemplate(connection, printPolicy.labelTemplateId);
-      if (!template) throw new NotFoundException("이 전형에 사용할 수 있는 라벨 양식이 없습니다.");
-
-      const workstationId = await this.repository.findEnabledWorkstationId(connection, input.workstationCode);
-      if (workstationId === null) throw new NotFoundException("등록된 출력 워크스테이션을 찾을 수 없습니다.");
-
-      const templateValues = toLabelTemplateZplValues({
-        "system.title": candidate.systemName,
-        "system.printedAt": new Intl.DateTimeFormat("ko-KR", {
-          dateStyle: "medium",
-          timeStyle: "short",
-          timeZone: "Asia/Seoul",
-        }).format(new Date()),
-        "school.name": candidate.schoolName,
-        "candidate.admissionYear": candidate.academicYear,
-        "candidate.examName": candidate.examName || examName,
-        "candidate.examDate": candidate.examDate,
-        "candidate.examStartTime": candidate.examStartTime,
-        "candidate.examEndTime": candidate.examEndTime,
-        "candidate.periodName": candidate.periodName,
-        "candidate.admissionTypeName": candidate.admissionName,
-        "candidate.departmentName": candidate.unitName,
-        "candidate.majorName": candidate.majorName,
-        "candidate.examNo": candidate.examineeNo,
-        "candidate.name": candidate.candidateName,
-        "candidate.birthDate": candidate.birthDate,
-        "candidate.temporaryNo": candidate.pseudonymNumber,
-        "candidate.preassignedNo": candidate.preassignedNumber,
-        "candidate.groupName": candidate.groupName,
-        "candidate.absent": candidate.absent ? "결시" : "응시",
-        "candidate.photo": "",
-        "candidate.buildingName": candidate.buildingName,
-        "candidate.waitingRoomName": candidate.waitingRoom || "",
-        "candidate.roomName": candidate.roomName,
-        "candidate.seatNo": candidate.seatNo,
-        "candidate.opt1": candidate.opt1,
-        "candidate.opt2": candidate.opt2,
-        "candidate.opt3": candidate.opt3,
-        "candidate.labelBarcode": candidate.labelBarcode,
-        "room.assignedCount": candidate.roomAssignedCount,
-        "room.presentCount": candidate.roomPresentCount,
-        "room.absentCount": candidate.roomAbsentCount,
-        "signature.author": "",
-        "signature.reviewer": "",
-        "row.indexInPage": 1,
-      });
-      const payload = template.layout
-        ? await renderLabelPayload(template.layout, templateValues)
-        : renderZplTemplate(template.zplTemplate, templateValues);
+      if (JSON.stringify(current) !== JSON.stringify(prepared)) {
+        throw new ConflictException("출력 준비 중 수험생 또는 양식 설정이 변경되었습니다. 다시 출력해 주세요.");
+      }
+      if (await this.repository.hasPendingLabel(connection, candidate.candidateRecordId)) {
+        throw new ConflictException("이미 준비 중인 출력 작업이 있습니다. 기존 출력 결과를 확인해 주세요.");
+      }
       const id = randomUUID();
       const jobNo = `PJ-${Date.now()}-${id.slice(0, 8).toUpperCase()}`;
 
@@ -172,10 +151,44 @@ export class PrintJobsService {
     }
   }
 
+  private async loadPrintContext(
+    executor: SqlExecutor,
+    input: CreatePrintJobDto,
+    admissionName: string,
+    locking: boolean,
+  ) {
+    const scope = {
+      examineeNo: input.examineeNo.trim(),
+      examDate: input.examDate,
+      examTime: input.examTime,
+      periodName: input.periodName,
+      admissionName,
+    };
+    const examName = await this.repository.findAssignedExamName(executor, scope, this.defaultExamName);
+    if (examName === null) throw new NotFoundException("가번호가 부여된 수험생을 찾을 수 없습니다.");
+    const printPolicy = await this.repository.findPrintPolicyForUpdate(executor, examName, admissionName, locking);
+    if (printPolicy?.assignmentMethod !== "PREASSIGNED" || !printPolicy.printPreassignedLabel)
+      throw new ForbiddenException("사전부여 방식에서 라벨 출력 사용이 설정된 전형만 라벨을 출력할 수 있습니다.");
+    const candidate = await this.repository.findCandidateForUpdate(executor, scope, locking);
+    if (!candidate) throw new NotFoundException("가번호가 부여된 수험생을 찾을 수 없습니다.");
+    const template = await this.repository.findActiveLabelTemplate(executor, printPolicy.labelTemplateId, locking);
+    if (!template) throw new NotFoundException("이 전형에 사용할 수 있는 라벨 양식이 없습니다.");
+    if (
+      /room\.(assignedCount|presentCount|absentCount)|ROOM_(ASSIGNED|PRESENT|ABSENT)_COUNT/.test(
+        JSON.stringify(template.layout ?? template.zplTemplate),
+      )
+    ) {
+      Object.assign(candidate, await this.repository.roomCounts(executor, candidate));
+    }
+    const workstationId = await this.repository.findEnabledWorkstationId(executor, input.workstationCode);
+    if (workstationId === null) throw new NotFoundException("등록된 출력 워크스테이션을 찾을 수 없습니다.");
+    return { examName, printPolicy, candidate, template, workstationId };
+  }
+
   async complete(id: string, input: CompletePrintJobDto, user: AuthenticatedUser) {
     const connection = await this.pool.getConnection();
     try {
-      await connection.beginTransaction();
+      await beginScopedWrite(connection);
       const job = await this.repository.findJobForUpdate(connection, id);
       if (!job) throw new NotFoundException("출력 작업을 찾을 수 없습니다.");
       if (user.role !== "ADMIN" && user.role !== "DEVELOPER" && job.requestedBy !== user.id) {

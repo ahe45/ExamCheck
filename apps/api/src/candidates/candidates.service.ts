@@ -1,3 +1,10 @@
+import { parseCandidateWorkbook } from "./candidate-workbook-parser.js";
+import { beginReadSnapshot } from "../common/database/transaction.js";
+import { finished } from "node:stream/promises";
+import { createWriteStream, createReadStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import ExcelJS from "exceljs";
@@ -15,18 +22,10 @@ import {
   assertCandidateUploadPolicy,
   buildCandidatePreview,
   matchCandidatePhotos,
-  normalizeAndValidateCandidate,
-  validateCandidateWorkbookHeaders,
   type CandidatePhotoArchiveFiles,
   type CandidateUploadPolicy,
 } from "./candidate-domain.js";
-import {
-  candidateFieldKeys,
-  candidateFields,
-  candidateKey,
-  type CandidateFieldKey,
-  type CandidateInput,
-} from "./candidate-fields.js";
+import { candidateFieldKeys, candidateFields } from "./candidate-fields.js";
 import { toCandidateHttpError } from "./candidate-http-errors.js";
 import {
   candidatePhotoStateChecksum,
@@ -34,13 +33,10 @@ import {
   createCandidatePreviewTicket,
   verifyCandidatePreviewTicket,
 } from "./candidate-preview-ticket.js";
-import {
-  assertWorkbookBuffer,
-  openValidatedPhotoArchive,
-  readValidatedPhotoEntry,
-} from "./candidate-upload-security.js";
+import { openValidatedPhotoArchive, readValidatedPhotoEntry } from "./candidate-upload-security.js";
 import { CandidatesApplicationService } from "./candidates.application.js";
 import { CandidatesRepository } from "./candidates.repository.js";
+import { parseCandidateListQuery } from "./candidate-list-query.js";
 
 export { assertCandidateNumberUniqueness, validateCandidateWorkbookHeaders } from "./candidate-domain.js";
 export type { CandidateRecordRow } from "./candidates.repository.js";
@@ -60,6 +56,13 @@ export class CandidatesService {
 
   list() {
     return this.repository.list(this.pool);
+  }
+
+  listPage(raw?: string) {
+    return this.repository.listPage(this.pool, parseCandidateListQuery(raw));
+  }
+  filterValues(field: string) {
+    return this.repository.filterValues(this.pool, field);
   }
 
   async dashboardSummary(user: AuthenticatedUser, requestedAdmissionName?: string) {
@@ -99,9 +102,12 @@ export class CandidatesService {
 
   async preview(buffer: Buffer, fileName: string, actorUserId: number) {
     try {
-      const candidates = await this.parseWorkbook(buffer);
+      const candidates = await parseCandidateWorkbook(buffer);
       const uniqueness = await this.repository.loadExamineeNumberUniqueness(this.pool, { forUpdate: false });
-      const existing = await this.repository.loadExisting(this.pool, { forUpdate: false });
+      const existing = await this.repository.loadExisting(this.pool, {
+        forUpdate: false,
+        examineeNos: [...new Set(candidates.map((row) => row.examineeNo))],
+      });
       assertCandidateNumberUniqueness(candidates, existing, uniqueness);
       const previewToken = createCandidatePreviewTicket(
         {
@@ -129,7 +135,7 @@ export class CandidatesService {
         { kind: "WORKBOOK", actorUserId, fileChecksum },
         this.previewSecret,
       );
-      const candidates = await this.parseWorkbook(buffer);
+      const candidates = await parseCandidateWorkbook(buffer);
       return await this.application.importCandidates(
         candidates,
         policy,
@@ -153,7 +159,10 @@ export class CandidatesService {
           kind: "PHOTO_ARCHIVE",
           actorUserId,
           fileChecksum: checksum(buffer),
-          stateChecksum: candidatePhotoStateChecksum(candidateRows, this.previewSecret),
+          stateChecksum: candidatePhotoStateChecksum(
+            parsed.photos.flatMap((photo) => photo.candidateRows),
+            this.previewSecret,
+          ),
           expiresAt: Date.now() + PREVIEW_TICKET_TTL_MS,
         },
         this.previewSecret,
@@ -225,6 +234,70 @@ export class CandidatesService {
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
+  async streamExport(raw?: string) {
+    const directory = await mkdtemp(join(tmpdir(), "examcheck-export-"));
+    const path = join(directory, "candidates.xlsx");
+    try {
+      await this.writeExportFile(raw, path);
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true });
+      throw error;
+    }
+    const stream = createReadStream(path);
+    stream.once("close", () => {
+      void rm(directory, { recursive: true, force: true }).catch(() => {});
+    });
+    return stream;
+  }
+
+  async writeExportFile(raw: string | undefined, path: string, progress?: (count: number) => Promise<void>) {
+    const query = parseCandidateListQuery(raw);
+    const connection = await this.pool.getConnection();
+    const output = createWriteStream(path);
+    let outputError: Error | undefined;
+    output.on("error", (error) => {
+      outputError = error;
+    });
+    try {
+      await beginReadSnapshot(connection);
+      const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+        stream: output,
+        useStyles: true,
+        useSharedStrings: false,
+      });
+      const worksheet = workbook.addWorksheet("수험생등록", { views: [{ state: "frozen", ySplit: 1 }] });
+      worksheet.columns = candidateFields.map((field) => ({
+        header: field.label,
+        key: field.key,
+        width: field.width,
+        style: { numFmt: "@" },
+      }));
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).commit();
+      let offset = 0;
+      for (;;) {
+        if (outputError) throw outputError;
+        const rows = await this.repository.exportBatch(connection, query, offset);
+        for (const row of rows)
+          worksheet.addRow(Object.fromEntries(candidateFieldKeys.map((key) => [key, row[key] || ""]))).commit();
+        offset += rows.length;
+        await progress?.(offset);
+        if (rows.length < 500) break;
+      }
+      worksheet.commit();
+      await workbook.commit();
+      if (outputError) throw outputError;
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback().catch(() => {});
+      throw error;
+    } finally {
+      output.destroy();
+      await finished(output).catch(() => {});
+      connection.release();
+    }
+  }
+
   async buildExport() {
     const rows = await this.list();
     if (!rows.length) throw new BadRequestException("다운로드할 수험생 데이터가 없습니다.");
@@ -245,54 +318,6 @@ export class CandidatesService {
       }
     }
     return Buffer.from(await workbook.xlsx.writeBuffer());
-  }
-
-  private async parseWorkbook(buffer: Buffer): Promise<CandidateInput[]> {
-    assertWorkbookBuffer(buffer);
-    const workbook = new ExcelJS.Workbook();
-    try {
-      await workbook.xlsx.load(buffer as never);
-    } catch {
-      throw new BadRequestException("XLSX 파일을 읽을 수 없습니다.");
-    }
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet) throw new BadRequestException("XLSX 파일에서 시트를 찾을 수 없습니다.");
-    const headerRow = worksheet.getRow(1);
-    const actualHeaders = Array.from({ length: Math.max(headerRow.cellCount, worksheet.columnCount) }, (_, index) =>
-      cellText(headerRow.getCell(index + 1)),
-    );
-    while (actualHeaders.at(-1) === "") actualHeaders.pop();
-    validateCandidateWorkbookHeaders(actualHeaders);
-    const indexes = new Map<CandidateFieldKey, number>();
-    candidateFields.forEach((field, index) => indexes.set(field.key, index + 1));
-    const candidates: CandidateInput[] = [];
-    const keys = new Set<string>();
-    for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-      const row = worksheet.getRow(rowNumber);
-      const rawCandidate = {} as CandidateInput;
-      let hasValue = false;
-      for (const field of candidateFields) {
-        const index = indexes.get(field.key) || -1;
-        const cell = index > 0 ? row.getCell(index) : null;
-        const value = cell ? cellText(cell, false) : "";
-        rawCandidate[field.key] = value;
-        hasValue ||= value !== "";
-      }
-      if (!hasValue) continue;
-      const candidate = normalizeAndValidateCandidate(rawCandidate, rowNumber);
-      const key = candidateKey(candidate);
-      if (keys.has(key)) {
-        throw new BadRequestException(
-          `수험번호, 시험날짜, 시험시간, 교시명 조합이 XLSX 안에서 중복되었습니다. (${rowNumber}행)`,
-        );
-      }
-      keys.add(key);
-      candidates.push(candidate);
-    }
-    if (!candidates.length) {
-      throw new BadRequestException("XLSX에는 헤더와 최소 1개 이상의 데이터 행이 필요합니다.");
-    }
-    return candidates;
   }
 
   private parsePhotoArchive(buffer: Buffer): CandidatePhotoArchiveFiles {
@@ -328,21 +353,6 @@ export class CandidatesService {
 }
 
 const PREVIEW_TICKET_TTL_MS = 30 * 60 * 1000;
-
-function cellText(cell: ExcelJS.Cell, trim = true) {
-  const value = cell.value;
-  let text = "";
-  if (value == null) text = "";
-  else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") text = String(value);
-  else if (value instanceof Date) {
-    text = `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
-  } else if ("text" in value && typeof value.text === "string") text = value.text;
-  else if ("richText" in value && Array.isArray(value.richText)) {
-    text = value.richText.map((part) => part.text).join("");
-  } else if ("result" in value && value.result != null) text = String(value.result);
-  text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  return trim ? text.trim() : text;
-}
 
 function checksum(buffer: Buffer): string {
   return createHash("sha256").update(buffer).digest("hex");

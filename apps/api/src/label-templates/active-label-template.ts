@@ -2,7 +2,7 @@ import type { RowDataPacket } from "mysql2/promise";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 
 // Use the same template resolution for the operator's defaults and the print job.
-export async function findActiveLabelTemplate(executor: SqlExecutor, labelTemplateId: number | null) {
+export async function findActiveLabelTemplate(executor: SqlExecutor, labelTemplateId: number | null, locking = false) {
   const [rows] = await executor.execute<
     Array<
       RowDataPacket & {
@@ -18,7 +18,7 @@ export async function findActiveLabelTemplate(executor: SqlExecutor, labelTempla
      FROM label_template
      WHERE active = TRUE AND (? IS NULL OR id = ?)
      ORDER BY CASE WHEN code = 'PSEUDONYM_LABEL' THEN 0 ELSE 1 END, id
-     LIMIT 1`,
+     LIMIT 1${locking ? " LOCK IN SHARE MODE" : ""}`,
     [labelTemplateId, labelTemplateId],
   );
   return rows[0] ?? null;

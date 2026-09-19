@@ -42,7 +42,7 @@ test.describe("FHD 변경 작업 흐름", () => {
       buffer,
     });
 
-    const inlineError = dialog.locator(".candidate-upload-preview-error");
+    const inlineError = page.getByRole("alert");
     await expect(inlineError).toBeVisible();
     await expect(inlineError).toContainText("수험생 업로드 양식과 일치하지 않습니다");
     await expect(inlineError).not.toContainText("Unexpected token");
@@ -180,11 +180,14 @@ test.describe("FHD 변경 작업 흐름", () => {
 
     await searchExaminee(examineeInput, WORKFLOW_CURRENT_EXAMINEE);
     await expect(page.locator(".operator-candidate-preview")).toContainText("CI-E2E-가상수험생-A");
-    const assignButton = page.getByRole("button", { name: "다음 가번호 부여" });
+    const assignmentDialog = page.getByRole("dialog", { name: "가번호 순차부여" });
+    await expect(assignmentDialog.getByRole("textbox", { name: "가번호", exact: true })).toHaveValue("7001");
+    const assignButton = assignmentDialog.getByRole("button", { name: "저장", exact: true });
     await expect(assignButton).toBeEnabled();
     await assignButton.click();
     await expect(page.getByRole("status")).toContainText("가번호가 정상적으로 부여되었습니다");
     await expect(operationRow(page, WORKFLOW_CURRENT_EXAMINEE)).toContainText("7001");
+    await expect(assignmentDialog).toHaveCount(0);
 
     const token = await page.evaluate(() => {
       const stored = sessionStorage.getItem("examcheck.session");
@@ -201,7 +204,7 @@ test.describe("FHD 변경 작업 흐름", () => {
     await expect(printButton).toBeEnabled();
     await searchExaminee(examineeInput, WORKFLOW_BLOCKED_EXAMINEE);
     await expect(page.locator(".operator-candidate-preview")).toContainText("CI-E2E-가상수험생-B");
-    await expect(page.getByRole("button", { name: "다음 가번호 부여" })).toBeDisabled();
+    await expect(assignmentDialog).toHaveCount(0);
 
     const blockedResponse = await request.post(`${apiBaseUrl()}/pseudonyms/assignments`, {
       headers: { Authorization: `Bearer ${token}` },

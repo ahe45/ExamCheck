@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const editorMock = vi.hoisted(() => ({
@@ -42,6 +42,7 @@ vi.mock("./template-renderer", () => ({
   renderTemplateHtml: vi.fn((html: string) => html),
 }));
 
+import { saveFormTemplate } from "../../shared/api/form-templates";
 import { TemplateEditorWorkspace } from "./TemplateEditorWorkspace";
 import { createBlankDraft } from "./template-manager-model";
 
@@ -104,6 +105,43 @@ describe("TemplateEditorWorkspace lifecycle", () => {
     // Layout-dependent editor cleanup must finish before React removes the
     // canvas. Detached geometry can recursively trigger object-flow changes.
     expect(connectedDuringCleanup).toEqual([true, true]);
+  });
+
+  it("저장 직후에도 다음 편집 내용을 임시 초안으로 전달한다", async () => {
+    vi.useFakeTimers();
+    const draft = { ...createBlankDraft(100), name: "검증 양식", category: "문서" };
+    const onDraftChange = vi.fn();
+    const view = render(
+      <TemplateEditorWorkspace
+        token="token"
+        sourceId="template-1"
+        draft={draft}
+        dataTags={{ tags: [] }}
+        initialInformationOpen={false}
+        notice={null}
+        onClose={vi.fn()}
+        onDraftChange={onDraftChange}
+        onNoticeChange={vi.fn()}
+        onTemplateSaved={vi.fn()}
+      />,
+    );
+    try {
+      const options = lifecycleMock.mountProjectTemplateEditor.mock.calls[0][0];
+      vi.mocked(saveFormTemplate).mockResolvedValue({ ...draft, id: 1, createdAt: "", createdByLoginId: "admin" });
+      act(() => options.onChange(draft.layout));
+      await act(async () => {
+        await options.adapters.saveTemplate({ template: draft.layout });
+      });
+      onDraftChange.mockClear();
+      act(() => options.onChange(draft.layout));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(250);
+      });
+      expect(onDraftChange).toHaveBeenCalledTimes(1);
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
   });
 
   it("입력 라벨과 목록 이동을 제공하고 변경 전에는 저장 버튼을 비활성화한다", () => {

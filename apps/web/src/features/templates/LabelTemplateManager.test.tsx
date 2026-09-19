@@ -9,6 +9,7 @@ const apiMock = vi.hoisted(() => ({
   templates: [] as Array<Record<string, unknown>>,
   deleteLabelTemplate: vi.fn(),
   fetchLabelTemplates: vi.fn(),
+  fetchLabelTemplate: vi.fn(),
   previewLabelTemplate: vi.fn(),
   saveLabelTemplate: vi.fn(),
   updateLabelTemplateActive: vi.fn(),
@@ -28,6 +29,7 @@ const template = {
   description: "기본 출력 양식",
   zplTemplate: "^XA^XZ",
   layout: defaultLabelLayout,
+  defaultCopies: 1,
   active: true,
   createdAt: "2026-09-03T00:00:00.000Z",
   createdByLoginId: "admin",
@@ -36,11 +38,17 @@ const template = {
 describe("LabelTemplateManager", () => {
   beforeEach(() => {
     apiMock.templates = [template];
+    apiMock.fetchLabelTemplate.mockImplementation(async (_token, code) =>
+      apiMock.templates.find((template) => template.code === code),
+    );
     apiMock.fetchLabelTemplates.mockReset();
     apiMock.saveLabelTemplate.mockReset();
     apiMock.previewLabelTemplate.mockReset();
     apiMock.fetchLabelTemplates.mockImplementation(async () => ({
-      templates: apiMock.templates,
+      templates: apiMock.templates.map(({ layout, zplTemplate: _payload, ...metadata }) => ({
+        ...metadata,
+        thumbnail: layout,
+      })),
       dataTags: {
         groups: [
           {

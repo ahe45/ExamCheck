@@ -3,18 +3,14 @@ import { ClientGridFilterLayer, ClientGridPagination } from "../../shared/compon
 import { ClientGridHeaderCell } from "../../shared/components/ClientGridHeaderCell";
 import { useClientDataGrid } from "../../shared/hooks/useClientDataGrid";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
-import { candidateColumns, candidateColumnValue, candidateWideColumnKeys } from "./candidate-data-model";
+import { candidateColumns, candidateWideColumnKeys } from "./candidate-data-model";
 
 interface CandidateDataGridProps {
   loading: boolean;
-  rows: CandidateRecord[];
+  grid: ReturnType<typeof useClientDataGrid<CandidateRecord, CandidateFieldKey>>;
 }
 
-export function CandidateDataGrid({ loading, rows }: CandidateDataGridProps) {
-  const grid = useClientDataGrid<CandidateRecord, CandidateFieldKey>({
-    rows,
-    valueOf: candidateColumnValue,
-  });
+export function CandidateDataGrid({ loading, grid }: CandidateDataGridProps) {
   useEscapeKey(Boolean(grid.filterMenu), grid.closeFilter);
 
   return (
@@ -70,11 +66,12 @@ export function CandidateDataGrid({ loading, rows }: CandidateDataGridProps) {
             </table>
           </div>
           <ClientGridPagination
-            count={grid.filteredRows.length}
+            pageSizes={[30, 50, 100, 200, 500]}
+            count={grid.count}
             page={grid.currentPage}
             pageSize={grid.pageSize}
             totalPages={grid.totalPages}
-            start={grid.filteredRows.length ? grid.startIndex + 1 : 0}
+            start={grid.count ? grid.startIndex + 1 : 0}
             end={grid.startIndex + grid.visibleRows.length}
             onPage={grid.setPage}
             onPageSize={grid.setPageSize}
@@ -82,6 +79,7 @@ export function CandidateDataGrid({ loading, rows }: CandidateDataGridProps) {
         </>
       )}
       <ClientGridFilterLayer
+        loading={grid.filterLoading}
         columns={candidateColumns}
         menu={grid.filterMenu}
         search={grid.filterSearch}

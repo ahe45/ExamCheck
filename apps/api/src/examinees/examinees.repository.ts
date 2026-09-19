@@ -118,7 +118,9 @@ const examineeSelectSql = `SELECT cr.id, cr.examinee_no AS examineeNo, cr.name,
   (cr.temporary_no <> '') AS preassignedAvailable,
   COALESCE(pa.pseudonym_no, CASE WHEN ${preassignedModeSql} THEN NULLIF(cr.temporary_no, '') END) AS assignedNumber,
   COALESCE(pa.assignment_mode, CASE WHEN ${preassignedModeSql} AND NULLIF(cr.temporary_no, '') IS NOT NULL THEN 'PREASSIGNED' END) AS assignmentMode,
-  pa.assigned_at AS assignedAt, printed.last_printed_at AS lastPrintedAt,
+  pa.assigned_at AS assignedAt,
+  (SELECT MAX(pj.sent_at) FROM print_job pj WHERE pj.candidate_record_id = cr.id
+    AND pj.label_type = 'PSEUDONYM_LABEL' AND pj.status = 'SENT') AS lastPrintedAt,
   COALESCE(pa.is_absentee, FALSE) AS absent, cr.status,
   cr.start_time AS examTime, cr.end_time AS examEndTime,
   cr.period_name AS periodName, cr.period_code AS periodCode,
@@ -130,5 +132,4 @@ const examineeSelectSql = `SELECT cr.id, cr.examinee_no AS examineeNo, cr.name,
  cr.opt1, cr.opt2, cr.opt3
  FROM candidate_record cr
  LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
- ${settingJoinSql}
- ${printedJoinSql}`;
+ ${settingJoinSql}`;

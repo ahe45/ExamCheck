@@ -37,6 +37,16 @@ export class LabelTemplatesController {
     return this.service.list();
   }
 
+  @Get("summaries")
+  summaries() {
+    return this.service.listSummaries();
+  }
+
+  @Get(":code")
+  detail(@Param() params: LabelTemplateCodeParamDto) {
+    return this.service.find(params.code);
+  }
+
   @Post("preview")
   preview(@Body() input: PreviewLabelTemplateDto) {
     return this.service.preview(input.layout);

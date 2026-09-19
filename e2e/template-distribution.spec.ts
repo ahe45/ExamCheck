@@ -41,7 +41,8 @@ for (const sample of cases) {
     await page.route("**/api/v1/**", (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
-      if (path.endsWith("/form-templates/admin")) return route.fulfill({ json: [record] });
+      if (path.startsWith("/api/v1/form-templates/admin/"))
+        return route.fulfill({ json: templateResponse(path, [record]) });
       if (path.endsWith("/form-templates/QA_DISTRIBUTION") && request.method() === "PUT") {
         record = { ...record, ...request.postDataJSON() };
         saved = true;
@@ -138,4 +139,8 @@ async function measureText(target: Locator) {
       alignmentLast: style.textAlignLast,
     };
   });
+}
+
+function templateResponse(path: string, records: unknown[]) {
+  return path.endsWith("/summaries") ? records : records[0];
 }

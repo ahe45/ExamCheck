@@ -91,6 +91,9 @@ describe("default operation form templates on MariaDB", () => {
         expect(result.applied).toEqual([
           "050_default_operation_form_templates.sql",
           "051_remove_legacy_default_form_templates.sql",
+          "052_scoped_processing.sql",
+          "053_processing_schema_comments.sql",
+          "054_export_jobs.sql",
         ]);
         // The seed itself must also be safe to execute again without duplicate rows.
         await connection.query(
@@ -145,7 +148,12 @@ describe("default operation form templates on MariaDB", () => {
       try {
         const migrations = await loadMigrationFiles(migrationDirectory);
         const result = await runMigrations(connection, migrations);
-        expect(result.applied).toEqual(["051_remove_legacy_default_form_templates.sql"]);
+        expect(result.applied).toEqual([
+          "051_remove_legacy_default_form_templates.sql",
+          "052_scoped_processing.sql",
+          "053_processing_schema_comments.sql",
+          "054_export_jobs.sql",
+        ]);
         expect((await runMigrations(connection, migrations)).applied).toEqual([]);
       } finally {
         connection.release();

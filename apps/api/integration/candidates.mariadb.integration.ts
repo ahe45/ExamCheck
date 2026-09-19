@@ -222,16 +222,16 @@ describe("candidate import MariaDB integration", () => {
     });
     const [setting] = await harness.pool.execute<ResultSetHeader>(
       `INSERT INTO pseudonym_setting
-        (exam_name, admission_name, range_start, range_end, next_sequence, updated_by)
-       VALUES ('IT 수험생 업로드 시험', ?, 8101, 8101, 8101, ?)`,
+        (exam_name, admission_name, range_start, range_end, display_width, next_sequence, updated_by)
+       VALUES ('IT 수험생 업로드 시험', ?, 8101, 8101, 4, 8101, ?)`,
       [input.admission, actorUserId],
     );
     await harness.pool.execute(
       `INSERT INTO pseudonym_time_range
         (setting_id, exam_date, exam_time, period_name, admission, unit_name, major,
-         building_name, room_name, schedule_key, range_start, range_end, next_sequence, updated_by)
+         building_name, room_name, schedule_key, range_start, range_end, display_width, next_sequence, updated_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
-               SHA2(CONCAT_WS('|', ?, ?, ?, ?, ?, ?, ?, ?), 256), 8101, 8101, 8101, ?)`,
+               SHA2(CONCAT_WS('|', ?, ?, ?, ?, ?, ?, ?, ?), 256), 8101, 8101, 4, 8101, ?)`,
       [
         setting.insertId,
         input.date,

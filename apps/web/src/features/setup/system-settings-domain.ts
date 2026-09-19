@@ -144,19 +144,21 @@ export function configuredRangeBounds(ranges: RangeDraft[], fallbackRange: { sta
 }
 
 export function toSettingRanges(ranges: RangeDraft[]): UpdatePseudonymSettingInput["ranges"] {
-  return ranges.map(({ date, time, period, admission, unit, major, building, room, rangeStart, rangeEnd, displayWidth }) => ({
-    date,
-    time,
-    period,
-    admission,
-    unit,
-    major,
-    building,
-    room,
-    rangeStart,
-    rangeEnd,
-    displayWidth,
-  }));
+  return ranges.map(
+    ({ date, time, period, admission, unit, major, building, room, rangeStart, rangeEnd, displayWidth }) => ({
+      date,
+      time,
+      period,
+      admission,
+      unit,
+      major,
+      building,
+      room,
+      rangeStart,
+      rangeEnd,
+      displayWidth,
+    }),
+  );
 }
 
 export function parseRangeNumberInput(raw: string) {
@@ -203,7 +205,5 @@ function withForcedCapacity<T extends { candidateCount: number }>(
     rangeStart,
     rangeEnd,
   };
-  return requestedWidth
-    ? { ...result, displayWidth: Math.max(requestedWidth, String(rangeEnd).length) }
-    : result;
+  return requestedWidth ? { ...result, displayWidth: Math.max(requestedWidth, String(rangeEnd).length) } : result;
 }

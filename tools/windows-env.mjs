@@ -15,10 +15,10 @@ function encodeValue(key, value) {
   throw new Error(`Cannot safely write ${key}; .env was not changed.`);
 }
 
-export function updateEnvironment(source, updates) {
+export function updateEnvironment(source, updates, allowedKeys = configurableKeys) {
   if (!updates || typeof updates !== "object" || Array.isArray(updates)) throw new Error("Invalid setup settings.");
   for (const [key, value] of Object.entries(updates)) {
-    if (!configurableKeys.includes(key) || typeof value !== "string" || /[\r\n]/.test(value)) {
+    if (!allowedKeys.includes(key) || typeof value !== "string" || /[\r\n]/.test(value)) {
       throw new Error("Invalid database setting; .env was not changed.");
     }
   }

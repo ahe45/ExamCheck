@@ -41,7 +41,8 @@ test("날짜·시간 태그의 형식 변경, 실행 취소, 저장 복원과 �
     if (path.endsWith("/auth/me")) return route.fulfill({ json: user });
     if (path.endsWith("/system-profile")) return route.continue();
     if (path.endsWith("/form-templates/data-tags")) return route.fulfill({ json: formTemplateDataTags });
-    if (path.endsWith("/form-templates/admin")) return route.fulfill({ json: [record] });
+    if (path.startsWith("/api/v1/form-templates/admin/"))
+      return route.fulfill({ json: templateResponse(path, [record]) });
     if (path.endsWith("/form-templates/QA_DATE_FORMAT") && request.method() === "PUT") {
       record = { ...record, ...request.postDataJSON() };
       saved = true;
@@ -102,3 +103,7 @@ test("날짜·시간 태그의 형식 변경, 실행 취소, 저장 복원과 �
   await popup.close();
   expect(errors).toEqual([]);
 });
+
+function templateResponse(path: string, records: unknown[]) {
+  return path.endsWith("/summaries") ? records : records[0];
+}

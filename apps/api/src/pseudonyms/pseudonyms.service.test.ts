@@ -120,9 +120,10 @@ describe("PseudonymsService settings overview", () => {
         { name: "B전형", candidates: 3, dates: 2, schedules: 2, buildings: ["별관"] },
       ]),
       listSettingsForOverview: vi.fn().mockResolvedValue([fallback, exact]),
-      listTimeRangesForOverview: vi
-        .fn()
-        .mockResolvedValue([overviewRange(10, "A전형", 1001), overviewRange(1, "B전형", 2001)]),
+      listRangeSummariesForOverview: vi.fn().mockResolvedValue([
+        { ...overviewRange(10, "A전형", 1001), count: 1, start: 1001, end: 1010 },
+        { ...overviewRange(1, "B전형", 2001), count: 1, start: 2001, end: 2010 },
+      ]),
     };
     const service = new PseudonymsService({} as Pool, repository as unknown as PseudonymsRepository);
     const admin = { id: 1, loginId: "admin", role: "ADMIN" as const, admissionNames: [] };
@@ -132,17 +133,17 @@ describe("PseudonymsService settings overview", () => {
     expect(result).toHaveLength(2);
     expect(result[0]).toMatchObject({
       name: "A전형",
-      setting: { id: 10, version: 4, admissionName: "A전형", ranges: [{ admission: "A전형" }] },
+      setting: { id: 10, version: 4, admissionName: "A전형", ranges: [], rangeStatistics: { count: 1 } },
       error: false,
     });
     expect(result[1]).toMatchObject({
       name: "B전형",
-      setting: { id: 1, version: 0, admissionName: "B전형", ranges: [{ admission: "B전형" }] },
+      setting: { id: 1, version: 0, admissionName: "B전형", ranges: [], rangeStatistics: { count: 1 } },
       error: false,
     });
     expect(repository.listAdmissionSettingsOverview).toHaveBeenCalledWith({}, { sql: "1 = 1", params: [] });
     expect(repository.listSettingsForOverview).toHaveBeenCalledWith({}, "2026 실기", ["A전형", "B전형"]);
-    expect(repository.listTimeRangesForOverview).toHaveBeenCalledWith({}, [10, 1], ["A전형", "B전형"]);
+    expect(repository.listRangeSummariesForOverview).toHaveBeenCalledWith({}, [10, 1], ["A전형", "B전형"]);
   });
 
   it("passes the account admission predicate to the overview projection and marks missing settings", async () => {
@@ -151,7 +152,7 @@ describe("PseudonymsService settings overview", () => {
         .fn()
         .mockResolvedValue([{ name: "배정 전형", candidates: 1, dates: 1, schedules: 1, buildings: [] }]),
       listSettingsForOverview: vi.fn().mockResolvedValue([]),
-      listTimeRangesForOverview: vi.fn().mockResolvedValue([]),
+      listRangeSummariesForOverview: vi.fn().mockResolvedValue([]),
     };
     const service = new PseudonymsService({} as Pool, repository as unknown as PseudonymsRepository);
     const user = { id: 7, loginId: "operator", role: "OPERATOR" as const, admissionNames: ["배정 전형"] };
@@ -174,7 +175,7 @@ describe("PseudonymsService settings overview", () => {
         params: ["배정 전형"],
       },
     );
-    expect(repository.listTimeRangesForOverview).toHaveBeenCalledWith({}, [], ["배정 전형"]);
+    expect(repository.listRangeSummariesForOverview).toHaveBeenCalledWith({}, [], ["배정 전형"]);
   });
 });
 
@@ -357,7 +358,7 @@ describe("PseudonymsService roster export", () => {
     const execute = vi.fn().mockResolvedValue([[waitingRow, registeredRow], []]);
     const build = vi.fn().mockResolvedValue(Buffer.from("xlsx"));
     const service = new PseudonymsService({ execute } as unknown as Pool, new PseudonymsRepository(), {
-      build,
+      stream: build,
     } as unknown as PseudonymRosterExporter);
 
     await expect(
@@ -492,8 +493,18 @@ describe("pseudonym P0 transaction invariants", () => {
       release: () => undefined,
       execute: async (sql: string) => {
         executed.push(sql);
+        if (
+          sql.includes("INSERT INTO pseudonym_admission_lock") ||
+          sql.includes("INSERT INTO pseudonym_operation_mutex")
+        )
+          return [{ affectedRows: 1 }, []];
         if (sql.includes("FROM candidate_record cr") && sql.includes("cr.examinee_no = ?")) return [[candidate], []];
-        if (sql.includes("INSERT IGNORE INTO pseudonym_operation")) return [{ affectedRows: 1 }, []];
+        if (
+          sql.includes("INSERT INTO pseudonym_admission_lock") ||
+          sql.includes("INSERT INTO pseudonym_operation_mutex") ||
+          sql.includes("INSERT IGNORE INTO pseudonym_operation")
+        )
+          return [{ affectedRows: 1 }, []];
         if (sql.includes("SELECT id, closed FROM pseudonym_operation")) return [[{ id: 3, closed: false }], []];
         if (sql.includes("FROM pseudonym_time_range")) return [[], []];
         if (sql.includes("FROM pseudonym_setting"))
@@ -551,9 +562,12 @@ describe("pseudonym P0 transaction invariants", () => {
     );
 
     expect(result.alreadyAssigned).toBe(true);
+    expect(executed[2]).toContain("pseudonym_admission_lock");
+    expect(executed[3]).toContain("pseudonym_operation_mutex");
+    executed.splice(2, 2);
     expect(executed).toHaveLength(8);
     expect(executed[0]).toContain("FROM system_profile");
-    expect(executed[0]).toContain("FOR UPDATE");
+    expect(executed[0]).toContain("LOCK IN SHARE MODE");
     expect(executed[1]).toContain("FROM candidate_record cr");
     expect(executed[1]).not.toContain("FOR UPDATE");
     expect(executed[2]).toContain("INSERT IGNORE INTO pseudonym_operation");
@@ -681,12 +695,18 @@ describe("pseudonym P0 transaction invariants", () => {
       rollback: async () => undefined,
       release: () => undefined,
       execute: async (sql: string, params: unknown[] = []) => {
-        if (sql.includes("INSERT IGNORE INTO pseudonym_operation")) return [{ affectedRows: 1 }, []];
+        if (
+          sql.includes("INSERT INTO pseudonym_admission_lock") ||
+          sql.includes("INSERT INTO pseudonym_operation_mutex") ||
+          sql.includes("INSERT IGNORE INTO pseudonym_operation")
+        )
+          return [{ affectedRows: 1 }, []];
         if (sql.includes("SELECT id, closed FROM pseudonym_operation")) return [[{ id: 7, closed: false }], []];
         if (sql.includes("FROM pseudonym_setting")) return [[setting], []];
         if (sql.includes("FROM pseudonym_time_range")) return [[], []];
         if (sql.includes("FROM system_profile")) return [[{ pseudonymNoUniqueness: "ADMISSION" }], []];
         if (sql.includes("SELECT pseudonym_no AS pseudonymNumber")) return [[], []];
+        if (sql.includes("cr.temporary_no AS pseudonymNumber")) return [[], []];
         if (sql.includes("FROM candidate_record cr")) {
           candidateSql = sql;
           candidateParams = params;
@@ -844,3 +864,8 @@ function admissionActionService(
     audit as unknown as MutationAuditRepository,
   );
 }
+
+vi.mock("../common/database/transaction.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../common/database/transaction.js")>()),
+  beginScopedWrite: async (connection: { beginTransaction(): Promise<void> }) => connection.beginTransaction(),
+}));

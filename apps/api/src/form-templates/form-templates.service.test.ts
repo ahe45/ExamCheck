@@ -53,6 +53,7 @@ function createFixture(existing: Record<string, unknown> | null = null) {
     updateActive: vi.fn().mockResolvedValue(undefined),
     markDeleted: vi.fn().mockResolvedValue(undefined),
     list: vi.fn().mockResolvedValue([saved]),
+    findByCode: vi.fn().mockResolvedValue(saved),
     findActive: vi.fn().mockResolvedValue(saved),
   } as unknown as FormTemplatesRepository;
   const audit = { record: vi.fn().mockResolvedValue(undefined) } as unknown as MutationAuditRepository;

@@ -21,7 +21,11 @@ if errorlevel 1 (
   goto FAILED
 )
 
-if exist "%~dp0node_modules\.bin\concurrently.cmd" if exist "%~dp0node_modules\.bin\tsx.cmd" if exist "%~dp0node_modules\.bin\vite.cmd" goto CHECK_SETTINGS
+if not exist "%~dp0node_modules\.bin\tsx.cmd" goto INSTALL_DEPENDENCIES
+if not exist "%~dp0node_modules\.bin\vite.cmd" goto INSTALL_DEPENDENCIES
+node -e "for (const name of ['compression','yauzl','express']) require.resolve(name)" >nul 2>nul
+if not errorlevel 1 goto CHECK_SETTINGS
+:INSTALL_DEPENDENCIES
 echo Installing dependencies...
 call npm ci --include=dev >> "%__START_LOG%" 2>&1
 if errorlevel 1 goto FAILED
@@ -59,13 +63,16 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0deploy\ensure-fire
 if errorlevel 1 goto FAILED
 
 echo.
+echo Building ExamCheck for production...
+call npm run build >> "%__START_LOG%" 2>&1
+if errorlevel 1 goto FAILED
 echo Starting ExamCheck web and API servers...
 echo Web: http://localhost:5173
-echo Other PCs: http://SERVER-IP:5173 - see Vite's Network URL below.
+echo Other PCs: http://SERVER-IP:5173 - see Network URL below.
 echo API default: http://localhost:3100/api/v1/health
 echo Keep this window open. Press Ctrl+C to stop both servers.
 echo.
-call npm run dev -- --kill-others
+call npm start
 set "__SERVER_EXIT=%ERRORLEVEL%"
 echo Server process exited with code %__SERVER_EXIT%.>> "%__START_LOG%"
 echo.

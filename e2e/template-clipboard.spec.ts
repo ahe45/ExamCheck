@@ -7,9 +7,9 @@ async function openFixture(page: Page) {
   await page.route("**/api/v1/**", (route) => {
     const request = route.request(),
       path = new URL(request.url()).pathname;
-    if (path.endsWith("/form-templates/admin"))
+    if (path.startsWith("/api/v1/form-templates/admin/"))
       return route.fulfill({
-        json: [
+        json: templateResponse(path, [
           {
             id: 99998,
             code: "QA_CLIPBOARD",
@@ -34,7 +34,7 @@ async function openFixture(page: Page) {
               },
             },
           },
-        ],
+        ]),
       });
     if (request.method() === "GET" || path.endsWith("/auth/login")) return route.continue();
     return route.fulfill({ status: 409, json: { message: "Test writes disabled" } });
@@ -451,4 +451,8 @@ for (const location of ["문단", "표 셀"]) {
     await expect(paragraph).toContainText("ABC");
     await expect(paragraph.locator("br")).toHaveCount(0);
   });
+}
+
+function templateResponse(path: string, records: unknown[]) {
+  return path.endsWith("/summaries") ? records : records[0];
 }

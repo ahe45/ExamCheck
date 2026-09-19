@@ -38,6 +38,12 @@ export interface LabelTemplate {
   createdByLoginId: string;
 }
 
+export type LabelTemplateSummary = Omit<LabelTemplate, "layout" | "zplTemplate"> & {
+  thumbnail: Pick<LabelTemplateLayout, "widthMm" | "heightMm" | "elements">;
+};
+export function fetchLabelTemplate(token: string, code: string) {
+  return apiFetch<LabelTemplate>(`/label-templates/${encodeURIComponent(code)}`, {}, token);
+}
 export interface SaveLabelTemplateInput {
   defaultCopies: number;
   code: string;
@@ -48,7 +54,11 @@ export interface SaveLabelTemplateInput {
 }
 
 export function fetchLabelTemplates(token: string) {
-  return apiFetch<{ dataTags: DataTagCatalog; templates: LabelTemplate[] }>("/label-templates", {}, token);
+  return apiFetch<{ dataTags: DataTagCatalog; templates: LabelTemplateSummary[] }>(
+    "/label-templates/summaries",
+    {},
+    token,
+  );
 }
 
 export function previewLabelTemplate(token: string, layout: LabelTemplateLayout) {

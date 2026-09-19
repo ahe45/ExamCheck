@@ -206,9 +206,7 @@ describe("ExamList canvas object runtime", () => {
     selection.addRange(range);
     surface.focus();
     expect(
-      editor.insertHtml(
-        '<table style="width:200px;height:80px"><tbody><tr><td>셀</td></tr></tbody></table>',
-      ),
+      editor.insertHtml('<table style="width:200px;height:80px"><tbody><tr><td>셀</td></tr></tbody></table>'),
     ).not.toBe(false);
 
     expect(Array.from(documentElement.children).map((element) => element.tagName)).toEqual(["TABLE", "P"]);

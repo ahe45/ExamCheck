@@ -26,16 +26,29 @@ export interface SaveFormTemplateInput {
   active: boolean;
 }
 
+export type FormTemplateSummary = Omit<FormTemplate, "layout">;
+
+export function fetchFormTemplate(token: string, code: string, admin = false) {
+  return apiFetch<FormTemplate>(`/form-templates/${admin ? "admin/" : ""}${encodeURIComponent(code)}`, {}, token);
+}
+
 export function fetchActiveFormTemplates(token: string) {
-  return apiFetch<FormTemplate[]>("/form-templates", {}, token);
+  return apiFetch<FormTemplateSummary[]>("/form-templates/summaries", {}, token);
 }
 
 export function fetchAdminFormTemplates(token: string) {
-  return apiFetch<FormTemplate[]>("/form-templates/admin", {}, token);
+  return apiFetch<FormTemplateSummary[]>("/form-templates/admin/summaries", {}, token);
 }
 
+let tagCache: { token: string; expires: number; value: Promise<DataTagCatalog> } | null = null;
 export function fetchFormTemplateDataTags(token: string) {
-  return apiFetch<DataTagCatalog>("/form-templates/data-tags", {}, token);
+  if (tagCache?.token === token && tagCache.expires > Date.now()) return tagCache.value;
+  const value = apiFetch<DataTagCatalog>("/form-templates/data-tags", {}, token).catch((error) => {
+    if (tagCache?.value === value) tagCache = null;
+    throw error;
+  });
+  tagCache = { token, expires: Date.now() + 5 * 60_000, value };
+  return value;
 }
 
 export function saveFormTemplate(token: string, input: SaveFormTemplateInput) {

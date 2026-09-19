@@ -101,6 +101,9 @@ export const pseudonymSettingSchema = z.object({
   useCandidatePhotos: z.boolean(),
   enableBulkDraw: z.boolean(),
   ranges: z.array(pseudonymTimeRangeSchema),
+  rangeStatistics: z
+    .object({ count: nonnegativeIntegerSchema, start: nonnegativeIntegerSchema, end: nonnegativeIntegerSchema })
+    .optional(),
 });
 export type PseudonymSetting = z.infer<typeof pseudonymSettingSchema>;
 

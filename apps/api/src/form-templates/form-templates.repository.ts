@@ -44,6 +44,24 @@ const templateSelect = `SELECT ft.id, ft.code, ft.name, ft.description, ft.categ
 export class FormTemplatesRepository {
   constructor(@Inject(DATABASE_POOL) private readonly pool: Pool) {}
 
+  async listSummaries(activeOnly: boolean) {
+    const [rows] = await this.pool.execute<FormTemplateRow[]>(
+      `${templateSelect.replace("ft.layout_json AS layout, ", "")}
+       FROM form_template ft INNER JOIN app_user u ON u.id = ft.created_by
+       ${activeOnly ? "WHERE ft.active = TRUE" : ""} ORDER BY ft.category, ft.name`,
+    );
+    return rows.map(({ active, ...row }) => ({ ...row, active: Boolean(active) }));
+  }
+
+  async findByCode(code: string, activeOnly = false): Promise<FormTemplateRecord | null> {
+    const [rows] = await this.pool.execute<FormTemplateRow[]>(
+      `${templateSelect} FROM form_template ft INNER JOIN app_user u ON u.id = ft.created_by
+       WHERE ft.code = ? ${activeOnly ? "AND ft.active = TRUE" : ""} LIMIT 1`,
+      [code],
+    );
+    return rows[0] ? mapTemplate(rows[0]) : null;
+  }
+
   async list(activeOnly: boolean): Promise<FormTemplateRecord[]> {
     const [rows] = await this.pool.execute<FormTemplateRow[]>(
       `${templateSelect}
@@ -114,10 +132,7 @@ export class FormTemplatesRepository {
   }
 
   async delete(connection: PoolConnection, templateId: number): Promise<void> {
-    const [result] = await connection.execute<ResultSetHeader>(
-      `DELETE FROM form_template WHERE id = ?`,
-      [templateId],
-    );
+    const [result] = await connection.execute<ResultSetHeader>(`DELETE FROM form_template WHERE id = ?`, [templateId]);
     assertSingleUpdate(result);
   }
 

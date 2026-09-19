@@ -724,11 +724,14 @@ function isOperationLockSql(sql: string) {
 }
 
 function isSettingLockSql(sql: string) {
-  return sql.includes("FROM pseudonym_setting") && sql.includes("LIMIT 1 FOR UPDATE");
+  return (
+    sql.includes("FROM pseudonym_setting") &&
+    (sql.includes("LIMIT 1 FOR UPDATE") || sql.includes("LIMIT 1 LOCK IN SHARE MODE"))
+  );
 }
 
 function isProfileLockSql(sql: string) {
-  return sql.includes("FROM system_profile") && sql.includes("FOR UPDATE");
+  return sql.includes("FROM system_profile") && (sql.includes("FOR UPDATE") || sql.includes("LOCK IN SHARE MODE"));
 }
 
 function wrapConnection(

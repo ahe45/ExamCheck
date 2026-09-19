@@ -59,13 +59,14 @@ describe("candidate response contracts", () => {
   });
 
   it("keeps preview tickets out of URLs and sends them only through the dedicated header", async () => {
-    const fetchMock = stubJsonResponse({ totalRows: 1, inserted: 1, updated: 0, skipped: 0 });
+    const fetchMock = stubJobResponse({ totalRows: 1, inserted: 1, updated: 0, skipped: 0 });
 
     await expect(
       importCandidateWorkbook("session-token", file("candidates.xlsx"), "insert-update", "signed-ticket"),
     ).resolves.toMatchObject({ inserted: 1 });
 
     const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(request.body).toBeUndefined();
     const headers = request.headers as Headers;
     expect(url).toContain("/candidates/import?policy=insert-update");
     expect(url).not.toContain("previewToken");
@@ -74,7 +75,7 @@ describe("candidate response contracts", () => {
   });
 
   it("keeps photo preview tickets out of URLs and sends them only through the dedicated header", async () => {
-    const fetchMock = stubJsonResponse({
+    const fetchMock = stubJobResponse({
       totalFiles: 1,
       uploaded: 1,
       updated: 0,
@@ -95,7 +96,7 @@ describe("candidate response contracts", () => {
   });
 
   it("validates the photo import result at runtime", async () => {
-    stubJsonResponse({ totalFiles: 1, uploaded: "1", updated: 0, skipped: 0, duplicateCount: 0 });
+    stubJobResponse({ totalFiles: 1, uploaded: "1", updated: 0, skipped: 0, duplicateCount: 0 });
 
     await expect(
       importCandidatePhotoArchive("session-token", file("photos.zip"), "all", "signed-photo-ticket"),
@@ -114,6 +115,24 @@ function stubJsonResponse(body: unknown) {
       headers: { "Content-Type": "application/json" },
     }),
   );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function stubJobResponse(result: unknown) {
+  const fetchMock = vi
+    .fn()
+    .mockImplementation(
+      async (url: string) =>
+        new Response(
+          JSON.stringify(
+            url.includes("/uploads/")
+              ? { status: "SUCCEEDED", result, processed: 1, total: 1, error: null }
+              : { jobId: "test-job" },
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }

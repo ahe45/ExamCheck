@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import type { OperationSchedule } from "../../shared/api/examinees";
-import { fetchActiveFormTemplates, type FormTemplate } from "../../shared/api/form-templates";
+import {
+  fetchActiveFormTemplates,
+  fetchFormTemplate,
+  type FormTemplate,
+  type FormTemplateSummary,
+} from "../../shared/api/form-templates";
 import type { OperationNotice } from "./operation-candidate-state";
 import {
-  buildOperationTemplatePages,
+  createOperationTemplatePages,
   selectOperationPrintRows,
   type OperationPrintTarget,
 } from "./operation-template-pages";
@@ -39,7 +44,10 @@ interface Options {
 
 export function useOperationPrint(options: Options) {
   const [open, setOpen] = useState(false);
-  const [templates, setTemplates] = useState<FormTemplate[]>([]);
+  const [templates, setTemplates] = useState<FormTemplateSummary[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<FormTemplate | null>(null);
+  const selectionRequest = useRef(0);
+  const showRequest = useRef(0);
   const [selectedTemplateCode, setSelectedTemplateCode] = useState("");
   const [printTarget, setPrintTarget] = useState<OperationPrintTarget>("ALL");
   const [loading, setLoading] = useState(false);
@@ -60,6 +68,9 @@ export function useOperationPrint(options: Options) {
     generationControllerRef.current?.abort(new DOMException("교시가 변경되어 PDF 생성을 취소했습니다.", "AbortError"));
     generationControllerRef.current = null;
     setLoading(false);
+    selectionRequest.current += 1;
+    showRequest.current++;
+    setSelectedTemplate(null);
     setGenerating(false);
     setProgress(null);
     setSignatureNames(emptyTemplateSignatureNames());
@@ -71,6 +82,8 @@ export function useOperationPrint(options: Options) {
 
   useEffect(
     () => () => {
+      selectionRequest.current++;
+      showRequest.current++;
       generationControllerRef.current?.abort(new DOMException("화면을 벗어나 PDF 생성을 취소했습니다.", "AbortError"));
       generationControllerRef.current = null;
     },
@@ -83,6 +96,7 @@ export function useOperationPrint(options: Options) {
       return;
     }
     const requestScheduleKey = options.scheduleKey;
+    const request = ++showRequest.current;
     setOpen(true);
     setPrintTarget("ALL");
     setLoading(true);
@@ -90,14 +104,16 @@ export function useOperationPrint(options: Options) {
     options.onNotice(null);
     try {
       const nextTemplates = await fetchActiveFormTemplates(options.token);
-      if (!options.isCurrentSchedule(requestScheduleKey)) return;
+      if (request !== showRequest.current || !options.isCurrentSchedule(requestScheduleKey)) return;
       const activeTemplates = nextTemplates.filter((template) => template.active);
       setTemplates(activeTemplates);
-      setSelectedTemplateCode((current) =>
-        activeTemplates.some((item) => item.code === current) ? current : activeTemplates[0]?.code || "",
+      await loadTemplate(
+        activeTemplates.some((item) => item.code === selectedTemplateCode)
+          ? selectedTemplateCode
+          : activeTemplates[0]?.code || "",
       );
     } catch (reason) {
-      if (options.isCurrentSchedule(requestScheduleKey)) {
+      if (request === showRequest.current && options.isCurrentSchedule(requestScheduleKey)) {
         options.onNotice({
           kind: "error",
           text: reason instanceof Error ? reason.message : "등록된 양식을 불러오지 못했습니다.",
@@ -105,12 +121,12 @@ export function useOperationPrint(options: Options) {
         setOpen(false);
       }
     } finally {
-      if (options.isCurrentSchedule(requestScheduleKey)) setLoading(false);
+      if (request === showRequest.current && options.isCurrentSchedule(requestScheduleKey)) setLoading(false);
     }
   }
 
   async function generate() {
-    const template = templates.find((item) => item.code === selectedTemplateCode);
+    const template = selectedTemplate?.code === selectedTemplateCode ? selectedTemplate : null;
     if (!template || generating || generationControllerRef.current) return;
     if (printTarget === "PRESENT" && !targetCount) {
       options.onNotice({ kind: "error", text: "응시한 수험생이 없어 출력할 수 없습니다." });
@@ -136,7 +152,7 @@ export function useOperationPrint(options: Options) {
   }
 
   async function generatePdf() {
-    const template = templates.find((item) => item.code === selectedTemplateCode);
+    const template = selectedTemplate?.code === selectedTemplateCode ? selectedTemplate : null;
     if (!template || generating || generationControllerRef.current) return;
     const missingSignature = getRequiredTemplateSignatureFields(template.layout).find(
       (field) => !signatureNames[field.key].trim(),
@@ -154,7 +170,7 @@ export function useOperationPrint(options: Options) {
     setProgress({ label: "출력 데이터를 준비하고 있습니다.", completed: 0, total: Math.max(targetCount, 1) });
     options.onNotice(null);
     try {
-      const pages = await buildOperationTemplatePages(template, options.rows, {
+      const pages = await createOperationTemplatePages(template, options.rows, {
         token: options.token,
         systemProfile: options.systemProfile,
         schedule: options.schedule,
@@ -212,6 +228,9 @@ export function useOperationPrint(options: Options) {
   }
 
   function close() {
+    selectionRequest.current++;
+    showRequest.current++;
+    setLoading(false);
     generationControllerRef.current?.abort(new DOMException("사용자가 PDF 생성을 취소했습니다.", "AbortError"));
     generationControllerRef.current = null;
     setGenerating(false);
@@ -227,9 +246,29 @@ export function useOperationPrint(options: Options) {
     setSignatureNames((current) => ({ ...current, [key]: value }));
   }
 
+  async function loadTemplate(code: string) {
+    const request = ++selectionRequest.current;
+    setSelectedTemplateCode(code);
+    setSelectedTemplate(null);
+    if (!code) return;
+    setLoading(true);
+    try {
+      const detail = await fetchFormTemplate(options.token, code);
+      if (request === selectionRequest.current) setSelectedTemplate(detail);
+    } catch (reason) {
+      if (request === selectionRequest.current)
+        options.onNotice({
+          kind: "error",
+          text: reason instanceof Error ? reason.message : "양식을 불러오지 못했습니다.",
+        });
+    } finally {
+      if (request === selectionRequest.current) setLoading(false);
+    }
+  }
+
   function selectTemplate(templateCode: string) {
     closeSignatures();
-    setSelectedTemplateCode(templateCode);
+    void loadTemplate(templateCode);
     setSignatureNames(emptyTemplateSignatureNames());
   }
 
@@ -255,9 +294,7 @@ export function useOperationPrint(options: Options) {
     loading,
     generating,
     progress,
-    signatureFields: getRequiredTemplateSignatureFields(
-      templates.find((item) => item.code === selectedTemplateCode)?.layout || "",
-    ),
+    signatureFields: getRequiredTemplateSignatureFields(selectedTemplate?.layout || ""),
     signatureNames,
     signatureOpen,
     signatureError,

@@ -115,7 +115,7 @@ export interface PdfGenerationOptions {
 
 export async function downloadTemplatePdf(
   title: string,
-  pagesHtml: string[],
+  pagesHtml: string[] | { length: number; getPage(index: number): Promise<string> },
   template: TemplateEditorValue,
   options: PdfGenerationOptions = {},
 ) {
@@ -140,7 +140,10 @@ export async function downloadTemplatePdf(
     let pdf: InstanceType<typeof jsPDF> | undefined;
     for (let index = 0; index < pagesHtml.length; index += 1) {
       throwIfAborted(options.signal);
-      const html = printableDocumentHtml(pagesHtml[index], template);
+      const html = printableDocumentHtml(
+        Array.isArray(pagesHtml) ? pagesHtml[index] : await pagesHtml.getPage(index),
+        template,
+      );
       const presentation = getTemplatePrintPresentation(html);
       const { width, height } = presentation;
       const orientation = width > height ? "landscape" : "portrait";
@@ -205,7 +208,10 @@ export async function downloadTemplatePdf(
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
+      canvas.width = 0;
+      canvas.height = 0;
       options.onProgress?.(index + 1, pagesHtml.length);
+      printDocument.body.replaceChildren();
     }
     throwIfAborted(options.signal);
     pdf?.save(`${safeFileName(title)}.pdf`);

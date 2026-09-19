@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 export type GridSort<K extends string> = {
   key: K;
@@ -25,6 +25,7 @@ interface UseClientDataGridOptions<T, K extends string> {
   valueOf(row: T, key: K): string;
   initialPageSize?: number;
   resetKey?: string;
+  server?: { total: number; loadValues(key: K): Promise<string[]>; onError(error: unknown): void };
 }
 
 export function useClientDataGrid<T, K extends string>({
@@ -32,7 +33,11 @@ export function useClientDataGrid<T, K extends string>({
   valueOf,
   initialPageSize = 30,
   resetKey,
+  server,
 }: UseClientDataGridOptions<T, K>) {
+  const filterRequest = useRef(0);
+  const [remoteValues, setRemoteValues] = useState<string[]>([]);
+  const [filterLoading, setFilterLoading] = useState(false);
   const [sort, setSort] = useState<GridSort<K> | null>(null);
   const [filters, setFilters] = useState<GridFilters<K>>({});
   const [filterMenu, setFilterMenu] = useState<GridFilterMenu<K> | null>(null);
@@ -42,6 +47,7 @@ export function useClientDataGrid<T, K extends string>({
   const [pageSize, setPageSizeState] = useState(initialPageSize);
 
   const filteredRows = useMemo(() => {
+    if (server) return rows;
     const nextRows = rows.filter((row) =>
       (Object.entries(filters) as Array<[K, string[]]>).every(
         ([key, selected]) => !selected.length || selected.includes(valueOf(row, key)),
@@ -58,16 +64,17 @@ export function useClientDataGrid<T, K extends string>({
           sensitivity: "base",
         }) * multiplier,
     );
-  }, [filters, rows, sort, valueOf]);
+  }, [filters, rows, sort, valueOf, server]);
 
-  const totalPages = pageSize ? Math.max(1, Math.ceil(filteredRows.length / pageSize)) : 1;
+  const count = server?.total ?? filteredRows.length;
+  const totalPages = pageSize ? Math.max(1, Math.ceil(count / pageSize)) : 1;
   const currentPage = Math.min(page, totalPages);
   const startIndex = pageSize ? (currentPage - 1) * pageSize : 0;
-  const visibleRows = pageSize ? filteredRows.slice(startIndex, startIndex + pageSize) : filteredRows;
+  const visibleRows = !server && pageSize ? filteredRows.slice(startIndex, startIndex + pageSize) : filteredRows;
 
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (!server && page > totalPages) setPage(totalPages);
+  }, [page, totalPages, server]);
 
   useEffect(() => {
     if (resetKey === undefined) return;
@@ -81,10 +88,11 @@ export function useClientDataGrid<T, K extends string>({
 
   const filterValues = useMemo(() => {
     if (!filterMenu) return [];
+    if (server) return remoteValues;
     return Array.from(new Set(rows.map((row) => valueOf(row, filterMenu.key)))).sort((left, right) =>
       left.localeCompare(right, "ko", { numeric: true }),
     );
-  }, [filterMenu, rows, valueOf]);
+  }, [filterMenu, rows, valueOf, server, remoteValues]);
 
   const filterOptions = useMemo(() => {
     const searchText = filterSearch.trim().toLocaleLowerCase("ko");
@@ -104,10 +112,11 @@ export function useClientDataGrid<T, K extends string>({
     setPage(1);
   }
 
-  function openFilter(event: MouseEvent<HTMLButtonElement>, key: K) {
+  async function openFilter(event: MouseEvent<HTMLButtonElement>, key: K) {
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
-    const allValues = Array.from(new Set(rows.map((row) => valueOf(row, key))));
+    const request = ++filterRequest.current;
+    const allValues = server ? [] : Array.from(new Set(rows.map((row) => valueOf(row, key))));
     const appliedValues = filters[key] ?? [];
     setFilterMenu({
       key,
@@ -116,9 +125,28 @@ export function useClientDataGrid<T, K extends string>({
     });
     setFilterSearch("");
     setFilterDraft(appliedValues.length ? [...appliedValues] : allValues);
+    if (server) {
+      setRemoteValues([]);
+      setFilterLoading(true);
+      try {
+        const values = await server.loadValues(key);
+        if (request !== filterRequest.current) return;
+        setRemoteValues(values);
+        setFilterDraft(appliedValues.length ? [...appliedValues] : values);
+      } catch (error) {
+        if (request === filterRequest.current) {
+          closeFilter();
+          server.onError(error);
+        }
+      } finally {
+        if (request === filterRequest.current) setFilterLoading(false);
+      }
+    }
   }
 
   function closeFilter() {
+    filterRequest.current++;
+    setFilterLoading(false);
     setFilterMenu(null);
     setFilterSearch("");
     setFilterDraft([]);
@@ -131,10 +159,9 @@ export function useClientDataGrid<T, K extends string>({
   }
 
   function toggleVisibleFilterOptions(checked: boolean) {
+    const visible = new Set(filterOptions);
     setFilterDraft((current) =>
-      checked
-        ? Array.from(new Set([...current, ...filterOptions]))
-        : current.filter((value) => !filterOptions.includes(value)),
+      checked ? Array.from(new Set([...current, ...filterOptions])) : current.filter((value) => !visible.has(value)),
     );
   }
 
@@ -146,8 +173,9 @@ export function useClientDataGrid<T, K extends string>({
   }
 
   function applyFilter() {
-    if (!filterMenu) return;
-    const allSelected = filterValues.length > 0 && filterValues.every((value) => filterDraft.includes(value));
+    if (filterLoading || !filterMenu) return;
+    const selected = new Set(filterDraft);
+    const allSelected = filterValues.length > 0 && filterValues.every((value) => selected.has(value));
     setFilters((current) => ({
       ...current,
       [filterMenu.key]: allSelected ? [] : [...filterDraft],
@@ -163,6 +191,9 @@ export function useClientDataGrid<T, K extends string>({
 
   return {
     sort,
+    page,
+    count,
+    filterLoading,
     filters,
     filterMenu,
     filterSearch,

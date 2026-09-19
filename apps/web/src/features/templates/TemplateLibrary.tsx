@@ -10,10 +10,11 @@ import {
 } from "../../shared/components/ActionIcons";
 import {
   deleteFormTemplate,
+  fetchFormTemplate,
+  type FormTemplateSummary,
   saveFormTemplate,
   updateFormTemplateActive,
   updateFormTemplateMetadata,
-  type FormTemplate,
 } from "../../shared/api/form-templates";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
 import {
@@ -29,15 +30,15 @@ import { TemplateDeleteModal } from "./TemplateDeleteModal";
 
 interface TemplateLibraryProps {
   token: string;
-  templates: FormTemplate[];
+  templates: FormTemplateSummary[];
   refreshing: boolean;
   notice: TemplateNoticeValue | null;
   onNoticeChange(notice: TemplateNoticeValue | null): void;
   onCreate(): void;
-  onEdit(template: FormTemplate): void;
+  onEdit(template: FormTemplateSummary): void;
   onRefresh(): Promise<void>;
   onTemplateDeleted(code: string): void;
-  onTemplateUpdated(template: FormTemplate): void;
+  onTemplateUpdated(template: FormTemplateSummary): void;
 }
 
 export function TemplateLibrary({
@@ -55,17 +56,17 @@ export function TemplateLibrary({
   const [cardMetadataEdit, setCardMetadataEdit] = useState<CardMetadataEdit | null>(null);
   const [metadataBusy, setMetadataBusy] = useState(false);
   const [cardAction, setCardAction] = useState<{ templateId: number; type: "active" | "copy" | "delete" } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<FormTemplate | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FormTemplateSummary | null>(null);
   const groupedTemplates = useMemo(() => groupTemplatesByCategory(templates), [templates]);
 
   useEscapeKey(Boolean(cardMetadataEdit), () => setCardMetadataEdit(null));
 
-  function beginCardMetadataEdit(template: FormTemplate, field: TemplateMetadataField) {
+  function beginCardMetadataEdit(template: FormTemplateSummary, field: TemplateMetadataField) {
     onNoticeChange(null);
     setCardMetadataEdit(createCardMetadataEdit(template, field));
   }
 
-  async function saveCardMetadata(template: FormTemplate) {
+  async function saveCardMetadata(template: FormTemplateSummary) {
     if (!cardMetadataEdit || cardMetadataEdit.templateId !== template.id || metadataBusy) return;
     let update;
     try {
@@ -98,7 +99,7 @@ export function TemplateLibrary({
     }
   }
 
-  async function changeTemplateActive(template: FormTemplate, active: boolean) {
+  async function changeTemplateActive(template: FormTemplateSummary, active: boolean) {
     if (cardAction) return;
     setCardAction({ templateId: template.id, type: "active" });
     onNoticeChange(null);
@@ -119,12 +120,15 @@ export function TemplateLibrary({
     }
   }
 
-  async function copyTemplate(template: FormTemplate) {
+  async function copyTemplate(template: FormTemplateSummary) {
     if (cardAction) return;
     setCardAction({ templateId: template.id, type: "copy" });
     onNoticeChange(null);
     try {
-      const copied = await saveFormTemplate(token, buildTemplateCopyInput(template, templates));
+      const copied = await saveFormTemplate(
+        token,
+        buildTemplateCopyInput(await fetchFormTemplate(token, template.code, true), templates),
+      );
       onTemplateUpdated(copied);
       onNoticeChange({ kind: "success", text: `${copied.name}을 미사용 상태로 만들었습니다.` });
     } catch (reason) {
@@ -137,7 +141,7 @@ export function TemplateLibrary({
     }
   }
 
-  async function removeTemplate(template: FormTemplate): Promise<boolean> {
+  async function removeTemplate(template: FormTemplateSummary): Promise<boolean> {
     if (cardAction) return false;
     setCardAction({ templateId: template.id, type: "delete" });
     onNoticeChange(null);
@@ -158,7 +162,7 @@ export function TemplateLibrary({
     }
   }
 
-  function renderCardMetadataField(template: FormTemplate, field: TemplateMetadataField) {
+  function renderCardMetadataField(template: FormTemplateSummary, field: TemplateMetadataField) {
     const active = cardMetadataEdit?.templateId === template.id && cardMetadataEdit.field === field;
     const label = field === "name" ? "양식 제목" : "양식 설명";
     if (active) {

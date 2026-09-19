@@ -28,39 +28,72 @@ function measureJoinedTables(root: HTMLElement): JoinedGrid[] {
     if ((!joinColumns && !joinRows) || !gridRect.width) return [];
     // Work in document pixels, independently of the canvas zoom.
     const scale = gridRect.width / (px(gridStyle.width) || gridRect.width);
-    const tables = [...grid.querySelectorAll<HTMLElement>("[data-candidate-block-instance], [data-candidate-block-column-name]")].flatMap((block): JoinedTable[] => {
+    const tables = [
+      ...grid.querySelectorAll<HTMLElement>("[data-candidate-block-instance], [data-candidate-block-column-name]"),
+    ].flatMap((block): JoinedTable[] => {
       const table = block.querySelector<HTMLTableElement>(":scope > table");
       if (!table || block.querySelectorAll("table").length !== 1) return [];
-      if ([...block.children].some((child) => child !== table && view.getComputedStyle(child).display !== "none")) return [];
+      if ([...block.children].some((child) => child !== table && view.getComputedStyle(child).display !== "none"))
+        return [];
       if ([...block.childNodes].some((node) => node.nodeType === 3 && node.textContent?.trim())) return [];
       const style = view.getComputedStyle(block);
       const rect = block.getBoundingClientRect();
       const tableRect = table.getBoundingClientRect();
       const innerWidth = rect.width / scale - px(style.borderLeftWidth) - px(style.borderRightWidth);
       const innerHeight = rect.height / scale - px(style.borderTopWidth) - px(style.borderBottomWidth);
-      const width = joinColumns && !px(style.paddingLeft) && !px(style.paddingRight)
-        && Math.abs(tableRect.width / scale - innerWidth) <= 2.5;
-      const height = joinRows && !px(style.paddingTop) && !px(style.paddingBottom)
-        && Math.abs(tableRect.height / scale - innerHeight) <= 2.5;
-      const clearHeaderBackground = block.hasAttribute("data-candidate-block-column-name")
-        && !block.style.background && !block.style.backgroundColor;
-      return width || height ? [{ block, table, width, height, contentWidth: innerWidth, contentHeight: innerHeight, clearHeaderBackground, collapseTopBorder: false }] : [];
+      const width =
+        joinColumns &&
+        !px(style.paddingLeft) &&
+        !px(style.paddingRight) &&
+        Math.abs(tableRect.width / scale - innerWidth) <= 2.5;
+      const height =
+        joinRows &&
+        !px(style.paddingTop) &&
+        !px(style.paddingBottom) &&
+        Math.abs(tableRect.height / scale - innerHeight) <= 2.5;
+      const clearHeaderBackground =
+        block.hasAttribute("data-candidate-block-column-name") &&
+        !block.style.background &&
+        !block.style.backgroundColor;
+      return width || height
+        ? [
+            {
+              block,
+              table,
+              width,
+              height,
+              contentWidth: innerWidth,
+              contentHeight: innerHeight,
+              clearHeaderBackground,
+              collapseTopBorder: false,
+            },
+          ]
+        : [];
     });
-    const ordered = tables.map(entry => ({ entry, rect: entry.block.getBoundingClientRect() }))
+    const ordered = tables
+      .map((entry) => ({ entry, rect: entry.block.getBoundingClientRect() }))
       .sort((a, b) => a.rect.left - b.rect.left || a.rect.top - b.rect.top);
     for (let index = 1; index < ordered.length; index++) {
-      const current = ordered[index], previous = ordered[index - 1];
-      if (!current.entry.width || !current.entry.height || !previous.entry.width || !previous.entry.height
-        || Math.abs(current.rect.left - previous.rect.left) / scale > 0.1
-        || Math.abs(current.rect.right - previous.rect.right) / scale > 0.1
-        || Math.abs(current.rect.top - previous.rect.bottom) / scale > 0.1) continue;
+      const current = ordered[index],
+        previous = ordered[index - 1];
+      if (
+        !current.entry.width ||
+        !current.entry.height ||
+        !previous.entry.width ||
+        !previous.entry.height ||
+        Math.abs(current.rect.left - previous.rect.left) / scale > 0.1 ||
+        Math.abs(current.rect.right - previous.rect.right) / scale > 0.1 ||
+        Math.abs(current.rect.top - previous.rect.bottom) / scale > 0.1
+      )
+        continue;
       const upperCells = [...previous.entry.table.rows].at(-1)?.cells;
       const lowerCells = current.entry.table.rows[0]?.cells;
       if (!upperCells?.length || !lowerCells?.length) continue;
       const border = view.getComputedStyle(upperCells[0]).borderBottom;
       // Collapse identical shared borders only; keep deliberately different borders.
-      current.entry.collapseTopBorder = [...upperCells].every(cell => view.getComputedStyle(cell).borderBottom === border)
-        && [...lowerCells].every(cell => view.getComputedStyle(cell).borderTop === border);
+      current.entry.collapseTopBorder =
+        [...upperCells].every((cell) => view.getComputedStyle(cell).borderBottom === border) &&
+        [...lowerCells].every((cell) => view.getComputedStyle(cell).borderTop === border);
     }
     return tables.length ? [{ grid, width: gridRect.width / scale, height: gridRect.height / scale, tables }] : [];
   });
@@ -129,7 +162,9 @@ export function bindCanvasTableJoining(root: HTMLElement, surface: HTMLElement) 
           ${entry.height ? "height: 100% !important;" : ""}
         }`);
         if (entry.collapseTopBorder) {
-          rules.push(`${[entry.table, ...entry.table.rows[0].cells].map(selector).join(", ")} { border-top-width: 0 !important; }`);
+          rules.push(
+            `${[entry.table, ...entry.table.rows[0].cells].map(selector).join(", ")} { border-top-width: 0 !important; }`,
+          );
         }
       }
     }
@@ -139,7 +174,13 @@ export function bindCanvasTableJoining(root: HTMLElement, surface: HTMLElement) 
     if (!frame) frame = view.requestAnimationFrame(refresh);
   };
   const observer = new MutationObserver(schedule);
-  observer.observe(surface, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["style"] });
+  observer.observe(surface, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ["style"],
+  });
   view.addEventListener("resize", schedule);
   refresh();
   return () => {

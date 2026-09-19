@@ -86,7 +86,7 @@ export class PseudonymsService {
       forUpdate: false,
     });
     const labelPrintingEnabled = setting?.assignmentMethod === "PREASSIGNED" && Boolean(setting.printPreassignedLabel);
-    return this.rosterExporter.build(applyOperationRosterQuery(rows, input.query), { labelPrintingEnabled });
+    return this.rosterExporter.stream(applyOperationRosterQuery(rows, input.query), { labelPrintingEnabled });
   }
 
   previewSequential(input: AssignPseudonymDto, user: AuthenticatedUser) {
@@ -118,22 +118,27 @@ export class PseudonymsService {
     const fallbackSetting = settingByAdmission.get("");
     const selectedSettings = admissions.map((admission) => settingByAdmission.get(admission.name) ?? fallbackSetting);
     const settingIds = selectedSettings.flatMap((setting) => (setting ? [setting.id] : []));
-    const ranges = await this.repository.listTimeRangesForOverview(this.pool, settingIds, admissionNames);
-    const rangesBySettingAndAdmission = new Map<string, typeof ranges>();
+    const ranges = await this.repository.listRangeSummariesForOverview(this.pool, settingIds, admissionNames);
+    const rangesBySettingAndAdmission = new Map<string, (typeof ranges)[number]>();
     for (const range of ranges) {
       const key = overviewRangeKey(range.settingId, range.admission);
-      const current = rangesBySettingAndAdmission.get(key) ?? [];
-      current.push(range);
-      rangesBySettingAndAdmission.set(key, current);
+      rangesBySettingAndAdmission.set(key, range);
     }
 
     return admissions.map((admission, index) => {
       const setting = selectedSettings[index];
       if (!setting) return { ...admission, setting: null, error: true };
-      const settingRanges = rangesBySettingAndAdmission.get(overviewRangeKey(setting.id, admission.name)) ?? [];
+      const rangeStatistics = rangesBySettingAndAdmission.get(overviewRangeKey(setting.id, admission.name)) ?? {
+        count: 0,
+        start: 0,
+        end: 0,
+      };
       return {
         ...admission,
-        setting: settingResponse(setting, settingRanges, admission.name),
+        setting: {
+          ...settingResponse(setting, [], admission.name),
+          rangeStatistics: { count: rangeStatistics.count, start: rangeStatistics.start, end: rangeStatistics.end },
+        },
         error: false,
       };
     });

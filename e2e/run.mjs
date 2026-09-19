@@ -43,7 +43,8 @@ if (playwrightArguments.includes("--list")) {
   try {
     await runNpm(["run", "db:setup", "-w", "@examcheck/api"]);
     await assertOwnedDatabase(databaseName);
-    await runNode(resolve(projectRoot, "e2e/seed.mjs"));
+    const seedExitCode = await runNode(resolve(projectRoot, "e2e/seed.mjs"));
+    if (seedExitCode !== 0) throw new Error(`E2E fixture preparation failed (${seedExitCode}).`);
     managedServers = await startManagedServers();
     const exitCode = await runNode(resolve(projectRoot, "node_modules/@playwright/test/cli.js"), [
       "test",

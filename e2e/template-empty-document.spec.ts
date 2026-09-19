@@ -35,7 +35,8 @@ for (const key of ["Backspace", "Delete"]) {
     await page.route("**/api/v1/**", (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
-      if (path.endsWith("/form-templates/admin")) return route.fulfill({ json: [record] });
+      if (path.startsWith("/api/v1/form-templates/admin/"))
+        return route.fulfill({ json: templateResponse(path, [record]) });
       if (request.method() === "GET" || path.endsWith("/auth/login")) return route.continue();
       return route.fulfill({ status: 409, json: { message: "Test writes disabled" } });
     });
@@ -74,4 +75,8 @@ for (const key of ["Backspace", "Delete"]) {
     await expect(content).toHaveText("Photo register");
     expect(errors).toEqual([]);
   });
+}
+
+function templateResponse(path: string, records: unknown[]) {
+  return path.endsWith("/summaries") ? records : records[0];
 }

@@ -66,8 +66,9 @@ export function rangeSummary(setting: PseudonymSetting) {
       ? `라벨 출력 ${setting.printPreassignedLabel ? "사용" : "미사용"}`
       : "수험번호 인식 후 직접 매칭";
   }
-  if (!setting.ranges.length) return "등록된 가번호 범위가 없습니다.";
-  const start = Math.min(...setting.ranges.map((range) => range.rangeStart));
-  const end = Math.max(...setting.ranges.map((range) => range.rangeEnd));
-  return `${setting.ranges.length.toLocaleString()}개 범위 · ${start.toLocaleString()} ~ ${end.toLocaleString()}`;
+  const count = setting.rangeStatistics?.count ?? setting.ranges.length;
+  if (!count) return "등록된 가번호 범위가 없습니다.";
+  const start = setting.rangeStatistics?.start ?? Math.min(...setting.ranges.map((range) => range.rangeStart));
+  const end = setting.rangeStatistics?.end ?? Math.max(...setting.ranges.map((range) => range.rangeEnd));
+  return `${count.toLocaleString()}개 범위 · ${start.toLocaleString()} ~ ${end.toLocaleString()}`;
 }

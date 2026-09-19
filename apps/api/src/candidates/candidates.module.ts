@@ -1,3 +1,5 @@
+import { CandidateUploadService } from "./candidate-upload.service.js";
+import { CandidateUploadRepository } from "./candidate-upload.repository.js";
 import { Module } from "@nestjs/common";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { CandidatesApplicationService } from "./candidates.application.js";
@@ -9,6 +11,8 @@ import { CandidatesService } from "./candidates.service.js";
   controllers: [CandidatesController],
   providers: [
     CandidatesRepository,
+    CandidateUploadRepository,
+    CandidateUploadService,
     MutationAuditRepository,
     CandidatesApplicationService,
     CandidatesService,

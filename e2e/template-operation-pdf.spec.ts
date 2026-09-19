@@ -26,8 +26,12 @@ test("인쇄 데이터는 태그 배지 너비가 아닌 문단과 셀의 너비
       <img id="photo" class="template-token" style="width:42px;height:50px" alt="사진">
     </div>`;
     const rendered = renderTemplateHtml(html, {
-      year: "2027", school: "한국대학교", admission: "학생부교과 면접", room: "면접고사실",
-      long: "학생부교과 면접 전형의 긴 안내 문구입니다", empty: "",
+      year: "2027",
+      school: "한국대학교",
+      admission: "학생부교과 면접",
+      room: "면접고사실",
+      long: "학생부교과 면접 전형의 긴 안내 문구입니다",
+      empty: "",
     });
     (window as typeof window & { tagFlowHtml: string }).tagFlowHtml = rendered;
     openTemplatePrintWindow("태그 줄바꿈 검증", rendered);
@@ -52,12 +56,13 @@ test("인쇄 데이터는 태그 배지 너비가 아닌 문단과 셀의 너비
         const node = walker.currentNode;
         for (let i = 0; i < (node.textContent?.length || 0); i++) {
           const range = doc.createRange();
-          range.setStart(node, i); range.setEnd(node, i + 1);
+          range.setStart(node, i);
+          range.setEnd(node, i + 1);
           const rect = range.getBoundingClientRect();
           rects.push({ x: rect.left - origin, y: rect.top });
         }
       }
-      return rects.map(rect => ({ x: rect.x, y: rect.y - rects[0].y }));
+      return rects.map((rect) => ({ x: rect.x, y: rect.y - rects[0].y }));
     };
     return {
       natural: [...doc.querySelectorAll("[data-natural]")].map(characters),
@@ -74,7 +79,8 @@ test("인쇄 데이터는 태그 배지 너비가 아닌 문단과 셀의 너비
     };
   };
   const preview = await popup.evaluate(
-    (source) => new Function("return (" + source + ")")()(document), measure.toString(),
+    (source) => new Function("return (" + source + ")")()(document),
+    measure.toString(),
   );
   const pending = page.waitForEvent("download");
   const pdf = await page.evaluate(async (measureSource) => {
@@ -102,9 +108,13 @@ test("인쇄 데이터는 태그 배지 너비가 아닌 문단과 셀의 너비
     return { snapshot, capturedSvgs };
   }, measure.toString());
   for (const result of [preview, pdf.snapshot]) {
-    for (const token of result.short) expect(token).toEqual({
-      lines: 1, fontSize: "16px", fontWeight: "700", color: "rgb(20, 40, 60)",
-    });
+    for (const token of result.short)
+      expect(token).toEqual({
+        lines: 1,
+        fontSize: "16px",
+        fontWeight: "700",
+        color: "rgb(20, 40, 60)",
+      });
     expect(result.narrowLines).toBeGreaterThan(1);
     expect(result.narrowOverflow).toBe(false);
     expect(result.photoWidth).toBe(42);
@@ -117,7 +127,8 @@ test("인쇄 데이터는 태그 배지 너비가 아닌 문단과 셀의 너비
   const capturedPage = await page.context().newPage();
   await capturedPage.setContent(finalCapture);
   const capturedLayout = await capturedPage.evaluate(
-    (source) => new Function("return (" + source + ")")()(document), measure.toString(),
+    (source) => new Function("return (" + source + ")")()(document),
+    measure.toString(),
   );
   expect(capturedLayout.short.every((token: { lines: number }) => token.lines === 1)).toBe(true);
   expect(capturedLayout.narrowLines).toBeGreaterThan(1);
@@ -143,39 +154,49 @@ test("태그가 포함된 행과 데이터 블록의 간격을 편집 화면과 
     const presentationPath = "/src/features/templates/template-print-presentation.ts";
     const { downloadTemplatePdf } = await import(/* @vite-ignore */ rendererPath);
     const { getTemplatePrintPresentation } = await import(/* @vite-ignore */ presentationPath);
-    const tag = '<span class="template-token" style="font-size:14.6667px;font-weight:700;line-height:16px">면접고사실</span>';
-    const html = '<div class="template-doc"><div style="font-size:14.6667px;line-height:16px">' +
-      '<div>2027 학년도 ' + tag + '</div><div><br></div>' +
+    const tag =
+      '<span class="template-token" style="font-size:14.6667px;font-weight:700;line-height:16px">면접고사실</span>';
+    const html =
+      '<div class="template-doc"><div style="font-size:14.6667px;line-height:16px">' +
+      "<div>2027 학년도 " +
+      tag +
+      "</div><div><br></div>" +
       '<div style="text-align:center"><b style="font-size:20pt">가번호 부여대장</b></div><div><br></div>' +
-      ['전형구분', '모집단위', '실기종목', '수험생 대기실'].map(label => '<div class="qa-line"><b>◆ ' + label + ' : </b>' + tag + '</div>').join('') +
+      ["전형구분", "모집단위", "실기종목", "수험생 대기실"]
+        .map((label) => '<div class="qa-line"><b>◆ ' + label + " : </b>" + tag + "</div>")
+        .join("") +
       '</div><div data-candidate-block-grid style="position:absolute;top:174px;width:716px;height:100px">표</div></div>';
     const measure = (root: HTMLElement) => {
-      const origin = root.querySelector('.template-doc')!.getBoundingClientRect().top;
-      const lines = [...root.querySelectorAll('.qa-line')].map(el => {
+      const origin = root.querySelector(".template-doc")!.getBoundingClientRect().top;
+      const lines = [...root.querySelectorAll(".qa-line")].map((el) => {
         const r = el.getBoundingClientRect();
         return { top: r.top - origin, height: r.height, bottom: r.bottom - origin };
       });
-      const gridTop = root.querySelector('[data-candidate-block-grid]')!.getBoundingClientRect().top - origin;
+      const gridTop = root.querySelector("[data-candidate-block-grid]")!.getBoundingClientRect().top - origin;
       return { lines, gridTop, gap: gridTop - lines.at(-1)!.bottom };
     };
     // Use the editor's original inline box styling as the baseline, with the
     // same wrapper geometry but without print overrides or the live user's DOM.
-    const frame = document.createElement('iframe');
-    frame.style.cssText = 'position:fixed;left:-10000px;width:794px;height:1123px';
+    const frame = document.createElement("iframe");
+    frame.style.cssText = "position:fixed;left:-10000px;width:794px;height:1123px";
     document.body.append(frame);
     const doc = frame.contentDocument!;
-    doc.head.innerHTML = '<style>*{box-sizing:border-box}body{margin:0}' + getTemplatePrintPresentation(html).css + '</style>';
-    doc.body.innerHTML = '<main class="examlist-template-editor" style="width:794px;padding:38px"><div class="editor-document-surface template-editor-surface">' + html + '</div></main>';
+    doc.head.innerHTML =
+      "<style>*{box-sizing:border-box}body{margin:0}" + getTemplatePrintPresentation(html).css + "</style>";
+    doc.body.innerHTML =
+      '<main class="examlist-template-editor" style="width:794px;padding:38px"><div class="editor-document-surface template-editor-surface">' +
+      html +
+      "</div></main>";
     const baseline = measure(doc.body);
     let pdf;
-    await downloadTemplatePdf('태그 행 간격 검증', [html], html, {
+    await downloadTemplatePdf("태그 행 간격 검증", [html], html, {
       onProgress: () => {
         const printDoc = document.querySelector<HTMLIFrameElement>('iframe[title="PDF 인쇄 준비"]')!.contentDocument!;
         pdf = measure(printDoc.body);
       },
     });
     // The preview uses these same presentation rules; measure it independently.
-    doc.querySelector('main')!.classList.add('print-document');
+    doc.querySelector("main")!.classList.add("print-document");
     const preview = measure(doc.body);
     frame.remove();
     return { baseline, preview, pdf };

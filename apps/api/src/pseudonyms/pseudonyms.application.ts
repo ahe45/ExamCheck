@@ -1,3 +1,4 @@
+import { beginScopedWrite } from "../common/database/transaction.js";
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Pool, PoolConnection } from "mysql2/promise";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
@@ -148,7 +149,16 @@ export class UpdatePseudonymSettingUseCase {
           range.rangeStart,
           range.rangeEnd,
         );
-        await this.repository.upsertTimeRange(connection, settingId, range, key, nextSequence, user.id);
+        const prior = existingRangesByKey.get(key);
+        if (
+          !prior ||
+          prior.rangeStart !== range.rangeStart ||
+          prior.rangeEnd !== range.rangeEnd ||
+          prior.displayWidth !== range.displayWidth ||
+          prior.nextSequence !== nextSequence
+        ) {
+          await this.repository.upsertTimeRange(connection, settingId, range, key, nextSequence, user.id);
+        }
       }
       for (const existingRange of existingRanges) {
         if (!proposedScheduleKeys.has(existingRange.scheduleKey)) {
@@ -218,13 +228,15 @@ export class AssignPseudonymUseCase {
     input = { ...input, admissionName };
     const connection = await this.pool.getConnection();
     try {
-      await connection.beginTransaction();
+      await beginScopedWrite(connection);
       const identityDecision = await this.identityTransition.decideWrite(connection);
       assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym assignment");
-      const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
+      const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection, true);
       const identifiedCandidate = await this.repository.findCandidateInScope(connection, input, { forUpdate: false });
       if (!identifiedCandidate) throw new NotFoundException("선택한 전형·교시에 해당하는 수험생을 찾을 수 없습니다.");
 
+      if (pseudonymNoUniqueness === "ADMISSION")
+        await this.repository.lockAdmissionNumbers(connection, identifiedCandidate.examName, input.admissionName);
       const operation = await lockOperationForUpdate(this.repository, connection, {
         examName: identifiedCandidate.examName,
         examDate: input.examDate,
@@ -240,12 +252,16 @@ export class AssignPseudonymUseCase {
         connection,
         identifiedCandidate.examName,
         input.admissionName,
+        true,
       );
       const timeRanges =
         setting.assignmentMethod === "DRAW" ||
         setting.assignmentMethod === "SEQUENTIAL" ||
         setting.assignmentMethod === "MATCHING"
-          ? await this.repository.listTimeRangesForUpdate(connection, setting.id)
+          ? await this.repository.listTimeRangesForUpdate(connection, setting.id, {
+              ...input,
+              examName: input.examName || "",
+            })
           : [];
       const candidate = await this.repository.findCandidateInScope(connection, input, { forUpdate: true });
       assertCandidateScopeStable(identifiedCandidate, candidate);
@@ -302,6 +318,9 @@ export class AssignPseudonymUseCase {
         candidate.admission || "",
         pseudonymNoUniqueness,
         uniquenessScope,
+        input.manualNumber
+          ? { start: parsePseudonym(input.manualNumber), end: parsePseudonym(input.manualNumber) }
+          : { start: effectiveRange.rangeStart, end: effectiveRange.rangeEnd },
       );
       let number: number;
       let displayWidth =
@@ -424,10 +443,12 @@ export class ChangePseudonymOperationStatusUseCase {
     input = { ...input, admissionName };
     const connection = await this.pool.getConnection();
     try {
-      await connection.beginTransaction();
+      await beginScopedWrite(connection);
       const identityDecision = await this.identityTransition.decideWrite(connection);
       assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym operation");
-      const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
+      const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection, true);
+      if (pseudonymNoUniqueness === "ADMISSION")
+        await this.repository.lockAdmissionNumbers(connection, input.examName, input.admissionName);
       const operation = await lockOperationForUpdate(this.repository, connection, input);
       if (operation.closed) {
         if (identityDecision.writeTarget) {
@@ -437,7 +458,13 @@ export class ChangePseudonymOperationStatusUseCase {
         return this.getOperationStatus(input);
       }
 
-      const setting = await loadSettingForUpdate(this.repository, connection, input.examName, input.admissionName);
+      const setting = await loadSettingForUpdate(
+        this.repository,
+        connection,
+        input.examName,
+        input.admissionName,
+        true,
+      );
       let autoAssignedAbsenteeCount = 0;
       if (setting.autoAssignAbsenteesOnClose) {
         const timeRanges = await this.repository.listTimeRangesForUpdate(connection, setting.id);
@@ -456,6 +483,8 @@ export class ChangePseudonymOperationStatusUseCase {
           pseudonymNoUniqueness,
           uniquenessScope,
         );
+        const assignments: { candidate: (typeof candidates)[number]; number: string }[] = [];
+        const nextByRange = new Map<string, number>();
         for (const candidate of candidates) {
           const exactRange =
             candidate.examDate && candidate.examTime
@@ -473,6 +502,8 @@ export class ChangePseudonymOperationStatusUseCase {
                 )
               : undefined;
           const effectiveRange = exactRange || setting;
+          const rangeCursorKey = `${effectiveRange.rangeStart}:${effectiveRange.rangeEnd}`;
+          const nextAvailable = nextByRange.get(rangeCursorKey) ?? effectiveRange.rangeStart;
           let number: number;
           let displayWidth =
             effectiveRange.displayWidth ??
@@ -491,35 +522,37 @@ export class ChangePseudonymOperationStatusUseCase {
             );
             if (owner !== candidate.candidateRecordId)
               number = chooseSequentialAvailable(
-                effectiveRange.rangeStart,
+                nextAvailable,
                 effectiveRange.rangeStart,
                 effectiveRange.rangeEnd,
                 reserved,
               );
           } else {
             number = chooseSequentialAvailable(
-              effectiveRange.rangeStart,
+              nextAvailable,
               effectiveRange.rangeStart,
               effectiveRange.rangeEnd,
               reserved,
             );
           }
           reserved.add(number);
+          nextByRange.set(rangeCursorKey, number >= effectiveRange.rangeEnd ? effectiveRange.rangeStart : number + 1);
           const pseudonymNumber = displayPseudonymNumber(number, Math.max(displayWidth, String(number).length));
-          const assignmentId = await this.repository.insertAbsenteeAssignment(
-            connection,
-            candidate,
-            input.admissionName,
-            uniquenessScopeKey,
-            pseudonymNumber,
-            assignmentModeForSetting(setting.assignmentMethod),
-            user.id,
-          );
-          if (identityDecision.writeTarget) {
-            await this.identityProjection.syncAssignmentTree(connection, assignmentId, input.examName);
-          }
-          autoAssignedAbsenteeCount += 1;
+          assignments.push({ candidate, number: pseudonymNumber });
         }
+        const assignmentIds = await this.repository.insertAbsenteeAssignments(
+          connection,
+          assignments,
+          input.admissionName,
+          uniquenessScopeKey,
+          assignmentModeForSetting(setting.assignmentMethod),
+          user.id,
+        );
+        if (identityDecision.writeTarget) {
+          for (const assignmentId of assignmentIds)
+            await this.identityProjection.syncAssignmentTree(connection, assignmentId, input.examName);
+        }
+        autoAssignedAbsenteeCount = assignments.length;
       }
 
       await this.repository.closeOperation(connection, operation.id, user.id);
@@ -557,7 +590,7 @@ export class ChangePseudonymOperationStatusUseCase {
     input = { ...input, admissionName };
     const connection = await this.pool.getConnection();
     try {
-      await connection.beginTransaction();
+      await beginScopedWrite(connection);
       const identityDecision = await this.identityTransition.decideWrite(connection);
       assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym operation");
       await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
@@ -618,8 +651,12 @@ async function loadSettingForUpdate(
   connection: PoolConnection,
   examName: string,
   admissionName: string,
+  shared = false,
 ) {
-  const setting = await repository.findSetting(connection, examName, admissionName, { forUpdate: true });
+  const setting = await repository.findSetting(connection, examName, admissionName, {
+    forUpdate: !shared,
+    ...(shared ? { shared: true } : {}),
+  });
   if (!setting) throw new NotFoundException("이 전형의 가번호 운영 설정을 찾을 수 없습니다.");
   return setting;
 }

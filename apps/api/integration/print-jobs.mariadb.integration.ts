@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { AuthenticatedUser } from "../src/auth/auth.types.js";
 import { resolveAppConfig } from "../src/config/app-config.js";
 import type { CreatePrintJobDto } from "../src/print-jobs/print-jobs.dto.js";
@@ -71,6 +71,13 @@ afterAll(async () => {
 });
 
 describe("print job MariaDB integration", () => {
+  beforeEach(async () => {
+    await harness.pool.execute(
+      "DELETE FROM audit_log WHERE print_job_id IN (SELECT id FROM print_job WHERE requested_by = ?)",
+      [owner.id],
+    );
+    await harness.pool.execute("DELETE FROM print_job WHERE requested_by = ?", [owner.id]);
+  });
   it("persists template defaults, resolves the assigned template and allows per-job copies without changing it", async () => {
     const templates = new LabelTemplatesService(
       harness.pool,
@@ -92,6 +99,7 @@ describe("print job MariaDB integration", () => {
       copies: 2,
     });
     const baseline = await service.create({ ...createRequest(), copies: 2 }, owner);
+    await service.complete(baseline.id, { status: "FAILED" }, owner);
     const override = await service.create({ ...createRequest(), copies: 4 }, owner);
     expect(override.copies).toBe(4);
     expect(override.payload).toBe(baseline.payload);
@@ -123,6 +131,17 @@ describe("print job MariaDB integration", () => {
       [owner.id, request.idempotencyKey],
     );
     expect(rows).toEqual([{ jobCount: 1, payloadCount: 1 }]);
+  });
+
+  it("returns one job for concurrent retries and rejects a second pending request", async () => {
+    const request = createRequest();
+    const [first, retry] = await Promise.all([service.create(request, owner), service.create(request, owner)]);
+    expect(retry).toEqual(first);
+    await expect(service.create(createRequest(), owner)).rejects.toThrow("이미 준비 중");
+    await harness.pool.execute("UPDATE print_job SET expires_at = DATE_SUB(NOW(3), INTERVAL 1 SECOND) WHERE id = ?", [
+      first.id,
+    ]);
+    await expect(service.create(request, owner)).rejects.toThrow("다시 전송");
   });
 
   it("persists a terminal sent status", async () => {

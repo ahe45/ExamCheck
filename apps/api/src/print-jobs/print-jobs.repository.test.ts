@@ -41,7 +41,7 @@ describe("PrintJobsRepository", () => {
 
     expect(execute.mock.calls[0]?.[0]).toContain("COALESCE(pa.exam_name, ?) AS examName");
     expect(execute.mock.calls[1]?.[0]).toContain("label_template_id AS labelTemplateId");
-    expect(execute.mock.calls[1]?.[0]).toContain("FOR UPDATE");
+    expect(execute.mock.calls[1]?.[0]).toContain("LOCK IN SHARE MODE");
     expect(execute.mock.calls[2]?.[0]).toContain("cr.id AS candidateRecordId");
     expect(execute.mock.calls[2]?.[0]).toContain("cr.waiting_room AS waitingRoom");
     expect(execute.mock.calls[2]?.[0]).toContain("FOR UPDATE");

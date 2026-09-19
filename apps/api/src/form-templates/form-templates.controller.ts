@@ -40,6 +40,23 @@ export class FormTemplatesController {
     return this.formTemplatesService.list(false);
   }
 
+  @Get("admin/summaries")
+  @RequirePermissions("template.manage")
+  summariesForAdmin() {
+    return this.formTemplatesService.listSummaries(false);
+  }
+
+  @Get("admin/:code")
+  @RequirePermissions("template.manage")
+  detailForAdmin(@Param() params: FormTemplateCodeParamDto) {
+    return this.formTemplatesService.findForAdmin(params.code);
+  }
+
+  @Get("summaries")
+  summaries() {
+    return this.formTemplatesService.listSummaries(true);
+  }
+
   @Get()
   listActive() {
     return this.formTemplatesService.list(true);

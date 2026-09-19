@@ -7,6 +7,7 @@ import { TemplateLibrary } from "./TemplateLibrary";
 
 const apiMock = vi.hoisted(() => ({
   deleteFormTemplate: vi.fn(),
+  fetchFormTemplate: vi.fn(),
   saveFormTemplate: vi.fn(),
   updateFormTemplateActive: vi.fn(),
   updateFormTemplateMetadata: vi.fn(),
@@ -32,6 +33,7 @@ const template: FormTemplate = {
 
 describe("TemplateLibrary", () => {
   beforeEach(() => {
+    apiMock.fetchFormTemplate.mockResolvedValue(template);
     apiMock.saveFormTemplate.mockReset();
     apiMock.deleteFormTemplate.mockReset();
     apiMock.updateFormTemplateActive.mockReset();

@@ -20,16 +20,25 @@ describe("CandidatesApplicationService", () => {
     ).resolves.toEqual({ totalRows: 1, inserted: 1, updated: 0, skipped: 0 });
 
     expect(fixture.repository.loadExamineeNumberUniqueness).toHaveBeenCalledWith(fixture.connection, {
-      forUpdate: true,
+      forUpdate: false,
+      shared: true,
     });
-    expect(fixture.repository.loadExisting).toHaveBeenCalledWith(fixture.connection, { forUpdate: true });
+    expect(fixture.repository.loadExisting).toHaveBeenCalledWith(fixture.connection, {
+      forUpdate: true,
+      examineeNos: ["10001"],
+    });
     expect(fixture.repository.listOperationallyProtectedCandidateIds).toHaveBeenCalledWith(
       fixture.connection,
       [],
       "테스트 시험",
     );
     expect(fixture.repository.listImportScopeGuards).toHaveBeenCalledWith(fixture.connection, "테스트 시험");
-    expect(fixture.repository.insertCandidate).toHaveBeenCalledWith(fixture.connection, candidate(), "테스트 시험");
+    expect(fixture.repository.writeCandidateBatch).toHaveBeenCalledWith(
+      fixture.connection,
+      [{ candidate: candidate() }],
+      "테스트 시험",
+      undefined,
+    );
     expect(fixture.audit.record).toHaveBeenCalledWith(fixture.connection, {
       eventType: "CANDIDATE_WORKBOOK_IMPORTED",
       actorUserId: 7,
@@ -129,7 +138,12 @@ describe("CandidatesApplicationService", () => {
       [],
       "테스트 시험",
     );
-    expect(fixture.repository.updateCandidate).toHaveBeenCalledWith(fixture.connection, 11, corrected, "테스트 시험");
+    expect(fixture.repository.writeCandidateBatch).toHaveBeenCalledWith(
+      fixture.connection,
+      [{ id: 11, candidate: corrected }],
+      "테스트 시험",
+      undefined,
+    );
     expect(fixture.repository.listImportScopeGuards).not.toHaveBeenCalled();
   });
 
@@ -158,7 +172,7 @@ describe("CandidatesApplicationService", () => {
     ).resolves.toMatchObject({ inserted: 1 });
 
     expect(fixture.repository.deleteTimeRangesByIds).toHaveBeenCalledWith(fixture.connection, [91]);
-    expect(fixture.repository.insertCandidate).toHaveBeenCalledOnce();
+    expect(fixture.repository.writeCandidateBatch).toHaveBeenCalledOnce();
     expect(fixture.connection.commit).toHaveBeenCalledOnce();
   });
 
@@ -178,7 +192,12 @@ describe("CandidatesApplicationService", () => {
     ).resolves.toMatchObject({ updated: 1 });
 
     expect(fixture.repository.deleteTimeRangesByIds).toHaveBeenCalledWith(fixture.connection, [91, 92]);
-    expect(fixture.repository.updateCandidate).toHaveBeenCalledWith(fixture.connection, 11, moved, "테스트 시험");
+    expect(fixture.repository.writeCandidateBatch).toHaveBeenCalledWith(
+      fixture.connection,
+      [{ id: 11, candidate: moved }],
+      "테스트 시험",
+      undefined,
+    );
   });
 
   it("locks photo state, writes with the same connection, and excludes PII and bytes from audit details", async () => {
@@ -201,12 +220,13 @@ describe("CandidatesApplicationService", () => {
       fixture.application.importCandidatePhotos(archive, "insert-update", "archive-sha256", 7),
     ).resolves.toEqual({ totalFiles: 1, uploaded: 1, updated: 0, skipped: 0, duplicateCount: 0 });
 
-    expect(fixture.repository.listCandidatePhotos).toHaveBeenCalledWith(fixture.connection, { forUpdate: true });
-    expect(fixture.repository.upsertCandidatePhoto).toHaveBeenCalledWith(
-      fixture.connection,
-      11,
-      expect.objectContaining({ fileName: "10001.png", content: Buffer.from("private-photo-bytes") }),
-    );
+    expect(fixture.repository.listCandidatePhotos).toHaveBeenCalledWith(fixture.connection, {
+      forUpdate: true,
+      examineeNos: ["10001"],
+    });
+    expect(fixture.repository.upsertCandidatePhotoBatch).toHaveBeenCalledWith(fixture.connection, [
+      expect.objectContaining({ id: 11, fileName: "10001.png", content: Buffer.from("private-photo-bytes") }),
+    ]);
     const auditRecord = fixture.audit.record.mock.calls[0]?.[1];
     expect(auditRecord).toEqual({
       eventType: "CANDIDATE_PHOTO_ARCHIVE_IMPORTED",
@@ -252,7 +272,7 @@ describe("CandidatesApplicationService", () => {
       ),
     ).rejects.toBe(auditFailure);
 
-    expect(fixture.repository.upsertCandidatePhoto).toHaveBeenCalledOnce();
+    expect(fixture.repository.upsertCandidatePhotoBatch).toHaveBeenCalledOnce();
     expect(fixture.connection.rollback).toHaveBeenCalledOnce();
     expect(fixture.connection.commit).not.toHaveBeenCalled();
   });
@@ -281,6 +301,7 @@ describe("CandidatesApplicationService", () => {
 
 function createFixture() {
   const connection = {
+    query: vi.fn().mockResolvedValue([[], []]),
     beginTransaction: vi.fn().mockResolvedValue(undefined),
     commit: vi.fn().mockResolvedValue(undefined),
     rollback: vi.fn().mockResolvedValue(undefined),
@@ -289,6 +310,12 @@ function createFixture() {
   const pool = { getConnection: vi.fn().mockResolvedValue(connection) } as unknown as Pool;
   const repository = {
     list: vi.fn(),
+    lockImportNumbers: vi.fn(),
+    lockImportAdmissions: vi.fn(),
+    lockImportOperations: vi.fn(),
+    writeCandidateBatch: vi.fn(),
+    maxPacketBytes: vi.fn().mockResolvedValue(64 * 1024 * 1024),
+    upsertCandidatePhotoBatch: vi.fn(),
     loadExisting: vi.fn(),
     loadExamineeNumberUniqueness: vi.fn(),
     listOperationallyProtectedCandidateIds: vi.fn().mockResolvedValue(new Set()),

@@ -31,6 +31,41 @@ interface LabelTemplateRow extends RowDataPacket {
 
 @Injectable()
 export class LabelTemplatesRepository {
+  async find(executor: SqlExecutor, code: string) {
+    const [rows] = await executor.execute<LabelTemplateRow[]>(`${selectSql} WHERE template.code = ? LIMIT 1`, [code]);
+    return rows[0] ? toRecord(rows[0]) : null;
+  }
+
+  async listSummaries(executor: SqlExecutor) {
+    const [rows] = await executor.execute<LabelTemplateRow[]>(
+      `${selectSql.replace("template.zpl_template AS zplTemplate, ", "")} ORDER BY template.name, template.id`,
+    );
+    return rows.map((row) => {
+      const { layout, zplTemplate: _payload, ...summary } = toRecord(row);
+      return {
+        ...summary,
+        thumbnail: layout
+          ? {
+              widthMm: layout.widthMm,
+              heightMm: layout.heightMm,
+              elements: layout.elements.map((element) => ({
+                id: element.id,
+                kind: element.kind,
+                xMm: element.xMm,
+                yMm: element.yMm,
+                widthMm: element.widthMm,
+                heightMm: element.heightMm,
+                content:
+                  element.kind === "text"
+                    ? element.content?.replace(/\{\{[^{}]+\}\}/g, "데이터").slice(0, 80)
+                    : undefined,
+              })),
+            }
+          : { widthMm: 60, heightMm: 40, elements: [] },
+      };
+    });
+  }
+
   async list(executor: SqlExecutor, activeOnly = false): Promise<LabelTemplateRecord[]> {
     const [rows] = await executor.execute<LabelTemplateRow[]>(
       `${selectSql}${activeOnly ? " WHERE template.active = TRUE" : ""} ORDER BY template.name, template.id`,

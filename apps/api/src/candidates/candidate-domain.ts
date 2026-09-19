@@ -24,6 +24,7 @@ export interface CandidatePhotoFile {
   fileName: string;
   mimeType: "image/jpeg" | "image/png";
   content: Buffer;
+  contentPath?: string;
   contentHash: string;
 }
 

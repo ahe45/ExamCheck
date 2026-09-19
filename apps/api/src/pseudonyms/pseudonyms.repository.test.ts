@@ -88,12 +88,17 @@ describe("PseudonymsRepository SQL mapping", () => {
 
   it("keeps operation creation and locking as separate ordered repository calls", async () => {
     const repository = new PseudonymsRepository();
-    const executor = new FixtureExecutor([{ affectedRows: 1 } as ResultSetHeader, [{ id: 7, closed: false }]]);
+    const executor = new FixtureExecutor([
+      { affectedRows: 1 } as ResultSetHeader,
+      { affectedRows: 1 } as ResultSetHeader,
+      [{ id: 7, closed: false }],
+    ]);
 
     await repository.ensureOperation(executor, operationScope);
     await expect(repository.lockOperation(executor, operationScope)).resolves.toMatchObject({ id: 7, closed: false });
 
     expect(executor.calls.map((call) => call.sql)).toEqual([
+      expect.stringContaining("INSERT INTO pseudonym_operation_mutex"),
       expect.stringContaining("INSERT IGNORE INTO pseudonym_operation"),
       expect.stringContaining("LIMIT 1 FOR UPDATE"),
     ]);
@@ -112,7 +117,7 @@ describe("PseudonymsRepository SQL mapping", () => {
 
   it("loads reserved numbers with the configured schedule scope key", async () => {
     const repository = new PseudonymsRepository();
-    const executor = new FixtureExecutor([[{ pseudonymNumber: "1001" }, { pseudonymNumber: "1002" }]]);
+    const executor = new FixtureExecutor([[{ pseudonymNumber: "1001" }], [{ pseudonymNumber: "1002" }]]);
     const schedule = {
       date: operationScope.examDate,
       time: operationScope.examTime,
@@ -135,6 +140,10 @@ describe("PseudonymsRepository SQL mapping", () => {
       operationScope.admissionName,
       pseudonymUniquenessScopeKey("SCHEDULE", schedule),
       "SCHEDULE",
+    ]);
+    expect(executor.calls[0]?.sql).toContain("FOR UPDATE");
+    expect(executor.calls[1]?.sql).toContain("LOCK IN SHARE MODE");
+    expect(executor.calls[1]?.parameters).toEqual([
       operationScope.examName,
       operationScope.admissionName,
       "SCHEDULE",

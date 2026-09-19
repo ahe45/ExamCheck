@@ -1,7 +1,7 @@
 import { ToastNotice } from "../../shared/components/ToastNotice";
 import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import type { OperationSchedule } from "../../shared/api/examinees";
-import type { FormTemplate } from "../../shared/api/form-templates";
+import type { FormTemplateSummary } from "../../shared/api/form-templates";
 import { CancelButtonIcon, ConfirmButtonIcon } from "../../shared/components/ActionIcons";
 import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
 import type { OperationScheduleMismatch } from "./operation-candidate-state";
@@ -206,7 +206,7 @@ interface OperationPrintModalProps {
   totalCount: number;
   presentCount: number;
   schedule: OperationSchedule;
-  templates: FormTemplate[];
+  templates: FormTemplateSummary[];
   selectedTemplateCode: string;
   loading: boolean;
   generating: boolean;

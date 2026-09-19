@@ -1,10 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import {
-  reflowTemplateEditorObjectRows,
-  syncTemplateEditorObjectFlowObjects,
-} from "examlist-template-editor/dom";
+import { reflowTemplateEditorObjectRows, syncTemplateEditorObjectFlowObjects } from "examlist-template-editor/dom";
 
 function rect({ height, top, width = 600 }: { height: number; top: number; width?: number }): DOMRect {
   return {

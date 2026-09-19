@@ -1,8 +1,10 @@
 import { ToastNotice } from "../../shared/components/ToastNotice";
 import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   downloadCandidateTemplate,
+  pendingCandidateUpload,
+  waitForCandidateUpload,
   importCandidatePhotoArchive,
   importCandidateWorkbook,
   previewCandidatePhotoArchive,
@@ -25,6 +27,8 @@ interface CandidateUploadModalProps {
 }
 
 export function CandidateUploadModal({ open, token, onClose, onComplete }: CandidateUploadModalProps) {
+  const pollRef = useRef<AbortController | null>(null);
+  const [progress, setProgress] = useState("");
   const dialogRef = useDialogFocus<HTMLDivElement>(open);
   const [uploadMode, setUploadMode] = useState<"workbook" | "photos">("workbook");
   const [file, setFile] = useState<File | null>(null);
@@ -35,6 +39,29 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
   const [uploadBusy, setUploadBusy] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    pollRef.current = controller;
+    const pending = pendingCandidateUpload();
+    if (pending) {
+      setUploadBusy(true);
+      void waitForCandidateUpload(token, pending.jobId, { signal: controller.signal, onProgress: setProgress })
+        .then(() => {
+          if (!controller.signal.aborted) return onComplete("진행 중이던 수험생 등록 작업이 완료되었습니다.");
+        })
+        .catch((reason) => {
+          if (!controller.signal.aborted) setError(messageOf(reason, "등록 결과를 확인하지 못했습니다."));
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setUploadBusy(false);
+            setProgress("");
+          }
+        });
+    }
+    return () => controller.abort();
+  }, [token, onComplete]);
 
   useEffect(() => {
     if (open) setError(null);
@@ -106,11 +133,17 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
       let message: string;
       if (uploadMode === "photos") {
         if (!photoFile || !photoPreview) return;
-        const result = await importCandidatePhotoArchive(token, photoFile, policy, photoPreview.previewToken);
+        const result = await importCandidatePhotoArchive(token, photoFile, policy, photoPreview.previewToken, {
+          signal: pollRef.current?.signal,
+          onProgress: setProgress,
+        });
         message = `수험생 사진 ${result.uploaded + result.updated}건을 저장했습니다. 신규 ${result.uploaded}건 · 교체 ${result.updated}건 · 건너뜀 ${result.skipped}건`;
       } else {
         if (!file || !preview) return;
-        const result = await importCandidateWorkbook(token, file, policy, preview.previewToken);
+        const result = await importCandidateWorkbook(token, file, policy, preview.previewToken, {
+          signal: pollRef.current?.signal,
+          onProgress: setProgress,
+        });
         message = `수험생 데이터 ${result.inserted + result.updated}건을 저장했습니다. 신규 ${result.inserted}건 · 수정 ${result.updated}건 · 건너뜀 ${result.skipped}건`;
       }
       onClose();
@@ -128,6 +161,7 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
       );
     } finally {
       setUploadBusy(false);
+      setProgress("");
     }
   }
 
@@ -191,6 +225,11 @@ export function CandidateUploadModal({ open, token, onClose, onComplete }: Candi
             수험생 사진
           </button>
         </div>
+        {progress && (
+          <p role="status" className="candidate-upload-progress">
+            {progress}
+          </p>
+        )}
         {error && <ToastNotice notice={{ kind: "error", text: error }} onClose={() => setError(null)} />}
         {uploadMode === "workbook" ? (
           <WorkbookUploadSection

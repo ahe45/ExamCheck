@@ -9,17 +9,19 @@ import type { OperationRow } from "./operation-view-model";
 
 const mocks = vi.hoisted(() => ({
   fetchActiveFormTemplates: vi.fn(),
-  buildOperationTemplatePages: vi.fn(),
+  createOperationTemplatePages: vi.fn(),
   downloadTemplatePdf: vi.fn(),
 }));
 
 vi.mock("../../shared/api/form-templates", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../shared/api/form-templates")>()),
   fetchActiveFormTemplates: mocks.fetchActiveFormTemplates,
+  fetchFormTemplate: async (...args: unknown[]) =>
+    (await mocks.fetchActiveFormTemplates(args[0])).find((item: FormTemplate) => item.code === args[1]),
 }));
 vi.mock("./operation-template-pages", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./operation-template-pages")>()),
-  buildOperationTemplatePages: mocks.buildOperationTemplatePages,
+  createOperationTemplatePages: mocks.createOperationTemplatePages,
 }));
 vi.mock("../templates/template-renderer", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../templates/template-renderer")>()),
@@ -72,7 +74,7 @@ describe("useOperationPrint", () => {
       },
     };
     mocks.fetchActiveFormTemplates.mockResolvedValue([signed]);
-    mocks.buildOperationTemplatePages.mockResolvedValue(["<p>출력</p>"]);
+    mocks.createOperationTemplatePages.mockResolvedValue(["<p>출력</p>"]);
     const rows = [
       { candidate: { absent: false, lastPrintedAt: "2026-10-30T01:00:00Z" }, assignment: { pseudonymNumber: "1" } },
     ] as OperationRow[];
@@ -98,7 +100,7 @@ describe("useOperationPrint", () => {
     expect(result.current.signatureOpen).toBe(true);
     act(() => result.current.updateSignatureName("signature.author", "작성자"));
     await act(async () => result.current.confirmSignatures());
-    expect(mocks.buildOperationTemplatePages).toHaveBeenCalledWith(
+    expect(mocks.createOperationTemplatePages).toHaveBeenCalledWith(
       signed,
       rows,
       expect.objectContaining({ printTarget: "PRESENT", labelPrintingEnabled: true }),
@@ -129,13 +131,13 @@ describe("useOperationPrint", () => {
     expect(result.current.totalCount).toBe(1);
     expect(result.current.presentCount).toBe(0);
     await act(async () => result.current.generate());
-    expect(mocks.buildOperationTemplatePages).not.toHaveBeenCalled();
+    expect(mocks.createOperationTemplatePages).not.toHaveBeenCalled();
     expect(onNotice).toHaveBeenLastCalledWith({ kind: "error", text: "응시한 수험생이 없어 출력할 수 없습니다." });
   });
 
   beforeEach(() => {
     mocks.fetchActiveFormTemplates.mockReset();
-    mocks.buildOperationTemplatePages.mockReset();
+    mocks.createOperationTemplatePages.mockReset();
     mocks.downloadTemplatePdf.mockReset();
     mocks.fetchActiveFormTemplates.mockResolvedValue([template]);
     mocks.downloadTemplatePdf.mockResolvedValue(undefined);
@@ -185,7 +187,7 @@ describe("useOperationPrint", () => {
       },
     };
     mocks.fetchActiveFormTemplates.mockResolvedValue([signatureTemplate]);
-    mocks.buildOperationTemplatePages.mockResolvedValue(["<p>page</p>"]);
+    mocks.createOperationTemplatePages.mockResolvedValue(["<p>page</p>"]);
     const onNotice = vi.fn();
     const { result } = renderHook(() =>
       useOperationPrint({
@@ -206,14 +208,14 @@ describe("useOperationPrint", () => {
     expect(result.current.signatureFields.map((field) => field.label)).toEqual(["작성자", "확인자"]);
     expect(result.current.signatureOpen).toBe(false);
     await act(async () => result.current.generate());
-    expect(mocks.buildOperationTemplatePages).not.toHaveBeenCalled();
+    expect(mocks.createOperationTemplatePages).not.toHaveBeenCalled();
     expect(result.current.signatureOpen).toBe(true);
     expect(result.current.signatureError).toBeNull();
     act(() => result.current.closeSignatures());
     expect(result.current.open).toBe(true);
     expect(result.current.signatureOpen).toBe(false);
     await act(async () => result.current.confirmSignatures());
-    expect(mocks.buildOperationTemplatePages).not.toHaveBeenCalled();
+    expect(mocks.createOperationTemplatePages).not.toHaveBeenCalled();
     await act(async () => result.current.generate());
     await act(async () => result.current.confirmSignatures());
     expect(result.current.signatureError).toBe("작성자 이름을 입력해 주세요.");
@@ -224,7 +226,7 @@ describe("useOperationPrint", () => {
     });
     await act(async () => result.current.confirmSignatures());
 
-    expect(mocks.buildOperationTemplatePages).toHaveBeenCalledWith(
+    expect(mocks.createOperationTemplatePages).toHaveBeenCalledWith(
       signatureTemplate,
       [],
       expect.objectContaining({
@@ -237,7 +239,7 @@ describe("useOperationPrint", () => {
 
   it("aborts an in-flight PDF generation when the modal is closed", async () => {
     let generationSignal: AbortSignal | undefined;
-    mocks.buildOperationTemplatePages.mockImplementation(
+    mocks.createOperationTemplatePages.mockImplementation(
       (_template: FormTemplate, _rows: unknown[], context: { signal?: AbortSignal }) => {
         generationSignal = context.signal;
         return new Promise<string[]>((_resolve, reject) => {
@@ -284,7 +286,7 @@ describe("useOperationPrint", () => {
   });
 
   it("reports page progress and closes after a successful PDF", async () => {
-    mocks.buildOperationTemplatePages.mockImplementation(
+    mocks.createOperationTemplatePages.mockImplementation(
       async (
         _template: FormTemplate,
         _rows: unknown[],
@@ -334,7 +336,7 @@ describe("useOperationPrint", () => {
 
   it("does not start rendering or notify when page preparation completes after cancellation", async () => {
     let finishPages: ((pages: string[]) => void) | undefined;
-    mocks.buildOperationTemplatePages.mockImplementation(
+    mocks.createOperationTemplatePages.mockImplementation(
       () =>
         new Promise<string[]>((resolve) => {
           finishPages = resolve;
@@ -361,7 +363,7 @@ describe("useOperationPrint", () => {
     act(() => {
       generation = result.current.generate();
     });
-    await waitFor(() => expect(mocks.buildOperationTemplatePages).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mocks.createOperationTemplatePages).toHaveBeenCalledOnce());
     act(() => result.current.close());
     await act(async () => {
       finishPages?.(["<p>late page</p>"]);
@@ -374,7 +376,7 @@ describe("useOperationPrint", () => {
   });
 
   it("does not show a success notice when PDF rendering completes after cancellation", async () => {
-    mocks.buildOperationTemplatePages.mockResolvedValue(["<p>page</p>"]);
+    mocks.createOperationTemplatePages.mockResolvedValue(["<p>page</p>"]);
     let finishDownload: (() => void) | undefined;
     mocks.downloadTemplatePdf.mockImplementation(
       () =>
@@ -418,7 +420,7 @@ describe("useOperationPrint", () => {
   it("aborts and ignores late page preparation after the operation screen unmounts", async () => {
     let generationSignal: AbortSignal | undefined;
     let finishPages: ((pages: string[]) => void) | undefined;
-    mocks.buildOperationTemplatePages.mockImplementation(
+    mocks.createOperationTemplatePages.mockImplementation(
       (_template: FormTemplate, _rows: unknown[], context: { signal?: AbortSignal }) => {
         generationSignal = context.signal;
         return new Promise<string[]>((resolve) => {
@@ -447,7 +449,7 @@ describe("useOperationPrint", () => {
     act(() => {
       generation = result.current.generate();
     });
-    await waitFor(() => expect(mocks.buildOperationTemplatePages).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mocks.createOperationTemplatePages).toHaveBeenCalledOnce());
     unmount();
     finishPages?.(["<p>late page</p>"]);
     await generation;

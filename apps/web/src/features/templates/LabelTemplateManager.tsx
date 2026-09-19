@@ -5,6 +5,8 @@ import type { PrinterDiagnostic } from "../printer/printer.types";
 import {
   deleteLabelTemplate,
   fetchLabelTemplates,
+  fetchLabelTemplate,
+  type LabelTemplateSummary,
   previewLabelTemplate,
   saveLabelTemplate,
   updateLabelTemplateActive,
@@ -61,7 +63,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
   ref,
 ) {
   const dragRef = useRef<DragState | null>(null);
-  const [templates, setTemplates] = useState<LabelTemplate[]>([]);
+  const [templates, setTemplates] = useState<LabelTemplateSummary[]>([]);
   const [dataTagCatalog, setDataTagCatalog] = useState<DataTagCatalog>(suppliedDataTags || { groups: [] });
   const [source, setSource] = useState<LabelTemplate | null>(null);
   const [code, setCode] = useState("");
@@ -72,10 +74,10 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
   const [selectedId, setSelectedId] = useState<string | null>("pseudonym");
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"save" | "preview" | "print" | "active" | "copy" | "delete" | null>(null);
+  const [busy, setBusy] = useState<"save" | "preview" | "print" | "active" | "copy" | "delete" | "load" | null>(null);
   const [notice, setNotice] = useState<TemplateNoticeValue | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<LabelTemplate | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LabelTemplateSummary | null>(null);
   const [zplTemplate, setZplTemplate] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
@@ -151,9 +153,8 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
         layout,
         active: source?.active ?? true,
       });
-      const result = await refresh();
       setSource(saved);
-      setTemplates(result.templates);
+      setTemplates((current) => [...current.filter((item) => item.code !== saved.code), labelSummary(saved)]);
       setDirty(false);
       setZplTemplate(saved.zplTemplate);
       setNotice({ kind: "success", text: `${saved.name} 라벨 양식을 저장했습니다.` });
@@ -164,7 +165,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     } finally {
       setBusy(null);
     }
-  }, [busy, code, description, defaultCopies, layout, name, refresh, source?.active, token]);
+  }, [busy, code, description, defaultCopies, layout, name, source?.active, token]);
 
   useImperativeHandle(
     ref,
@@ -207,10 +208,18 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     setSelectedId(null);
   }
 
-  function openTemplate(template: LabelTemplate) {
+  async function openTemplate(template: LabelTemplateSummary) {
+    if (busy) return;
+    setBusy("load");
     setNotice(null);
-    loadTemplate(template);
-    setEditorOpen(true);
+    try {
+      loadTemplate(await fetchLabelTemplate(token, template.code));
+      setEditorOpen(true);
+    } catch (reason) {
+      setNotice({ kind: "error", text: errorText(reason, "라벨 양식을 불러오지 못했습니다.") });
+    } finally {
+      setBusy(null);
+    }
   }
 
   function createTemplate() {
@@ -228,12 +237,12 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     onDirtyChange?.(false);
   }
 
-  async function changeActive(template: LabelTemplate, active: boolean) {
+  async function changeActive(template: LabelTemplateSummary, active: boolean) {
     if (busy) return;
     setBusy("active");
     try {
       const updated = await updateLabelTemplateActive(token, template.code, active);
-      setTemplates((current) => current.map((item) => (item.code === updated.code ? updated : item)));
+      setTemplates((current) => current.map((item) => (item.code === updated.code ? labelSummary(updated) : item)));
       setNotice({ kind: "success", text: `${updated.name} 양식을 ${active ? "사용" : "미사용"} 상태로 변경했습니다.` });
     } catch (reason) {
       setNotice({ kind: "error", text: errorText(reason, "라벨 양식 사용 상태를 변경하지 못했습니다.") });
@@ -242,7 +251,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     }
   }
 
-  async function copyTemplate(template: LabelTemplate) {
+  async function copyTemplate(template: LabelTemplateSummary) {
     if (busy) return;
     setBusy("copy");
     try {
@@ -251,10 +260,10 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
         name: createUniqueLabelName(template.name, templates),
         description: template.description || "",
         defaultCopies: template.defaultCopies ?? 1,
-        layout: cloneLabelLayout(template.layout),
+        layout: cloneLabelLayout((await fetchLabelTemplate(token, template.code)).layout),
         active: false,
       });
-      setTemplates((current) => [...current, copied]);
+      setTemplates((current) => [...current, labelSummary(copied)]);
       setNotice({ kind: "success", text: `${copied.name}을 미사용 상태로 만들었습니다.` });
     } catch (reason) {
       setNotice({ kind: "error", text: errorText(reason, "라벨 양식을 복사하지 못했습니다.") });
@@ -263,7 +272,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     }
   }
 
-  async function removeTemplate(template: LabelTemplate) {
+  async function removeTemplate(template: LabelTemplateSummary) {
     if (busy) return false;
     setBusy("delete");
     try {
@@ -402,7 +411,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                     <button
                       className="exam-primary-button"
                       disabled={Boolean(busy)}
-                      onClick={() => openTemplate(template)}
+                      onClick={() => void openTemplate(template)}
                     >
                       <EditButtonIcon />
                       <span>수정</span>
@@ -962,21 +971,21 @@ function resizeLayout(layout: LabelTemplateLayout, patch: Partial<Pick<LabelTemp
   return { ...next, elements: next.elements.map((element) => clampLabelElement(element, next)) };
 }
 
-function LabelTemplateThumbnail({ template }: { template: LabelTemplate }) {
+function LabelTemplateThumbnail({ template }: { template: LabelTemplateSummary }) {
   return (
     <div
       className="preview-paper label-template-preview-paper"
-      style={{ aspectRatio: `${template.layout.widthMm} / ${template.layout.heightMm}` }}
+      style={{ aspectRatio: `${template.thumbnail.widthMm} / ${template.thumbnail.heightMm}` }}
     >
-      {template.layout.elements.map((element) => (
+      {template.thumbnail.elements.map((element) => (
         <span
           key={element.id}
           className={`label-template-thumbnail-element ${element.kind}`}
           style={{
-            left: `${(element.xMm / template.layout.widthMm) * 100}%`,
-            top: `${(element.yMm / template.layout.heightMm) * 100}%`,
-            width: `${(element.widthMm / template.layout.widthMm) * 100}%`,
-            height: `${(element.heightMm / template.layout.heightMm) * 100}%`,
+            left: `${(element.xMm / template.thumbnail.widthMm) * 100}%`,
+            top: `${(element.yMm / template.thumbnail.heightMm) * 100}%`,
+            width: `${(element.widthMm / template.thumbnail.widthMm) * 100}%`,
+            height: `${(element.heightMm / template.thumbnail.heightMm) * 100}%`,
           }}
         >
           {element.kind === "text" ? element.content?.replace(/\{\{[^{}]+\}\}/g, "데이터") : ""}
@@ -986,7 +995,7 @@ function LabelTemplateThumbnail({ template }: { template: LabelTemplate }) {
   );
 }
 
-function createUniqueLabelCode(templates: readonly LabelTemplate[], now = Date.now()) {
+function createUniqueLabelCode(templates: readonly LabelTemplateSummary[], now = Date.now()) {
   const used = new Set(templates.map((template) => template.code));
   const base = `LABEL_${Math.max(0, Math.trunc(now)).toString(36).toUpperCase()}`;
   if (!used.has(base)) return base;
@@ -997,7 +1006,7 @@ function createUniqueLabelCode(templates: readonly LabelTemplate[], now = Date.n
   throw new Error("새 라벨 양식 코드를 자동으로 만들 수 없습니다.");
 }
 
-function createUniqueLabelName(sourceName: string, templates: readonly LabelTemplate[]) {
+function createUniqueLabelName(sourceName: string, templates: readonly LabelTemplateSummary[]) {
   const used = new Set(templates.map((template) => template.name));
   for (let index = 1; index < 10_000; index += 1) {
     const suffix = index === 1 ? " 복사본" : ` 복사본 ${index}`;
@@ -1009,4 +1018,9 @@ function createUniqueLabelName(sourceName: string, templates: readonly LabelTemp
 
 function errorText(reason: unknown, fallback: string) {
   return reason instanceof Error ? reason.message : fallback;
+}
+
+function labelSummary(template: LabelTemplate): LabelTemplateSummary {
+  const { layout, zplTemplate: _payload, ...summary } = template;
+  return { ...summary, thumbnail: { widthMm: layout.widthMm, heightMm: layout.heightMm, elements: layout.elements } };
 }
