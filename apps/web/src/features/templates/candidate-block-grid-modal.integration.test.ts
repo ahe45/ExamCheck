@@ -342,7 +342,7 @@ describe("ExamList candidate block focus editor", () => {
     fireEvent.click(root.querySelector<HTMLElement>("[data-template-open-image]")!);
     fireEvent.change(imageInput, { target: { files: [imageFile] } });
     await vi.waitFor(() => expect(modalSurface.querySelector("img[alt='modal-test.png']")).toBeTruthy(), {
-      timeout: 3_000,
+      timeout: 10_000,
     });
 
     fireEvent.click(root.querySelector<HTMLElement>("[data-template-insert='barcode']")!);

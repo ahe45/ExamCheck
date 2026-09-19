@@ -8,7 +8,7 @@
 
 /* Query and database timestamps vary by execution time. Keep their layout while
    excluding only the changing text from the approved visual contract. */
-.admin-dashboard-heading > div:last-child > span,
+.admin-dashboard-updated,
 .developer-settings-card > footer span {
   visibility: hidden !important;
 }

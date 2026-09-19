@@ -20,6 +20,21 @@ export default defineConfig({
         "src/database/migrations/**",
         "src/main.ts",
         "src/database/{bootstrap,migrate,setup}.ts",
+        // Migration 041 removed the target-identity schema and the environment
+        // resolver permanently disables it. These retained migration tools cannot
+        // run against the supported schema. Their unit tests still run; live
+        // routing guards, normalization and number-format helpers remain covered.
+        "src/candidates/candidate-identity.repository.ts",
+        "src/database/identity-backfill-projection.repository.ts",
+        "src/database/identity-backfill.ts",
+        "src/database/identity-backfill-cli.ts",
+        "src/database/identity-shadow-verify-cli.ts",
+        "src/database/identity-transition-cli.ts",
+        "src/identity-transition/identity-transition-gate.service.ts",
+        "src/identity-transition/identity-transition-gate.repository.ts",
+        "src/identity-transition/identity-shadow-snapshot.repository.ts",
+        "src/identity-transition/identity-shadow-verifier.ts",
+        "src/identity-transition/identity-dry-run.ts",
       ],
       thresholds: {
         // Source-map-aware full-source baseline measured on 2026-08-28:

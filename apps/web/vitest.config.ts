@@ -25,6 +25,10 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     clearMocks: true,
     restoreMocks: true,
+    // Editor integration tests mount the complete runtime in jsdom. Bound worker
+    // contention and leave room for coverage instrumentation on shared CI hosts.
+    maxWorkers: 2,
+    testTimeout: 15_000,
     server: {
       deps: {
         inline: ["@tanstack/react-query", "@testing-library/react", "react", "react-dom"],

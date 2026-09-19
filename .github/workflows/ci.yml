@@ -1,12 +1,18 @@
 name: Quality Gate
 
 on:
+  workflow_dispatch:
+    inputs:
+      refresh_visual_baselines:
+        description: Generate Linux screenshots for review, then verify them in a fresh run
+        type: boolean
+        default: false
   pull_request:
   push:
     branches: [main, master]
 
 concurrency:
-  group: examcheck-${{ github.workflow }}-${{ github.ref }}
+  group: examcheck-${{ github.workflow }}-${{ github.ref }}-${{ inputs.refresh_visual_baselines && 'baseline-refresh' || 'verify' }}
   cancel-in-progress: true
 
 permissions:
@@ -14,6 +20,7 @@ permissions:
 
 jobs:
   static-and-unit:
+    if: ${{ !inputs.refresh_visual_baselines }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -26,6 +33,7 @@ jobs:
       - run: npm run check
 
   integration:
+    if: ${{ !inputs.refresh_visual_baselines }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -56,6 +64,7 @@ jobs:
       - run: npm run test:coverage
 
   browser-smoke:
+    if: ${{ !inputs.refresh_visual_baselines }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
@@ -129,7 +138,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx --no-install playwright install --with-deps chromium
-      - run: npm run test:visual
+      - name: Generate reviewable Linux baselines
+        if: ${{ inputs.refresh_visual_baselines }}
+        run: npm run test:visual:update
+      - name: Verify visual baselines with a fresh database and browser
+        run: npm run test:visual
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.refresh_visual_baselines && success() }}
+        with:
+          name: linux-visual-baselines-for-review
+          path: e2e/visual-baselines/linux/
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

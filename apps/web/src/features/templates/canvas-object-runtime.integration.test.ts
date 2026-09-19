@@ -170,19 +170,26 @@ describe("ExamList canvas object runtime", () => {
     editor.sync();
     const initialSpacer = documentElement.querySelector<HTMLElement>("[data-template-object-flow-spacer]")!;
     const removeSpacer = vi.spyOn(initialSpacer, "remove");
-    const startedAt = performance.now();
+    // Observe the regression itself: repeated sync must reuse the spacer without
+    // inserting/removing it. Wall-clock limits in jsdom depend on CI load and
+    // coverage instrumentation rather than the browser's rendering performance.
+    const mutations = new MutationObserver(() => {});
+    mutations.observe(documentElement, { childList: true, subtree: true });
 
     for (let index = 0; index < 20; index += 1) {
       editor.sync();
     }
-    const elapsedMs = performance.now() - startedAt;
+    const changedNodes = mutations.takeRecords().flatMap((record) => [...record.addedNodes, ...record.removedNodes]);
+    mutations.disconnect();
 
     expect(documentElement.querySelector("[data-template-object-flow-spacer]")).toBe(initialSpacer);
     expect(documentElement.querySelectorAll("[data-template-object-flow-spacer]")).toHaveLength(1);
     expect(removeSpacer).not.toHaveBeenCalled();
     expect(editor.getHtml()).not.toContain("data-template-object-flow-spacer");
     expect(editor.getHtml()).not.toContain("data-template-object-flow-id");
-    expect(elapsedMs).toBeLessThan(2_500);
+    expect(
+      changedNodes.filter((node) => node instanceof Element && node.matches("[data-template-object-flow-spacer]")),
+    ).toHaveLength(0);
     editor.destroy();
   });
 

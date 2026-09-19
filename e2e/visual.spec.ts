@@ -40,7 +40,11 @@ test.describe("FHD/QHD 공식 시각 기준", () => {
     await page.goto("/admin/templates");
     await expect(page.getByRole("heading", { name: "양식 관리" })).toBeVisible();
     await expect(page.getByRole("button", { name: "새로고침" })).toBeEnabled();
-    await expect(page.locator(".exam-template-card")).toHaveCount(2);
+    const cards = page.locator(".exam-template-card");
+    await expect(cards).toHaveCount(3);
+    for (const name of ["가번호 부여대장", "결시자 명단", "수험생 사진대장"]) {
+      await expect(cards.filter({ hasText: name })).toHaveCount(1);
+    }
     await expectVisualBaseline(page, testInfo, "admin-templates");
   });
 
@@ -143,6 +147,9 @@ async function waitForProjectFonts(page: Page) {
 }
 
 async function normalizeVisualState(page: Page) {
+  // Keep hover-only controls (including the attendance lock popover) out of the
+  // baseline regardless of where the preceding navigation click left the mouse.
+  await page.mouse.move(0, 0);
   await page.evaluate(async () => {
     window.scrollTo(0, 0);
     for (const element of document.querySelectorAll<HTMLElement>("*")) {
