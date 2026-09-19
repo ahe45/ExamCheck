@@ -26,6 +26,7 @@ describe("pseudonym application audit orchestration", () => {
         assignmentId: 42,
         candidateRecordId: 208,
         mode: "MANUAL",
+        absent: false,
       },
     });
     expect(fixture.repository.insertAssignment.mock.invocationCallOrder[0]).toBeLessThan(

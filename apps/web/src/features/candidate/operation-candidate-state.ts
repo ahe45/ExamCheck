@@ -14,6 +14,8 @@ export interface OperationScheduleMismatch {
 
 export interface OperationCandidateState {
   input: string;
+  registrationAbsent: boolean;
+  attendanceLocked: boolean;
   candidate: Examinee | null;
   photoUrl: string | null;
   manualNumber: string;
@@ -30,6 +32,9 @@ export interface OperationCandidateState {
 
 export type OperationCandidateAction =
   | { type: "SET_INPUT"; value: string }
+  | { type: "SET_REGISTRATION_ABSENT"; value: boolean }
+  | { type: "SET_ATTENDANCE_LOCKED"; value: boolean }
+  | { type: "RESET_ATTENDANCE" }
   | { type: "SET_MANUAL_NUMBER"; value: string }
   | { type: "SET_NOTICE"; value: OperationNotice | null }
   | { type: "SET_DRAW_OPEN"; value: boolean }
@@ -57,6 +62,8 @@ export type OperationCandidateAction =
 export function createOperationCandidateState(previewNumber: number): OperationCandidateState {
   return {
     input: "",
+    registrationAbsent: false,
+    attendanceLocked: false,
     candidate: null,
     photoUrl: null,
     manualNumber: "",
@@ -76,6 +83,9 @@ export function operationCandidateReducer(
   state: OperationCandidateState,
   action: OperationCandidateAction,
 ): OperationCandidateState {
+  if (action.type === "SET_REGISTRATION_ABSENT") return { ...state, registrationAbsent: action.value };
+  if (action.type === "SET_ATTENDANCE_LOCKED") return { ...state, attendanceLocked: action.value };
+  if (action.type === "RESET_ATTENDANCE") return { ...state, registrationAbsent: false, attendanceLocked: false };
   if (action.type === "SET_INPUT") return { ...state, input: action.value };
   if (action.type === "SET_MANUAL_NUMBER") return { ...state, manualNumber: action.value };
   if (action.type === "SET_NOTICE") return { ...state, notice: action.value };
@@ -114,12 +124,23 @@ export function operationCandidateReducer(
   if (action.type === "PHOTO_RESOLVED") return { ...state, photoUrl: action.photoUrl };
   if (action.type === "ASSIGN_STARTED") return { ...state, assigning: true, notice: null };
   if (action.type === "ASSIGN_SUCCEEDED") {
-    return { ...state, candidate: action.candidate, assignment: action.assignment, notice: action.notice };
+    return {
+      ...state,
+      candidate: action.candidate,
+      assignment: action.assignment,
+      notice: action.notice,
+      registrationAbsent: state.attendanceLocked ? state.registrationAbsent : false,
+    };
   }
   if (action.type === "ASSIGN_FAILED") return { ...state, notice: action.notice };
   if (action.type === "ASSIGN_FINISHED") return { ...state, assigning: false };
   if (action.type === "RESET_LOOKUP") {
-    return { ...createOperationCandidateState(action.previewNumber), scheduleMismatch: state.scheduleMismatch };
+    return {
+      ...createOperationCandidateState(action.previewNumber),
+      scheduleMismatch: state.scheduleMismatch,
+      registrationAbsent: state.registrationAbsent,
+      attendanceLocked: state.attendanceLocked,
+    };
   }
   return createOperationCandidateState(action.previewNumber);
 }

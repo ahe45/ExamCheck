@@ -161,6 +161,8 @@ export function AssignmentMethodSection({
 }
 
 export function OperationPolicySection({
+  showAttendanceSelection = true,
+  onShowAttendanceSelectionChange,
   autoAssignAbsenteesOnClose,
   onAutoAssignAbsenteesOnCloseChange,
   deleteAbsenteeInfoOnReopen,
@@ -171,6 +173,8 @@ export function OperationPolicySection({
   onEnableBulkDrawChange,
   assignmentMethod,
 }: {
+  showAttendanceSelection?: boolean;
+  onShowAttendanceSelectionChange?(value: boolean): void;
   autoAssignAbsenteesOnClose: boolean;
   onAutoAssignAbsenteesOnCloseChange(value: boolean): void;
   deleteAbsenteeInfoOnReopen: boolean;
@@ -188,11 +192,17 @@ export function OperationPolicySection({
           <span>02</span>
           <div>
             <h3>운영 정책</h3>
-            <p>등록 완료(마감) 처리, 사진 표시와 일괄 추첨 기능의 사용 여부를 설정합니다.</p>
+            <p>등록 상태 선택, 마감 처리, 사진 표시와 일괄 추첨 기능의 사용 여부를 설정합니다.</p>
           </div>
         </div>
       </header>
       <div className="operation-policy-list">
+        <SettingSwitch
+          title="응시·결시 선택 표시"
+          description="가번호 매칭·추첨·순차부여 화면에 등록 상태 선택과 고정 체크박스를 표시합니다."
+          checked={showAttendanceSelection}
+          onChange={(value) => onShowAttendanceSelectionChange?.(value)}
+        />
         <SettingSwitch
           title="등록 완료(마감) 시 결시자 가번호 자동 부여"
           description="전형 등록 완료(마감) 시 가번호가 없는 결시자에게 남은 번호를 자동으로 부여합니다."

@@ -65,12 +65,14 @@ describe("수험번호 제출 후 라벨 자동 출력", () => {
     expect(config.print).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["not-found", "no-number", "stale", "disabled"])("%s 결과는 출력하지 않는다", async (kind) => {
+  it.each(["not-found", "no-number", "stale", "disabled", "absent"])("%s 결과는 출력하지 않는다", async (kind) => {
     const config = options();
     if (kind === "not-found") config.lookup.mockResolvedValue(undefined);
     if (kind === "no-number") config.lookup.mockResolvedValue({ ...selection, assignment: null });
     if (kind === "stale") config.isCurrent.mockReturnValue(false);
     if (kind === "disabled") config.labelPrintingEnabled = false;
+    if (kind === "absent")
+      config.lookup.mockResolvedValue({ ...selection, candidate: { ...selection.candidate, absent: true } });
     const { result } = renderHook(() => useOperationLookupAndPrint(config));
     await act(async () => {
       await result.current.submit("002");

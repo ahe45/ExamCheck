@@ -13,6 +13,8 @@ interface Props {
   sequentialPreviewNumber?: string | null;
   previewLoading?: boolean;
   assignment: PseudonymAssignment | null;
+  showAttendanceSelection?: boolean;
+  registrationAbsent?: boolean;
   previewNumber: number;
   autoDrawEnabled: boolean;
   remainingMs: number;
@@ -32,6 +34,8 @@ export function OperationDrawPopover({
   sequentialPreviewNumber = null,
   previewLoading = false,
   assignment,
+  showAttendanceSelection = false,
+  registrationAbsent = false,
   previewNumber,
   autoDrawEnabled,
   remainingMs,
@@ -101,6 +105,14 @@ export function OperationDrawPopover({
           aria-label={matching ? "매칭 화면 닫기" : sequential ? "순차부여 화면 닫기" : "추첨 화면 닫기"}
         />
       </header>
+      {showAttendanceSelection && (
+        <div
+          className={`operator-attendance-badge ${(assignment ? assignment.absent : registrationAbsent) ? "absent" : ""}`}
+        >
+          {(assignment ? assignment.absent : registrationAbsent) ? "결시" : "응시"}
+          {assignment ? " 등록 완료" : "로 등록"}
+        </div>
+      )}
       <div className="operator-draw-number">
         {sequential || matching ? (
           <input

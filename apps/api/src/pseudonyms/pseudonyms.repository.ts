@@ -48,6 +48,7 @@ export interface SettingRow extends RowDataPacket {
   deleteAbsenteeInfoOnReopen: boolean | number;
   useCandidatePhotos: boolean | number;
   enableBulkDraw: boolean | number;
+  showAttendanceSelection?: boolean | number;
 }
 
 export interface TimeRangeRow extends RowDataPacket {
@@ -106,6 +107,7 @@ export interface AssignmentData {
   pseudonymNumber: string;
   mode: PseudonymAssignmentMode;
   assignedAt: string | Date;
+  absent?: number | boolean;
 }
 
 interface AssignmentRow extends RowDataPacket, AssignmentData {}
@@ -584,7 +586,7 @@ export class PseudonymsRepository {
        SET range_start = ?, range_end = ?, display_width = ?, next_sequence = ?, assignment_method = ?,
            auto_draw_enabled = ?, auto_draw_delay_seconds = ?, print_preassigned_label = ?, label_template_id = ?,
            auto_assign_absentees_on_close = ?, delete_absentee_info_on_reopen = ?,
-           use_candidate_photos = ?, enable_bulk_draw = ?, active = TRUE, updated_by = ?, version = version + 1
+           use_candidate_photos = ?, enable_bulk_draw = ?, show_attendance_selection = COALESCE(?, show_attendance_selection), active = TRUE, updated_by = ?, version = version + 1
        WHERE id = ? AND version = ?`,
       [
         input.rangeStart,
@@ -600,6 +602,7 @@ export class PseudonymsRepository {
         input.deleteAbsenteeInfoOnReopen,
         input.useCandidatePhotos,
         input.enableBulkDraw,
+        input.showAttendanceSelection ?? null,
         actorUserId,
         settingId,
         expectedVersion,
@@ -619,8 +622,8 @@ export class PseudonymsRepository {
         (exam_name, admission_name, range_start, range_end, display_width, next_sequence, assignment_method,
          auto_draw_enabled, auto_draw_delay_seconds, print_preassigned_label, label_template_id,
          auto_assign_absentees_on_close, delete_absentee_info_on_reopen,
-         use_candidate_photos, enable_bulk_draw, active, updated_by, version)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, ?, 1)`,
+         use_candidate_photos, enable_bulk_draw, show_attendance_selection, active, updated_by, version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, TRUE), TRUE, ?, 1)`,
       [
         input.examName,
         input.admissionName,
@@ -637,6 +640,7 @@ export class PseudonymsRepository {
         input.deleteAbsenteeInfoOnReopen,
         input.useCandidatePhotos,
         input.enableBulkDraw,
+        input.showAttendanceSelection ?? null,
         actorUserId,
       ],
     );
@@ -935,7 +939,7 @@ export class PseudonymsRepository {
 
   async findAssignmentForUpdate(executor: SqlExecutor, candidateRecordId: number): Promise<AssignmentData | undefined> {
     const [rows] = await executor.execute<AssignmentRow[]>(
-      `SELECT id, pseudonym_no AS pseudonymNumber, assignment_mode AS mode, assigned_at AS assignedAt
+      `SELECT id, pseudonym_no AS pseudonymNumber, assignment_mode AS mode, assigned_at AS assignedAt, is_absentee AS absent
        FROM pseudonym_assignment WHERE candidate_record_id = ? LIMIT 1 FOR UPDATE`,
       [candidateRecordId],
     );
@@ -976,12 +980,13 @@ export class PseudonymsRepository {
     pseudonymNumber: string,
     assignmentMode: PseudonymAssignmentMode,
     actorUserId: number,
+    absent = false,
   ): Promise<number> {
     const [result] = await executor.execute<ResultSetHeader>(
       `INSERT INTO pseudonym_assignment
         (candidate_record_id, exam_name, admission_name, uniqueness_scope_key,
-         pseudonym_no, assignment_mode, assigned_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         pseudonym_no, assignment_mode, assigned_by, is_absentee)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         candidate.candidateRecordId,
         candidate.examName,
@@ -990,6 +995,7 @@ export class PseudonymsRepository {
         pseudonymNumber,
         assignmentMode,
         actorUserId,
+        absent,
       ],
     );
     return result.insertId;
@@ -1070,7 +1076,7 @@ const settingSelectSql = `SELECT id, version, exam_name AS examName, admission_n
   label_template_id AS labelTemplateId,
   auto_assign_absentees_on_close AS autoAssignAbsenteesOnClose,
   delete_absentee_info_on_reopen AS deleteAbsenteeInfoOnReopen,
-  use_candidate_photos AS useCandidatePhotos, enable_bulk_draw AS enableBulkDraw
+  use_candidate_photos AS useCandidatePhotos, enable_bulk_draw AS enableBulkDraw, show_attendance_selection AS showAttendanceSelection
   FROM pseudonym_setting`;
 
 const ensureOperationSql = `INSERT IGNORE INTO pseudonym_operation

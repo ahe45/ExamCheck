@@ -51,6 +51,33 @@ beforeEach(() => {
 });
 
 describe("SystemSettingsPage optimistic save", () => {
+  it("응시·결시 선택 표시 설정을 저장하고 다시 불러온 값을 유지한다", async () => {
+    pseudonymApi.updatePseudonymSetting.mockResolvedValue({ ...setting, version: 8, showAttendanceSelection: false });
+    const ref = createRef<SystemSettingsPageHandle>();
+    const onDirtyChange = vi.fn();
+    render(
+      <SystemSettingsPage
+        ref={ref}
+        token="admin-token"
+        admissionName="학생부교과 면접"
+        embedded
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    const control = await screen.findByRole("checkbox", { name: /응시·결시 선택 표시/ });
+    expect(control).toBeChecked();
+    fireEvent.click(control);
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+    await act(async () => {
+      expect(await ref.current?.save()).toBe(true);
+    });
+    expect(pseudonymApi.updatePseudonymSetting).toHaveBeenCalledWith(
+      "admin-token",
+      expect.objectContaining({ showAttendanceSelection: false }),
+    );
+    expect(control).not.toBeChecked();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
   it("sends the loaded version and keeps edits after a concurrent-save conflict", async () => {
     pseudonymApi.updatePseudonymSetting.mockRejectedValue(
       new ApiError("다른 사용자가 이 전형의 설정을 먼저 변경했습니다.", 409),

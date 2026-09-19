@@ -331,7 +331,120 @@
 }
 .operator-control-panel {
   padding: 14px 14px 16px;
-  overflow-y: hidden;
+  overflow-y: auto;
+}
+.operator-attendance-selector {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  box-sizing: border-box;
+  height: var(--operator-control-field-size);
+  min-width: 0;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid #cfd9e6;
+  border-radius: 14px;
+  background: #fff;
+}
+.operator-attendance-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: #f5f7fb;
+}
+.operator-attendance-switch button {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #526580;
+  font-size: var(--operator-fs-16);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.operator-attendance-switch button[aria-pressed="true"] {
+  border-color: #bddfd2;
+  background: #e8f6f1;
+  color: #176b5f;
+}
+.operator-attendance-selector.absent .operator-attendance-switch button[aria-pressed="true"] {
+  border-color: #f1d4d0;
+  background: #fff1ef;
+  color: #ae4940;
+}
+.operator-attendance-switch button:focus-visible {
+  outline: 2px solid #2d63f5;
+  outline-offset: 1px;
+}
+.operator-attendance-lock {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  padding: 8px 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgba(32, 53, 88, 0.14);
+  color: #526580;
+  font-size: var(--operator-fs-12);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.operator-attendance-lock::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  right: 0;
+  left: 0;
+  height: 8px;
+}
+.operator-attendance-selector.absent .operator-attendance-lock,
+.operator-attendance-selector[data-locked="true"] .operator-attendance-lock,
+.operator-attendance-selector:hover .operator-attendance-lock,
+.operator-attendance-selector:focus-within .operator-attendance-lock {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+.operator-attendance-lock input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #2d63f5;
+}
+.operator-attendance-lock input:checked + span {
+  color: #2d63f5;
+  font-weight: 700;
+}
+.operator-attendance-selector:disabled {
+  opacity: 0.6;
+}
+.operator-attendance-badge {
+  width: fit-content;
+  margin: 12px auto 0;
+  padding: 4px 12px;
+  border-radius: 6px;
+  color: #234fba;
+  background: #edf3ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+.operator-attendance-badge.absent {
+  color: #b42318;
+  background: #fff0ed;
 }
 .operator-console .exam-account-id {
   font-size: var(--operator-fs-11);
@@ -486,15 +599,34 @@
   display: grid;
 }
 .operator-lookup-field {
+  --operator-attendance-width: clamp(112px, 6vw, 128px);
+  /* 상태 선택 영역의 테두리·안쪽 여백·버튼 간격 합계는 18px입니다. */
+  --operator-search-width: calc((var(--operator-attendance-width) - 18px) / 2);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--operator-control-field-size);
+  grid-template-columns: minmax(0, 1fr) var(--operator-search-width);
   gap: 8px;
+}
+.operator-lookup-field.with-attendance {
+  grid-template-columns: minmax(0, 1fr) var(--operator-search-width) var(--operator-attendance-width);
+}
+.operator-lookup-field .operator-search-button {
+  width: 100%;
+}
+.operator-lookup-field.with-attendance input:not([type="checkbox"]) {
+  padding-left: 12px;
+  padding-right: 32px;
+}
+.operator-lookup-field.with-attendance input:not([type="checkbox"])::placeholder {
+  font-size: var(--operator-fs-16);
+}
+.operator-lookup-field.with-attendance .operator-input-clear {
+  right: 10px;
 }
 .operator-lookup-field > div {
   position: relative;
   min-width: 0;
 }
-.operator-lookup-field input {
+.operator-lookup-field input:not([type="checkbox"]) {
   width: 100%;
   height: var(--operator-control-field-size);
   padding: 10px 54px;
@@ -509,14 +641,14 @@
   text-align: center;
   box-shadow: 0 7px 16px rgba(32, 53, 88, 0.05);
 }
-.operator-lookup-field input::placeholder {
+.operator-lookup-field input:not([type="checkbox"])::placeholder {
   color: #8491a4;
   font-size: var(--operator-fs-19);
   font-weight: 700;
   letter-spacing: -0.02em;
   text-align: center;
 }
-.operator-lookup-field input:focus {
+.operator-lookup-field input:not([type="checkbox"]):focus {
   border-color: #2d63f5;
   box-shadow:
     0 0 0 3px rgba(45, 99, 245, 0.12),

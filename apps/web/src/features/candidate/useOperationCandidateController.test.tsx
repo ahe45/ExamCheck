@@ -88,6 +88,7 @@ function options(overrides: Record<string, unknown> = {}) {
     operationStatusLoaded: true,
     configuredRanges: [],
     useCandidatePhotos: false,
+    showAttendanceSelection: true,
     range: { start: 1001, end: 1030 },
     autoDrawEnabled: false,
     autoDrawDelaySeconds: 3,
@@ -111,6 +112,92 @@ afterEach(() => {
 });
 
 describe("useOperationCandidateController", () => {
+  it("결시 저장 후 선택값만 응시로 복귀하고 저장된 결시 상태는 유지한다", async () => {
+    const config = options({ showAttendanceSelection: true });
+    config.services.assignPseudonym.mockResolvedValue({ ...assignment, absent: true });
+    const { result } = renderHook(() => useOperationCandidateController(config));
+    expect(result.current.registrationAbsent).toBe(false);
+    expect(result.current.attendanceLocked).toBe(false);
+    act(() => result.current.setRegistrationAbsent(true));
+    await act(async () => {
+      await result.current.lookupExaminee("1162001");
+    });
+    await act(async () => {
+      await result.current.assign();
+    });
+    expect(config.services.assignPseudonym).toHaveBeenCalledWith(
+      "token",
+      "1162001",
+      "SEQUENTIAL",
+      expect.any(Object),
+      "1017",
+      "1017",
+      true,
+    );
+    expect(result.current.registrationAbsent).toBe(false);
+    expect(result.current.candidate?.absent).toBe(true);
+    expect(config.onAssigned).toHaveBeenLastCalledWith(
+      expect.objectContaining({ absent: true }),
+      expect.objectContaining({ absent: true }),
+    );
+  });
+
+  it("고정 선택은 저장·조회 초기화 후 유지되고 설정을 숨기거나 교시를 바꾸면 초기화한다", async () => {
+    const config = options({ showAttendanceSelection: true });
+    config.services.assignPseudonym.mockResolvedValue({ ...assignment, absent: true });
+    const { result, rerender } = renderHook(({ config }) => useOperationCandidateController(config), {
+      initialProps: { config },
+    });
+    act(() => {
+      result.current.setAttendanceLocked(true);
+      result.current.setRegistrationAbsent(true);
+    });
+    await act(async () => {
+      await result.current.lookupExaminee("1162001");
+    });
+    await act(async () => {
+      await result.current.assign();
+    });
+    act(() => result.current.resetLookup());
+    await act(async () => {
+      await result.current.lookupExaminee("1162002");
+    });
+    expect(result.current.registrationAbsent).toBe(true);
+    expect(result.current.attendanceLocked).toBe(true);
+    rerender({ config: { ...config, showAttendanceSelection: false } });
+    expect(result.current.registrationAbsent).toBe(false);
+    expect(result.current.attendanceLocked).toBe(false);
+    rerender({ config });
+    act(() => {
+      result.current.setAttendanceLocked(true);
+      result.current.setRegistrationAbsent(true);
+    });
+    rerender({ config: { ...config, schedule: { ...schedule, time: "14:00" } } });
+    expect(result.current.registrationAbsent).toBe(false);
+    expect(result.current.attendanceLocked).toBe(false);
+  });
+
+  it("결시 저장 실패 시 선택 상태를 유지하고 중복 요청 응답의 저장 상태를 따른다", async () => {
+    const config = options({ showAttendanceSelection: true });
+    config.services.assignPseudonym.mockRejectedValueOnce(new Error("번호 중복"));
+    const { result } = renderHook(() => useOperationCandidateController(config));
+    act(() => result.current.setRegistrationAbsent(true));
+    await act(async () => {
+      await result.current.lookupExaminee("1162001");
+    });
+    await act(async () => {
+      await result.current.assign();
+    });
+    expect(result.current.registrationAbsent).toBe(true);
+    expect(result.current.notice?.text).toBe("번호 중복");
+    config.services.assignPseudonym.mockResolvedValue({ ...assignment, alreadyAssigned: true, absent: false });
+    await act(async () => {
+      await result.current.assign();
+    });
+    expect(result.current.candidate?.absent).toBe(false);
+    expect(result.current.registrationAbsent).toBe(false);
+  });
+
   it("빠르게 조회 대상을 바꿔도 취소된 이전 응답이 최신 수험생을 덮어쓰지 않는다", async () => {
     const first = deferred<ExamineeLookupResult>();
     const second = deferred<ExamineeLookupResult>();
@@ -271,6 +358,7 @@ describe("useOperationCandidateController", () => {
       },
       "1017",
       "1017",
+      false,
     );
 
     act(() => result.current.resetLookup());
@@ -300,6 +388,7 @@ describe("useOperationCandidateController", () => {
       expect.any(Object),
       "01020",
       "1017",
+      false,
     );
     currentOptions.services.previewSequential.mockResolvedValue({ pseudonymNumber: "1021" });
     await act(async () => result.current.lookupExaminee("1162002"));
@@ -487,6 +576,8 @@ it("매칭은 검색마다 빈 입력 팝오버를 열고 입력한 번호로만
     "MANUAL",
     expect.any(Object),
     "0017",
+    undefined,
+    false,
   );
   await act(async () => result.current.lookupExaminee("1162002"));
   expect(result.current.manualNumber).toBe("");

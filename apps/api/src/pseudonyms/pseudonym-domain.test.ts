@@ -315,6 +315,7 @@ describe("pseudonym candidate and response mappings", () => {
       mode: "MANUAL",
       assignedAt,
       alreadyAssigned: true,
+      absent: false,
     });
   });
 });

@@ -97,6 +97,7 @@ export class UpdatePseudonymSettingUseCase {
         input.admissionName,
       );
       assertExpectedSettingVersion(input.expectedVersion, existingSetting?.version ?? 1, !existingSetting);
+      input.showAttendanceSelection ??= Boolean(existingSetting?.showAttendanceSelection ?? true);
 
       const scheduleCounts = await this.repository.listScheduleCounts(connection, input.examName, input.admissionName);
       assertScheduleRangeCapacities(
@@ -183,6 +184,7 @@ export class UpdatePseudonymSettingUseCase {
           deleteAbsenteeInfoOnReopen: input.deleteAbsenteeInfoOnReopen,
           useCandidatePhotos: input.useCandidatePhotos,
           enableBulkDraw: input.enableBulkDraw,
+          showAttendanceSelection: input.showAttendanceSelection,
         },
       });
       await connection.commit();
@@ -283,6 +285,9 @@ export class AssignPseudonymUseCase {
         return assignmentResponse(candidate, existingAssignment, true);
       }
 
+      if (input.absent && !(setting.showAttendanceSelection ?? true)) {
+        throw new BadRequestException("관리자가 응시·결시 선택 기능을 비활성화했습니다. 화면을 새로고침해 주세요.");
+      }
       assertAssignmentMethod(input.mode, setting.assignmentMethod);
       let effectiveRange: Pick<SettingRow, "rangeStart" | "rangeEnd" | "displayWidth" | "nextSequence"> = setting;
       let timeRangeId: number | null = null;
@@ -387,6 +392,7 @@ export class AssignPseudonymUseCase {
         pseudonymNumber,
         input.mode,
         user.id,
+        input.absent ?? false,
       );
       if (identityDecision.writeTarget) {
         await this.identityProjection.syncSettingTree(connection, setting.id, candidate.examName);
@@ -399,6 +405,7 @@ export class AssignPseudonymUseCase {
           assignmentId,
           candidateRecordId: candidate.candidateRecordId,
           mode: input.mode,
+          absent: input.absent ?? false,
         },
       });
       await connection.commit();
@@ -408,6 +415,7 @@ export class AssignPseudonymUseCase {
           id: assignmentId,
           pseudonymNumber,
           mode: input.mode,
+          absent: input.absent ?? false,
           assignedAt: new Date().toISOString(),
         },
         false,

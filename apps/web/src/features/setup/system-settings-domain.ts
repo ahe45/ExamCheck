@@ -34,6 +34,7 @@ export interface SettingsSnapshotInput {
   deleteAbsenteeInfoOnReopen: boolean;
   useCandidatePhotos: boolean;
   enableBulkDraw: boolean;
+  showAttendanceSelection?: boolean;
 }
 
 export function buildScheduleRanges(candidates: CandidateRecord[], setting: PseudonymSetting): RangeDraft[] {
@@ -186,6 +187,7 @@ export function createSettingsSnapshot(value: SettingsSnapshotInput) {
     deleteAbsenteeInfoOnReopen: value.deleteAbsenteeInfoOnReopen,
     useCandidatePhotos: value.useCandidatePhotos,
     enableBulkDraw: value.enableBulkDraw,
+    showAttendanceSelection: value.showAttendanceSelection ?? true,
   });
 }
 

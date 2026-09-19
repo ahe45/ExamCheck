@@ -8,6 +8,7 @@ export interface AssignPseudonymInput {
   mode: PseudonymAssignmentMode;
   manualNumber?: string;
   expectedNumber?: string;
+  absent?: boolean;
   examDate: string;
   examTime: string;
   periodName: string;
@@ -70,5 +71,6 @@ export interface UpdatePseudonymSettingInput {
   deleteAbsenteeInfoOnReopen: boolean;
   useCandidatePhotos: boolean;
   enableBulkDraw: boolean;
+  showAttendanceSelection?: boolean;
   ranges: PseudonymTimeRangeInput[];
 }

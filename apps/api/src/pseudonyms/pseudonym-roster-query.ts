@@ -71,7 +71,7 @@ const valueSql: Record<PseudonymRosterExportField, string> = {
   assignedAt: "COALESCE(DATE_FORMAT(pa.assigned_at, '%y.%m.%d. %H:%i:%s'), '-')",
   printedAt: "COALESCE(DATE_FORMAT(printed.last_printed_at, '%y.%m.%d. %H:%i:%s'), '-')",
   attendance: `CASE
-    WHEN COALESCE(po.closed, FALSE) AND COALESCE(pa.is_absentee, FALSE) THEN '결시'
+    WHEN COALESCE(pa.is_absentee, FALSE) THEN '결시'
     WHEN ${processedSql} THEN '응시'
     WHEN COALESCE(po.closed, FALSE) THEN '결시'
     ELSE '-'

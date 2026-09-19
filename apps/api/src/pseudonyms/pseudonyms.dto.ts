@@ -122,6 +122,10 @@ export class AssignPseudonymDto implements AssignPseudonymInput {
   @Matches(/^\d{1,9}$/)
   expectedNumber?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  absent?: boolean;
+
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   @IsDateString({ strict: true, strictSeparator: true })
@@ -290,6 +294,10 @@ export class UpdatePseudonymSettingDto implements UpdatePseudonymSettingInput {
 
   @IsBoolean()
   enableBulkDraw!: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showAttendanceSelection?: boolean;
 
   @IsArray()
   @ValidateNested({ each: true })

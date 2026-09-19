@@ -3,6 +3,7 @@ import type { ExecuteValues, Pool, PoolConnection, RowDataPacket } from "mysql2/
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuthenticatedUser } from "../src/auth/auth.types.js";
 import { PseudonymsService } from "../src/pseudonyms/pseudonyms.service.js";
+import { PseudonymsRepository } from "../src/pseudonyms/pseudonyms.repository.js";
 import { createMariaDbIntegrationHarness, type MariaDbIntegrationHarness } from "../test-support/mariadb-harness.js";
 
 const schedule = {
@@ -33,6 +34,81 @@ afterAll(async () => {
 });
 
 describe("pseudonym MariaDB transaction integration", () => {
+  it.each(["MANUAL", "SEQUENTIAL", "RANDOM"] as const)(
+    "persists manual absence with %s and preserves it across close/reopen",
+    async (mode) => {
+      const examName = `IT_MANUAL_ABSENCE_${mode}`;
+      const first = `IT-ABSENT-${mode}-1`;
+      const second = `IT-ABSENT-${mode}-2`;
+      await seedSchedule(harness.pool, examName, [
+        { examineeNo: first, name: "직접 결시" },
+        { examineeNo: second, name: "마감 결시" },
+      ]);
+      const service = new PseudonymsService(harness.pool);
+      const repository = new PseudonymsRepository();
+      const setting = {
+        ...sequentialSetting(examName, 8001, 8002),
+        assignmentMethod:
+          mode === "MANUAL" ? ("MATCHING" as const) : mode === "RANDOM" ? ("DRAW" as const) : ("SEQUENTIAL" as const),
+        autoAssignAbsenteesOnClose: true,
+        deleteAbsenteeInfoOnReopen: true,
+      };
+      const saved = await service.updateSetting(setting, actor);
+      expect(saved.showAttendanceSelection).toBe(true);
+      const input = {
+        ...assignInput(first),
+        mode,
+        absent: true,
+        ...(mode === "MANUAL" ? { manualNumber: "8001" } : {}),
+      };
+      const assigned = await service.assign(input, actor);
+      expect(assigned).toMatchObject({ absent: true, alreadyAssigned: false });
+      expect(await service.assign({ ...input, absent: false }, actor)).toMatchObject({
+        absent: true,
+        alreadyAssigned: true,
+        pseudonymNumber: assigned.pseudonymNumber,
+      });
+      expect(
+        await repository.listOperationRoster(harness.pool, operationScope(examName), [
+          { field: "attendance", mode: "include", values: ["결시"] },
+        ]),
+      ).toEqual([expect.objectContaining({ examineeNo: first, attendance: "결시" })]);
+      await service.closeOperation(operationScope(examName), actor);
+      await service.reopenOperation(operationScope(examName), actor);
+      const [rows] = await harness.pool.query<RowDataPacket[]>(
+        "SELECT is_absentee, auto_assigned_on_close FROM pseudonym_assignment WHERE exam_name = ?",
+        [examName],
+      );
+      expect(rows).toEqual([expect.objectContaining({ is_absentee: 1, auto_assigned_on_close: 0 })]);
+      expect(
+        await repository.listOperationRoster(harness.pool, operationScope(examName), [
+          { field: "attendance", mode: "include", values: ["응시"] },
+        ]),
+      ).toEqual([]);
+      const hidden = await service.updateSetting(
+        { ...setting, expectedVersion: saved.version, showAttendanceSelection: false },
+        actor,
+      );
+      expect(hidden.showAttendanceSelection).toBe(false);
+      // Older callers omitting the new field must not turn it back on.
+      expect(await service.updateSetting({ ...setting, expectedVersion: hidden.version }, actor)).toMatchObject({
+        showAttendanceSelection: false,
+      });
+      await expect(
+        service.assign(
+          { ...assignInput(second), mode, absent: true, ...(mode === "MANUAL" ? { manualNumber: "8002" } : {}) },
+          actor,
+        ),
+      ).rejects.toThrow("비활성화");
+      expect(
+        await service.assign(
+          { ...assignInput(second), mode, ...(mode === "MANUAL" ? { manualNumber: "8002" } : {}) },
+          actor,
+        ),
+      ).toMatchObject({ absent: false });
+    },
+  );
+
   it("matching enforces the candidate schedule range rather than the admission-wide bounds", async () => {
     const examName = "IT_MATCHING_RANGES";
     await seedSchedule(harness.pool, examName, [

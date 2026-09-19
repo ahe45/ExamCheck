@@ -65,6 +65,7 @@ export interface PseudonymSettingSnapshot {
   deleteAbsenteeInfoOnReopen: number | boolean;
   useCandidatePhotos: number | boolean;
   enableBulkDraw: number | boolean;
+  showAttendanceSelection?: number | boolean;
 }
 
 export interface RangeCursorSnapshot {
@@ -106,6 +107,7 @@ export interface AssignmentSnapshot {
   pseudonymNumber: string;
   mode: PseudonymAssignmentMode;
   assignedAt: string | Date;
+  absent?: number | boolean;
 }
 
 export interface OperationStatusSnapshot {
@@ -362,6 +364,7 @@ export function settingResponse(
     deleteAbsenteeInfoOnReopen: Boolean(setting.deleteAbsenteeInfoOnReopen),
     useCandidatePhotos: Boolean(setting.useCandidatePhotos),
     enableBulkDraw: Boolean(setting.enableBulkDraw),
+    showAttendanceSelection: Boolean(setting.showAttendanceSelection ?? true),
     ranges: ranges.map((range) => ({
       date: range.date,
       time: range.time,
@@ -417,5 +420,6 @@ export function assignmentResponse(
     mode: assignment.mode,
     assignedAt: assignment.assignedAt,
     alreadyAssigned,
+    absent: Boolean(assignment.absent),
   };
 }

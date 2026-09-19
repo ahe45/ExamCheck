@@ -76,6 +76,7 @@ export function PseudonymAssignmentPage(props: Props) {
     range,
     configuredRanges,
     useCandidatePhotos,
+    showAttendanceSelection,
     autoDrawEnabled,
     autoDrawDelaySeconds,
     printPreassignedLabel,
@@ -126,6 +127,7 @@ export function PseudonymAssignmentPage(props: Props) {
     configuredRanges,
     useCandidatePhotos,
     range,
+    showAttendanceSelection,
     autoDrawEnabled: autoDrawEnabled && !historyResetOpen,
     autoDrawDelaySeconds,
     onRangeChange: setRange,
@@ -446,7 +448,15 @@ export function PseudonymAssignmentPage(props: Props) {
           previewRef={candidatePreviewRef}
           input={input}
           searching={searching}
-          processing={lookupAndPrint.busy || printing || historyResetOpen || deletingHistory}
+          processing={assigning || lookupAndPrint.busy || printing || historyResetOpen || deletingHistory}
+          showAttendanceSelection={
+            settingLoaded && showAttendanceSelection && selectedMode !== "PREASSIGNED" && props.user.role !== "VIEWER"
+          }
+          registrationAbsent={candidateController.registrationAbsent}
+          attendanceLocked={candidateController.attendanceLocked}
+          attendanceDisabled={operationStatus.closed || !operationStatusLoaded || closingOperation}
+          onRegistrationAbsent={candidateController.setRegistrationAbsent}
+          onAttendanceLocked={candidateController.setAttendanceLocked}
           searchReady={settingLoaded}
           notice={notice}
           candidate={candidate}
@@ -593,6 +603,8 @@ export function PseudonymAssignmentPage(props: Props) {
         (selectedMode === "RANDOM" || selectedMode === "SEQUENTIAL" || selectedMode === "MANUAL") &&
         drawPopoverPosition && (
           <OperationDrawPopover
+            showAttendanceSelection={showAttendanceSelection}
+            registrationAbsent={candidateController.registrationAbsent}
             position={drawPopoverPosition}
             sequential={selectedMode === "SEQUENTIAL"}
             matching={selectedMode === "MANUAL"}

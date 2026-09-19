@@ -117,6 +117,7 @@ export interface MutationAuditDetailsByEvent {
     deleteAbsenteeInfoOnReopen: boolean;
     useCandidatePhotos: boolean;
     enableBulkDraw: boolean;
+    showAttendanceSelection: boolean;
   };
   PSEUDONYM_OPERATION_CLOSED: {
     operationId: number;
@@ -154,6 +155,7 @@ export interface MutationAuditDetailsByEvent {
     assignmentId: number;
     candidateRecordId: number;
     mode: "RANDOM" | "SEQUENTIAL" | "MANUAL" | "PREASSIGNED";
+    absent: boolean;
   };
   PRINT_JOB_CREATED: {
     jobNo: string;
@@ -376,6 +378,7 @@ const EVENT_CONTRACTS = {
     deleteAbsenteeInfoOnReopen: booleanValue,
     useCandidatePhotos: booleanValue,
     enableBulkDraw: booleanValue,
+    showAttendanceSelection: booleanValue,
   }),
   PSEUDONYM_OPERATION_CLOSED: fields({
     operationId: positiveInteger,
@@ -413,6 +416,7 @@ const EVENT_CONTRACTS = {
     assignmentId: positiveInteger,
     candidateRecordId: positiveInteger,
     mode: oneOf("RANDOM", "SEQUENTIAL", "MANUAL", "PREASSIGNED"),
+    absent: booleanValue,
   }),
   PRINT_JOB_CREATED: printEventFields({
     jobNo: shortIdentifier,

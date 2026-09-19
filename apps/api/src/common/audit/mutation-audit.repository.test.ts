@@ -90,6 +90,7 @@ const validRecords: MutationAuditRecord[] = [
       deleteAbsenteeInfoOnReopen: true,
       useCandidatePhotos: false,
       enableBulkDraw: false,
+      showAttendanceSelection: true,
     },
   },
   {
@@ -147,6 +148,7 @@ const validRecords: MutationAuditRecord[] = [
       assignmentId: 31,
       candidateRecordId: 41,
       mode: "RANDOM",
+      absent: false,
     },
   },
   {
@@ -339,6 +341,7 @@ describe("MutationAuditRepository", () => {
             assignmentId: 31,
             candidateRecordId: -1,
             mode: "RANDOM",
+            absent: false,
           },
         } as unknown as MutationAuditRecord,
       ),

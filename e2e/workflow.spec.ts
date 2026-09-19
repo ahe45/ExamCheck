@@ -25,6 +25,76 @@ const executeFile = promisify(execFile);
 const fixtureCliPath = resolve(process.cwd(), "e2e/fixture-cli.mjs");
 
 test.describe("FHD 변경 작업 흐름", () => {
+  test("결시 가번호 등록, 고정 유지, 관리자 표시 설정을 검증한다", async ({ page }) => {
+    await resetOperationFixture();
+    await login(page, accounts.operator);
+    await page
+      .locator(".operation-schedule-card")
+      .filter({ hasText: WORKFLOW_ADMISSION })
+      .filter({ hasText: WORKFLOW_PERIOD })
+      .click();
+    const selector = page.getByRole("group", { name: "등록 상태", exact: true });
+    await expect(selector).toBeVisible();
+    await expect(selector.getByRole("button", { name: "응시", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const examineeInput = page.getByRole("textbox", { name: "수험번호" });
+    const lockOption = selector.locator('input[type="checkbox"]');
+    await examineeInput.focus();
+    await examineeInput.hover();
+    await expect(lockOption).toBeHidden();
+    await selector.hover();
+    await expect(lockOption).toBeVisible();
+    await page.screenshot({ path: "test-results/attendance-lock-popover.png", fullPage: true });
+    await examineeInput.hover();
+    await expect(lockOption).toBeHidden();
+    await selector.getByRole("button", { name: "응시", exact: true }).focus();
+    await expect(lockOption).toBeVisible();
+    await selector.getByRole("button", { name: "결시", exact: true }).click();
+    await searchExaminee(examineeInput, WORKFLOW_CURRENT_EXAMINEE);
+    await examineeInput.hover();
+    await expect(lockOption).toBeVisible();
+    const assignmentDialog = page.getByRole("dialog", { name: "가번호 순차부여" });
+    await expect(assignmentDialog).toContainText("결시로 등록");
+    await assignmentDialog.getByRole("button", { name: "저장", exact: true }).click();
+    await expect(operationRow(page, WORKFLOW_CURRENT_EXAMINEE)).toContainText("결시");
+    await expect(selector.getByRole("button", { name: "응시", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(assignmentDialog).toHaveCount(0);
+
+    await selector.hover();
+    await selector.getByRole("checkbox", { name: "고정", exact: true }).click();
+    await examineeInput.focus();
+    await examineeInput.hover();
+    await expect(lockOption).toBeVisible();
+    await selector.getByRole("button", { name: "결시", exact: true }).click();
+    await searchExaminee(examineeInput, WORKFLOW_BLOCKED_EXAMINEE);
+    await assignmentDialog.getByRole("button", { name: "저장", exact: true }).click();
+    await expect(operationRow(page, WORKFLOW_BLOCKED_EXAMINEE)).toContainText("결시");
+    await expect(selector.getByRole("checkbox", { name: "고정", exact: true })).toBeChecked();
+    await page.reload();
+    await expect(operationRow(page, WORKFLOW_CURRENT_EXAMINEE)).toContainText("결시");
+    await expect(operationRow(page, WORKFLOW_BLOCKED_EXAMINEE)).toContainText("결시");
+    await page.screenshot({ path: "test-results/attendance-operator.png", fullPage: true });
+
+    await page.getByRole("button", { name: "로그아웃" }).click();
+    await login(page, accounts.admin);
+    await page.getByRole("button", { name: "시스템 설정", exact: true }).click();
+    await page.locator(".admission-settings-card").filter({ hasText: WORKFLOW_ADMISSION }).click();
+    const editor = page.getByRole("dialog", { name: `${WORKFLOW_ADMISSION} 전형 설정` });
+    await editor.getByRole("checkbox", { name: /응시·결시 선택 표시/ }).uncheck({ force: true });
+    await editor.getByRole("button", { name: "설정 저장" }).click();
+    await expect(page.getByRole("status")).toContainText("시스템 설정을 저장했습니다");
+    await editor.getByRole("button", { name: "닫기", exact: true }).click();
+    await page.getByRole("button", { name: "로그아웃" }).click();
+    await login(page, accounts.operator);
+    await page
+      .locator(".operation-schedule-card")
+      .filter({ hasText: WORKFLOW_ADMISSION })
+      .filter({ hasText: WORKFLOW_PERIOD })
+      .click();
+    await expect(page.getByRole("button", { name: "수험자 검색" })).toBeVisible();
+    await expect(operationRow(page, WORKFLOW_CURRENT_EXAMINEE)).toContainText("결시");
+    await expect(selector).toHaveCount(0);
+  });
+
   test("잘못된 XLSX 양식 오류를 미리보기 영역에 표시한다", async ({ page }) => {
     await login(page, accounts.admin);
     await page.getByRole("button", { name: "수험생 데이터", exact: true }).click();
@@ -92,6 +162,7 @@ test.describe("FHD 변경 작업 흐름", () => {
 
     await openSettingsEditor(page);
     let editor = settingsEditor(page);
+    await editor.screenshot({ path: "test-results/assignment-method-height.png" });
     let photoSwitch = editor.getByRole("checkbox", { name: /수험생 사진 사용/ });
     await expect(photoSwitch).toBeChecked();
     await photoSwitch.click({ force: true });

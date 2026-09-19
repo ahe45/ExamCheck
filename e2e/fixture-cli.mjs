@@ -144,7 +144,8 @@ async function resetAdmissionSetting(executor, input) {
            ps.auto_draw_delay_seconds = 3, ps.print_preassigned_label = FALSE,
            ps.auto_assign_absentees_on_close = FALSE,
            ps.delete_absentee_info_on_reopen = FALSE, ps.use_candidate_photos = ?,
-           ps.enable_bulk_draw = FALSE, ps.active = TRUE, ps.updated_by = actor.id, ps.version = 1
+           ps.enable_bulk_draw = FALSE, ps.show_attendance_selection = TRUE,
+           ps.active = TRUE, ps.updated_by = actor.id, ps.version = 1
        WHERE ps.exam_name = ? AND ps.admission_name = ?`,
       [
         input.rangeStart,

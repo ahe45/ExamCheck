@@ -31,7 +31,12 @@ export function useOperationLookupAndPrint(options: Options) {
     setBusy(true);
     try {
       const result = await latest.current.lookup(input);
-      if (result?.assignment && latest.current.labelPrintingEnabled && latest.current.isCurrent(result)) {
+      if (
+        result?.assignment &&
+        !result.candidate.absent &&
+        latest.current.labelPrintingEnabled &&
+        latest.current.isCurrent(result)
+      ) {
         // Use the returned candidate, not the previous render's selected candidate.
         await latest.current.print(result);
       }

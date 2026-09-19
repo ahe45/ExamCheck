@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Examinee } from "../../shared/api/examinees";
 import type { PseudonymAssignment } from "../../shared/api/pseudonyms";
+import { selectOperationPrintRows } from "./operation-template-pages";
 import {
   drawViewModel,
   formatRegistrationTimestamp,
@@ -63,6 +64,19 @@ const assignment: PseudonymAssignment = {
 };
 
 describe("operation view model", () => {
+  it("직접 등록한 결시는 마감 전후 모두 결시로 집계하고 응시만 출력에서 제외한다", () => {
+    const rows = toOperationRows([
+      examinee({ assignedNumber: "1001", assignmentMode: "MANUAL", absent: true }),
+      examinee({ id: 2, assignedNumber: "1002", assignmentMode: "MANUAL", absent: false }),
+    ]);
+    for (const operationClosed of [false, true]) {
+      const context = { operationClosed, labelPrintingEnabled: false };
+      expect(operationRowValue(rows[0], "attendance", context)).toBe("결시");
+      expect(operationRosterStats(rows, context)).toMatchObject({ assignedCount: 2, presentCount: 1 });
+      expect(selectOperationPrintRows(rows, "PRESENT", context)).toEqual([rows[1]]);
+      expect(selectOperationPrintRows(rows, "ALL", context)).toEqual(rows);
+    }
+  });
   const openRegistration = { operationClosed: false, labelPrintingEnabled: false };
   const closedRegistration = { operationClosed: true, labelPrintingEnabled: false };
 

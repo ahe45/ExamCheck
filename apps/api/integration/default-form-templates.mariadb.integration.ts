@@ -94,6 +94,7 @@ describe("default operation form templates on MariaDB", () => {
           "052_scoped_processing.sql",
           "053_processing_schema_comments.sql",
           "054_export_jobs.sql",
+          "055_manual_attendance_selection.sql",
         ]);
         // The seed itself must also be safe to execute again without duplicate rows.
         await connection.query(
@@ -153,6 +154,7 @@ describe("default operation form templates on MariaDB", () => {
           "052_scoped_processing.sql",
           "053_processing_schema_comments.sql",
           "054_export_jobs.sql",
+          "055_manual_attendance_selection.sql",
         ]);
         expect((await runMigrations(connection, migrations)).applied).toEqual([]);
       } finally {

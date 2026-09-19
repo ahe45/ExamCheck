@@ -63,6 +63,7 @@ export function assignmentFromExaminee(candidate: Examinee): PseudonymAssignment
     mode,
     assignedAt: candidate.assignedAt || "",
     alreadyAssigned: true,
+    absent: candidate.absent ?? false,
   };
 }
 
@@ -80,7 +81,7 @@ export function operationRowStatus(row: OperationRow, context: OperationGridCont
 }
 
 export function operationRowAttendance(row: OperationRow, context: OperationGridContext): "-" | "응시" | "결시" {
-  if (context.operationClosed && row.candidate.absent) return "결시";
+  if (row.candidate.absent) return "결시";
   if (operationRowProcessed(row, context)) return "응시";
   return context.operationClosed ? "결시" : "-";
 }

@@ -1,12 +1,44 @@
 // @vitest-environment jsdom
 
 import { createRef } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Examinee } from "../../shared/api/examinees";
 import { OperationControlPanel } from "./OperationControlPanel";
 
 describe("OperationControlPanel", () => {
+  it("응시·결시 선택과 고정을 표시하고 설정이 꺼지면 숨긴다", () => {
+    const props = {
+      previewRef: createRef<HTMLElement>(),
+      input: "",
+      searching: false,
+      notice: null,
+      candidate: null,
+      useCandidatePhotos: false,
+      photoUrl: null,
+      selectedMode: "MANUAL" as const,
+      assignment: null,
+      onSearch: vi.fn(),
+      onInput: vi.fn(),
+      onReset: vi.fn(),
+      onCloseNotice: vi.fn(),
+      onRegistrationAbsent: vi.fn(),
+      onAttendanceLocked: vi.fn(),
+    };
+    const { rerender } = render(<OperationControlPanel {...props} showAttendanceSelection />);
+    expect(screen.getByRole("button", { name: "응시" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "결시" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "고정" }));
+    expect(props.onRegistrationAbsent).toHaveBeenCalledWith(true);
+    expect(props.onAttendanceLocked).toHaveBeenCalledWith(true);
+    rerender(
+      <OperationControlPanel {...props} showAttendanceSelection registrationAbsent attendanceLocked processing />,
+    );
+    expect(screen.getByRole("checkbox", { name: "고정" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "결시" })).toBeDisabled();
+    rerender(<OperationControlPanel {...props} showAttendanceSelection={false} />);
+    expect(screen.queryByRole("group", { name: "등록 상태" })).toBeNull();
+  });
   it("사전 가번호를 즉시 표시하고 불러오기 버튼은 표시하지 않는다", () => {
     render(
       <OperationControlPanel

@@ -66,6 +66,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [deleteAbsenteeInfoOnReopen, setDeleteAbsenteeInfoOnReopen] = useState(false);
     const [useCandidatePhotos, setUseCandidatePhotos] = useState(true);
     const [enableBulkDraw, setEnableBulkDraw] = useState(false);
+    const [showAttendanceSelection, setShowAttendanceSelection] = useState(true);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [bulkOpen, setBulkOpen] = useState(false);
@@ -109,6 +110,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       setDeleteAbsenteeInfoOnReopen(setting.deleteAbsenteeInfoOnReopen);
       setUseCandidatePhotos(setting.useCandidatePhotos);
       setEnableBulkDraw(setting.enableBulkDraw);
+      setShowAttendanceSelection(setting.showAttendanceSelection ?? true);
       setSavedSnapshot(
         createSettingsSnapshot({
           assignmentMethod: setting.assignmentMethod,
@@ -121,6 +123,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           deleteAbsenteeInfoOnReopen: setting.deleteAbsenteeInfoOnReopen,
           useCandidatePhotos: setting.useCandidatePhotos,
           enableBulkDraw: setting.enableBulkDraw,
+          showAttendanceSelection: setting.showAttendanceSelection ?? true,
         }),
       );
     }, []);
@@ -166,6 +169,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           deleteAbsenteeInfoOnReopen,
           useCandidatePhotos,
           enableBulkDraw,
+          showAttendanceSelection,
         }),
       [
         assignmentMethod,
@@ -178,6 +182,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
         deleteAbsenteeInfoOnReopen,
         useCandidatePhotos,
         enableBulkDraw,
+        showAttendanceSelection,
       ],
     );
     const dirty = savedSnapshot !== null && (requiresInitialSave || savedSnapshot !== currentSnapshot);
@@ -216,6 +221,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           deleteAbsenteeInfoOnReopen,
           useCandidatePhotos,
           enableBulkDraw,
+          showAttendanceSelection,
           ranges: toSettingRanges(configuredRanges),
         });
         applySetting(setting, candidates);
@@ -312,6 +318,8 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
                 onLabelTemplateIdChange={setLabelTemplateId}
               />
               <OperationPolicySection
+                showAttendanceSelection={showAttendanceSelection}
+                onShowAttendanceSelectionChange={setShowAttendanceSelection}
                 assignmentMethod={assignmentMethod}
                 autoAssignAbsenteesOnClose={autoAssignAbsenteesOnClose}
                 onAutoAssignAbsenteesOnCloseChange={setAutoAssignAbsenteesOnClose}

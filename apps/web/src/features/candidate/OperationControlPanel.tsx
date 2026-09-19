@@ -17,6 +17,12 @@ interface Props {
   photoUrl: string | null;
   selectedMode: AssignmentMode;
   assignment: PseudonymAssignment | null;
+  showAttendanceSelection?: boolean;
+  registrationAbsent?: boolean;
+  attendanceLocked?: boolean;
+  attendanceDisabled?: boolean;
+  onRegistrationAbsent?(value: boolean): void;
+  onAttendanceLocked?(value: boolean): void;
   onSearch(event: FormEvent): void;
   onInput(value: string): void;
   onReset(): void;
@@ -36,6 +42,12 @@ export function OperationControlPanel({
   photoUrl,
   selectedMode,
   assignment,
+  showAttendanceSelection = false,
+  registrationAbsent = false,
+  attendanceLocked = false,
+  attendanceDisabled = false,
+  onRegistrationAbsent,
+  onAttendanceLocked,
   onSearch,
   onInput,
   onReset,
@@ -44,7 +56,7 @@ export function OperationControlPanel({
   return (
     <aside className="operator-control-panel">
       <form className="operator-lookup" onSubmit={onSearch}>
-        <div className="operator-lookup-field">
+        <div className={`operator-lookup-field ${showAttendanceSelection ? "with-attendance" : ""}`}>
           <div>
             <input
               ref={inputRef}
@@ -57,13 +69,14 @@ export function OperationControlPanel({
                 if (event.key === "Enter" && (event.repeat || event.nativeEvent.isComposing)) event.preventDefault();
               }}
               onChange={(event) => onInput(event.target.value.replace(/\s/g, ""))}
-              placeholder="수험번호 입력 또는 스캔"
+              placeholder={showAttendanceSelection ? "수험번호 입력" : "수험번호 입력 또는 스캔"}
+              title="수험번호 입력 또는 스캔"
             />
             <button
               type="button"
               className="operator-input-clear"
               onClick={onReset}
-              disabled={!input}
+              disabled={!input || processing || searching}
               aria-label="입력값 지우기"
             >
               ×
@@ -77,6 +90,38 @@ export function OperationControlPanel({
           >
             {searching ? <span className="operator-search-spinner" /> : <OperatorSearchIcon />}
           </button>
+          {showAttendanceSelection && (
+            <fieldset
+              className={`operator-attendance-selector ${registrationAbsent ? "absent" : ""}`}
+              data-locked={attendanceLocked}
+              aria-label="등록 상태"
+              disabled={attendanceDisabled || processing || searching || !searchReady}
+            >
+              <div className="operator-attendance-switch" role="group" aria-label="다음 가번호 등록 상태">
+                <button type="button" aria-pressed={!registrationAbsent} onClick={() => onRegistrationAbsent?.(false)}>
+                  응시
+                </button>
+                <button type="button" aria-pressed={registrationAbsent} onClick={() => onRegistrationAbsent?.(true)}>
+                  결시
+                </button>
+              </div>
+              <label
+                className="operator-attendance-lock"
+                title={
+                  attendanceLocked
+                    ? "고정 해제: 저장 후 응시로 돌아갑니다."
+                    : "고정: 저장 후에도 선택한 상태를 유지합니다."
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={attendanceLocked}
+                  onChange={(event) => onAttendanceLocked?.(event.target.checked)}
+                />
+                <span>고정</span>
+              </label>
+            </fieldset>
+          )}
         </div>
         {notice && <ToastNotice notice={notice} onClose={onCloseNotice} />}
       </form>

@@ -56,6 +56,7 @@ interface Options {
   operationStatusLoaded: boolean;
   configuredRanges: PseudonymTimeRange[];
   useCandidatePhotos: boolean;
+  showAttendanceSelection?: boolean;
   range: { start: number; end: number };
   autoDrawEnabled: boolean;
   autoDrawDelaySeconds: number;
@@ -133,6 +134,10 @@ export function useOperationCandidateController(options: Options) {
   }, [cancelLifecycle, currentScheduleKey]);
 
   useEffect(() => () => cancelLifecycle(), [cancelLifecycle]);
+
+  useEffect(() => {
+    if (options.showAttendanceSelection === false) dispatch({ type: "RESET_ATTENDANCE" });
+  }, [options.showAttendanceSelection]);
 
   useObjectUrlLifecycle(state.photoUrl);
 
@@ -308,13 +313,15 @@ export function useOperationCandidateController(options: Options) {
           admissionName: config.schedule.admissionName,
         },
         snapshot.manualNumber.trim() || undefined,
-        ...(config.selectedMode === "SEQUENTIAL" ? [snapshot.sequentialPreviewNumber!] : []),
+        config.selectedMode === "SEQUENTIAL" ? snapshot.sequentialPreviewNumber! : undefined,
+        snapshot.registrationAbsent && config.showAttendanceSelection !== false,
       );
       const updated = {
         ...snapshot.candidate,
         assignedNumber: result.pseudonymNumber,
         assignmentMode: result.mode,
         assignedAt: String(result.assignedAt),
+        absent: result.absent ?? snapshot.candidate.absent ?? false,
       };
       if (!isCurrentTargetRequest(request, assignmentRequestSequenceRef.current, currentOperationTargetRef.current))
         return;
@@ -377,6 +384,14 @@ export function useOperationCandidateController(options: Options) {
         Boolean(state.manualNumber.trim())) &&
       (options.selectedMode !== "SEQUENTIAL" || state.sequentialPreviewNumber !== null) &&
       options.userRole !== "VIEWER",
+    setRegistrationAbsent: (value: boolean) => {
+      if (!stateRef.current.assigning && !stateRef.current.searching)
+        dispatch({ type: "SET_REGISTRATION_ABSENT", value });
+    },
+    setAttendanceLocked: (value: boolean) => {
+      if (!stateRef.current.assigning && !stateRef.current.searching)
+        dispatch({ type: "SET_ATTENDANCE_LOCKED", value });
+    },
     setInput,
     setManualNumber,
     setNotice,

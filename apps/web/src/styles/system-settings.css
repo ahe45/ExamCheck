@@ -991,7 +991,15 @@
   font-size: 7px;
   font-weight: 900;
 }
+.assignment-method-card {
+  display: flex;
+  flex-direction: column;
+}
+.assignment-method-card > header {
+  flex-shrink: 0;
+}
 .assignment-method-list {
+  flex: 1;
   display: grid;
   grid-auto-rows: 1fr;
 }

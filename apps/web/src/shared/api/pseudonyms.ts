@@ -32,6 +32,7 @@ export const pseudonymAssignmentSchema = z.object({
   mode: assignmentModeSchema,
   assignedAt: z.string().min(1),
   alreadyAssigned: z.boolean(),
+  absent: z.boolean().optional(),
 });
 export type PseudonymAssignment = z.infer<typeof pseudonymAssignmentSchema>;
 
@@ -100,6 +101,7 @@ export const pseudonymSettingSchema = z.object({
   deleteAbsenteeInfoOnReopen: z.boolean(),
   useCandidatePhotos: z.boolean(),
   enableBulkDraw: z.boolean(),
+  showAttendanceSelection: z.boolean().optional(),
   ranges: z.array(pseudonymTimeRangeSchema),
   rangeStatistics: z
     .object({ count: nonnegativeIntegerSchema, start: nonnegativeIntegerSchema, end: nonnegativeIntegerSchema })
@@ -165,6 +167,7 @@ export function assignPseudonym(
   schedule: { examName: string; examDate: string; examTime: string; periodName: string; admissionName: string },
   manualNumber?: string,
   expectedNumber?: string,
+  absent?: boolean,
 ) {
   return apiFetch(
     "/pseudonyms/assignments",
@@ -176,6 +179,7 @@ export function assignPseudonym(
         ...schedule,
         ...(manualNumber ? { manualNumber } : {}),
         ...(expectedNumber !== undefined ? { expectedNumber } : {}),
+        ...(absent !== undefined ? { absent } : {}),
       }),
     },
     token,
