@@ -79,7 +79,7 @@ export function LabelTextFormatting({
                     type="number"
                     aria-label="글자 크기(mm)"
                     min={1.5}
-                    max={20}
+                    max={200}
                     step="any"
                     defaultValue={sizeMm}
                     onKeyDown={(event) => {

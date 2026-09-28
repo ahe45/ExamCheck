@@ -213,8 +213,8 @@ function parseElement(
   if (kind === "text") {
     // Preserve point-to-mm conversions when the editor saves a font size in pt.
     const fontSizeMm = finiteNumber(value.fontSizeMm ?? 3, "글자 크기", 6);
-    if (fontSizeMm < 1.5 || fontSizeMm > 20)
-      throw new BadRequestException("글자 크기는 1.5~20mm 범위로 설정해 주세요.");
+    if (fontSizeMm < 1.5 || fontSizeMm > 200)
+      throw new BadRequestException("글자 크기는 1.5~200mm 범위로 설정해 주세요.");
     const align = value.align ?? "left";
     if (align !== "left" && align !== "center" && align !== "right") throw invalidLayout();
     element.fontSizeMm = fontSizeMm;
