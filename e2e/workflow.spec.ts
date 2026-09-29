@@ -259,6 +259,41 @@ test.describe("FHD 변경 작업 흐름", () => {
     await expect(page.getByLabel("양식 설명", { exact: true })).toHaveValue("공통 편집기 레이아웃 확인");
   });
 
+  test("라벨 글자 크기는 화면과 용지 너비가 달라져도 mm 비율을 유지한다", async ({ page }) => {
+    await login(page, accounts.admin);
+    await page.getByRole("button", { name: "양식 관리", exact: true }).click();
+    await page.getByRole("button", { name: "라벨 양식", exact: true }).click();
+    await page.getByRole("button", { name: "새 양식", exact: true }).click();
+    const text = page.locator(".label-canvas-element.text").first();
+    const paperWidth = page.getByRole("complementary", { name: "용지 설정" }).getByLabel("너비(mm)", { exact: true });
+
+    for (const viewportWidth of [1366, 1920]) {
+      await page.setViewportSize({ width: viewportWidth, height: 1080 });
+      for (const widthMm of [75, 150]) {
+        await paperWidth.fill(String(widthMm));
+        for (const fontSizeMm of [1.5, 20, 200]) {
+          await page.getByRole("button", { name: "글꼴 크기 목록 열기" }).click();
+          const input = page.getByRole("spinbutton", { name: "글자 크기(mm)", exact: true });
+          await input.fill(String(fontSizeMm));
+          await input.press("Enter");
+          await expect
+            .poll(async () => {
+              const renderedSizeMm = await text.evaluate((element, labelWidthMm) => {
+                const canvasStyle = getComputedStyle(element.parentElement!);
+                const canvasWidth =
+                  Number.parseFloat(canvasStyle.width) -
+                  Number.parseFloat(canvasStyle.borderLeftWidth) -
+                  Number.parseFloat(canvasStyle.borderRightWidth);
+                return (Number.parseFloat(getComputedStyle(element).fontSize) / canvasWidth) * labelWidthMm;
+              }, widthMm);
+              return Math.abs(renderedSizeMm - fontSizeMm);
+            })
+            .toBeLessThan(0.01);
+        }
+      }
+    }
+  });
+
   test("라벨 글자 서식과 개체 크기를 편집하고 Delete로 선택 개체를 삭제한다", async ({ page }) => {
     await login(page, accounts.admin);
     await page.getByRole("button", { name: "양식 관리", exact: true }).click();

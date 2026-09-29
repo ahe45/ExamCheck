@@ -848,7 +848,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                   transformOrigin: "top left",
                   ...(element.kind === "text"
                     ? {
-                        fontSize: `${Math.max(9, (element.fontSizeMm ?? 3) * 3.2)}px`,
+                        fontSize: `${((element.fontSizeMm ?? 3) / layout.widthMm) * 100}cqw`,
                         justifyContent:
                           element.align === "center" ? "center" : element.align === "right" ? "flex-end" : "flex-start",
                       }

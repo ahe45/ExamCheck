@@ -303,6 +303,7 @@
 
 .label-template-canvas {
   position: relative;
+  container-type: inline-size;
   width: min(100%, 720px);
   flex: 0 0 auto;
   overflow: hidden;
