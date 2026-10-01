@@ -8,6 +8,7 @@ import { bindObjectAlignmentControls } from "examlist-template-editor/examlist/t
 import { bindObjectPointerControls } from "examlist-template-editor/examlist/template-editor/object-pointer-controls";
 import { bindObjectSizeControls } from "examlist-template-editor/examlist/template-editor/object-size-controls";
 import { bindPageNumberControls } from "examlist-template-editor/examlist/template-editor/page-number-controls";
+import { bindRecognitionMarksControls } from "examlist-template-editor/examlist/template-editor/recognition-marks-controls";
 import { showToast } from "examlist-template-editor/examlist/app/toast";
 import { bindSignatureNameControls } from "./signature-name-controls";
 import { bindDataTagFormatControls } from "./data-tag-format-controls";
@@ -23,7 +24,7 @@ import {
 } from "./template-editor-selection-sync";
 
 function getSelectedPage(editor: TemplateEditorInstance): TemplateEditorPage | null {
-  const value = editor.getValue();
+  const value = editor.getValue({ sync: false });
   if (!value || typeof value === "string") return null;
   const pages = (value as TemplateEditorDocument).layout?.pages || [];
   const selectedPageId = editor.getSelectedPageId();
@@ -43,17 +44,37 @@ export function enhanceTemplateEditorControls(
   const selectedPage = getSelectedPage(editor);
   if (!pagePropertiesHost || !surfaceElement || !toolbarHost || !selectedPage) return () => undefined;
 
+  const templateSnapshot = editor.getValue();
   const appState = {
     templateEditor: {
       get selectedPageId() {
         return editor.getSelectedPageId();
       },
       get template() {
-        return editor.getValue();
+        const value = templateSnapshot;
+        if (!value || typeof value === "string") return value;
+        return {
+          ...value,
+          layout: {
+            ...value.layout,
+            pages: value.layout?.pages?.map((page) => (page.id === selectedPage.id ? selectedPage : page)),
+          },
+        };
       },
     },
   };
-  const markDirty = () => transactions.request("editor-control.change");
+  const markDirty = () => {
+    const currentPage = getSelectedPage(editor);
+    if (currentPage && currentPage.id === selectedPage.id) {
+      currentPage.settings ||= {};
+      for (const key of ["pageNumber", "recognitionMarks"]) {
+        if (selectedPage.settings?.[key] !== undefined) {
+          currentPage.settings[key] = structuredClone(selectedPage.settings[key]);
+        }
+      }
+    }
+    transactions.request("editor-control.change");
+  };
   const showPasteError = (event: Event) => {
     if (event instanceof CustomEvent && typeof event.detail?.message === "string") {
       const isColumnName =
@@ -99,6 +120,7 @@ export function enhanceTemplateEditorControls(
     bindObjectSizeControls({ editor: runtime, onDirty: markDirty, selectedPage, surfaceElement, toolbarHost }),
     bindObjectAlignmentControls({ editor: runtime, surfaceElement, toolbarHost }),
     bindPageNumberControls({ appState, onDirty: markDirty, pagePropertiesHost, selectedPage, surfaceElement }),
+    bindRecognitionMarksControls({ appState, onDirty: markDirty, pagePropertiesHost, selectedPage, surfaceElement }),
     bindSignatureNameControls({
       pagePropertiesHost,
       selectedPage,

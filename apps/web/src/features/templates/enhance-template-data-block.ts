@@ -10,7 +10,7 @@ import { normalizeCandidateBlockGridConfig } from "examlist-template-editor/core
 import { normalizeCandidateBlockTemplateHtmlFromElement } from "examlist-template-editor/dom";
 
 function getSelectedPage(editor: TemplateEditorInstance): TemplateEditorPage | null {
-  const value = editor.getValue();
+  const value = editor.getValue({ sync: false });
   if (!value || typeof value === "string") return null;
   const pages = (value as TemplateEditorDocument).layout?.pages || [];
   const selectedPageId = editor.getSelectedPageId();
@@ -62,13 +62,24 @@ export function enhanceTemplateDataBlock(
     currentPage.settings.candidateBlockGrid = structuredClone(selectedPage.settings?.candidateBlockGrid);
   };
   persistBlockSettings();
+  const templateSnapshot = editor.getValue();
   const appState = {
     templateEditor: {
       get selectedPageId() {
         return editor.getSelectedPageId();
       },
       get template() {
-        return editor.getValue();
+        const value = templateSnapshot;
+        if (!value || typeof value === "string") return value;
+        // The package returns a fresh page snapshot on each getValue(). Keep
+        // the control draft stable, then persist it before the document commits.
+        return {
+          ...value,
+          layout: {
+            ...value.layout,
+            pages: value.layout?.pages?.map((page) => (page.id === selectedPage.id ? selectedPage : page)),
+          },
+        };
       },
     },
   };

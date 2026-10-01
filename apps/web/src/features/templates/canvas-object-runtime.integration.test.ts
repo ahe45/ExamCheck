@@ -217,7 +217,10 @@ describe("ExamList canvas object runtime", () => {
     ).not.toBe(false);
 
     expect(Array.from(documentElement.children).map((element) => element.tagName)).toEqual(["TABLE", "P"]);
-    expect(editor.getHtml().match(/<p><br><\/p>/g)).toHaveLength(1);
+    const saved = new DOMParser().parseFromString(editor.getHtml(), "text/html");
+    // The live caret line is editing scaffolding; it is omitted from storage.
+    expect(saved.querySelectorAll(".template-doc > p")).toHaveLength(0);
+    expect(saved.querySelector("td")?.textContent).toBe("셀");
     editor.destroy();
   });
 });

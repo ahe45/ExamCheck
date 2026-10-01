@@ -203,7 +203,8 @@ test("태그가 포함된 행과 데이터 블록의 간격을 편집 화면과 
   });
   expect(result.preview).toEqual(result.baseline);
   expect(result.pdf).toEqual(result.baseline);
-  expect(result.baseline.lines[0].height).toBeGreaterThan(16);
+  // Inline tags preserve the authored line height in the latest editor.
+  expect(result.baseline.lines[0].height).toBe(16);
   await pending;
 });
 

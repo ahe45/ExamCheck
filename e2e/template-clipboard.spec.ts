@@ -183,7 +183,7 @@ test("표 개체 복사: 캔버스와 데이터 블록 편집 모달 사이 붙�
   expect(await presentation(modal.locator("table"))).toEqual(original);
   await copyTable(page, modal.locator("table"));
   await dialog.getByRole("button", { name: "적용", exact: true }).click();
-  await surface.locator(".template-doc > p").last().click();
+  await surface.locator(".template-doc > p").filter({ hasText: "붙여넣을 위치" }).click();
   await page.keyboard.press("Control+v");
   await expect(canvasTables).toHaveCount(2);
   expect(await presentation(canvasTables.last())).toEqual(original);
@@ -285,7 +285,7 @@ for (const key of ["Delete", "Backspace"]) {
 }
 
 test("용지 하단 표 뒤의 빈 커서 줄은 초과로 계산하지 않고 실제 내용은 감지한다", async ({ page }) => {
-  await page.route("**/examlist-template-editor-adapter.ts", async (route) => {
+  await page.route("**/examlist-template-editor-adapter.ts*", async (route) => {
     const response = await route.fetch();
     const body = (await response.text()).replace(
       "const mounted = mount(options);",

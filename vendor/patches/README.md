@@ -1,6 +1,8 @@
 # ExamList editor local patches
 
-The application uses `examlist-template-editor-1.1.13-examcheck.22.tgz`.
+The application uses `examlist-template-editor-1.1.13-examcheck.23.tgz`.
+
+- `examcheck.23.patch` applies to the complete `.22` archive. It synchronizes the runtime, extension modules, sanitizer and scoped CSS with ExamList commit `e338f24e1e17fad5339d99f7ad2b4f246f99b53e`, retaining prior ExamCheck adaptations. It adds independent selected-cell dimensions, zoom-aware gestures, px padding controls, selection clearing/read-only APIs, recognition-mark controls and browser print data fitting (5pt floor and object flow). The host uses `getValue({ sync: false })` for configuration reads during gestures. Modal overflow tolerances use viewport scaling and fractional-pixel rounding. To reproduce the archive, run `node tools/repack-template-editor.mjs`; the sibling ExamList checkout is not required.
 
 - `examcheck.1.patch` preserves data-tag formatting when native text formatting replaces token nodes.
 - `examcheck.2.patch` applies on top of `examcheck.1`: HTML normalization updates the current history entry, and text/token formatting stages produce one undo entry per user command. It also passes runtime state to the formatting controller. The `.2` archive includes both patches; its package version is `1.1.13-examcheck.2`.

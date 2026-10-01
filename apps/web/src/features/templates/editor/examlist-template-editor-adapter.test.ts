@@ -117,7 +117,7 @@ describe("examlist template editor adapter contract", () => {
   });
 
   it("exposes a testable package version and required API compatibility check", () => {
-    expect(templateEditorCompatibility.packageVersion).toBe("1.1.0");
+    expect(templateEditorCompatibility.packageVersion).toBe("1.1.13-examcheck.23");
     expect(checkTemplateEditorCompatibility(compatibleApi(), "1.1.0")).toEqual({
       compatible: true,
       issues: [],

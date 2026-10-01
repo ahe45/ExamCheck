@@ -4,6 +4,30 @@ import { renderTemplateHtml, sanitizeTemplateHtml } from "./template-renderer";
 import { TemplateDataProjectionError } from "./template-data-projection";
 
 describe("template renderer security boundary", () => {
+  it("prints four black recognition marks only when the page enables them", () => {
+    const template = {
+      layout: {
+        pages: [
+          {
+            id: "page",
+            type: "content",
+            settings: { documentHtml: "<p>본문</p>", recognitionMarks: { enabled: true, sizePt: 12 } },
+          },
+        ],
+      },
+    };
+    const doc = new DOMParser().parseFromString(renderTemplateHtml(template, {}), "text/html");
+    const marks = doc.querySelectorAll<HTMLElement>(".template-print-recognition-marks > span");
+    expect(marks).toHaveLength(4);
+    expect([...marks].every((mark) => mark.style.width === "12pt" && mark.style.background === "rgb(0, 0, 0)")).toBe(
+      true,
+    );
+    expect(
+      [...marks].map((mark) => [mark.style.top || mark.style.bottom, mark.style.left || mark.style.right]),
+    ).toEqual(Array(4).fill(["14.17pt", "14.17pt"]));
+    template.layout.pages[0].settings.recognitionMarks.enabled = false;
+    expect(renderTemplateHtml(template, {})).not.toContain("template-print-recognition-marks");
+  });
   it("prints the selected date, time and datetime formats per occurrence", () => {
     const tag = (key: string, format: string) =>
       `<span data-template-tag-value="${key}" data-template-tag-format="${format}"></span>`;

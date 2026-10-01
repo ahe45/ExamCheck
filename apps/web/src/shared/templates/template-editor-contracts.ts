@@ -86,7 +86,7 @@ export interface TemplateEditorInstance {
   getHtml(): string;
   getRuntime(): TemplateEditorRuntime;
   getSelectedPageId(): string;
-  getValue(): TemplateEditorValue;
+  getValue(options?: { sync?: boolean }): TemplateEditorValue;
   preview(context?: Record<string, unknown>): Promise<Record<string, unknown>>;
   save(context?: Record<string, unknown>): Promise<TemplateEditorValue | void>;
   sync(): TemplateEditorValue;

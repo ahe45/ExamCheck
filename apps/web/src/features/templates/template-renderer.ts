@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import { fitTemplatePrintData } from "examlist-template-editor/dom";
 import { getTemplatePrintPresentation, templatePrintTokenFlowCss } from "./template-print-presentation";
 import { joinFullSizePrintTables } from "./editor/template-table-joining";
 import { embedLoadedPrintFonts } from "./template-print-fonts";
@@ -74,7 +75,34 @@ export function renderTemplateHtml(template: TemplateEditorValue, values: Record
     image.alt = `${value || sourceKey} ${objectType === "qrcode" ? "QR코드" : "Code128 바코드"}`;
     image.removeAttribute("data-render-pending");
   });
+  appendPrintRecognitionMarks(root, template);
   return sanitizeTemplateHtml(root.innerHTML);
+}
+
+function appendPrintRecognitionMarks(root: HTMLElement, template: TemplateEditorValue) {
+  const config = getTemplatePageSettings(template).recognitionMarks as
+    { enabled?: boolean | string; sizePt?: number } | undefined;
+  if (config?.enabled !== true && config?.enabled !== "true") return;
+  const size = Math.min(72, Math.max(0, Number(config.sizePt) || 11.34));
+  const marks = root.ownerDocument.createElement("div");
+  marks.className = "template-print-recognition-marks";
+  marks.setAttribute("aria-hidden", "true");
+  Object.assign(marks.style, { position: "absolute", inset: "0", pointerEvents: "none" });
+  for (const vertical of ["top", "bottom"]) {
+    for (const horizontal of ["left", "right"]) {
+      const mark = root.ownerDocument.createElement("span");
+      Object.assign(mark.style, {
+        position: "absolute",
+        [vertical]: "14.17pt",
+        [horizontal]: "14.17pt",
+        width: `${size}pt`,
+        height: `${size}pt`,
+        background: "#000000",
+      });
+      marks.append(mark);
+    }
+  }
+  root.append(marks);
 }
 
 function replaceTemplateTextTokens(root: HTMLElement, values: Record<string, unknown>) {
@@ -100,10 +128,20 @@ export function openTemplatePrintWindow(title: string, bodyHtml: string) {
   printWindow.opener = null;
   printWindow.document.open();
   printWindow.document.write(
-    `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>*{box-sizing:border-box}body{margin:0;color:#111827;font-family:"Noto Sans KR",Arial,sans-serif}.print-toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;gap:8px;padding:10px;background:#edf2f7;border-bottom:1px solid #cbd5e1}.print-toolbar button{border:0;border-radius:8px;padding:9px 14px;color:white;background:#176b5f;font-weight:700;cursor:pointer}.template-generated-object[data-render-pending="true"]{display:inline-grid;place-items:center;min-width:120px;min-height:54px;border:1px dashed #94a3b8;font-size:11px}${css}</style></head><body><div class="print-toolbar"><button onclick="window.print()">인쇄</button></div><main class="print-document examlist-template-editor"><div class="editor-document-surface template-editor-surface">${sanitizeTemplateHtml(bodyHtml)}</div></main></body></html>`,
+    `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>*{box-sizing:border-box}body{margin:0;color:#000000;font-family:"Noto Sans KR",Arial,sans-serif}.print-toolbar{position:sticky;top:0;display:flex;justify-content:flex-end;gap:8px;padding:10px;background:#edf2f7;border-bottom:1px solid #cbd5e1}.print-toolbar button{border:0;border-radius:8px;padding:9px 14px;color:white;background:#176b5f;font-weight:700;cursor:pointer}.template-generated-object[data-render-pending="true"]{display:inline-grid;place-items:center;min-width:120px;min-height:54px;border:1px dashed #94a3b8;font-size:11px}${css}</style></head><body><div class="print-toolbar"><button onclick="window.print()">인쇄</button></div><main class="print-document examlist-template-editor"><div class="editor-document-surface template-editor-surface">${sanitizeTemplateHtml(bodyHtml)}</div></main></body></html>`,
   );
   printWindow.document.close();
-  joinFullSizePrintTables(printWindow.document.body);
+  const prepareLayout = () => {
+    if (printWindow.closed) return;
+    joinFullSizePrintTables(printWindow.document.body);
+    fitTemplatePrintData(printWindow.document.body);
+  };
+  printWindow.addEventListener("beforeprint", prepareLayout);
+  prepareLayout();
+  void Promise.all([printWindow.document.fonts?.ready, waitForImages(printWindow.document.body, 15_000)]).then(
+    prepareLayout,
+    prepareLayout,
+  );
 }
 
 export interface PdfGenerationOptions {
@@ -180,6 +218,7 @@ export async function downloadTemplatePdf(
         options.signal,
       );
       joinFullSizePrintTables(page);
+      fitTemplatePrintData(page);
       // Foreign-object capture drops every <style> while copying computed
       // styles. Restore our embedded fonts and auto-width rules AFTER cloning,
       // so the final SVG cannot fall back to a different font in frozen boxes.

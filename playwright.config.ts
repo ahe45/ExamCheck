@@ -104,7 +104,7 @@ export default defineConfig({
     {
       name: "template-editor-fhd",
       testMatch:
-        /template-(editor|clipboard|operation-pdf|navigation|empty-document|font-height|distribution|date-format)\.spec\.ts/,
+        /template-(editor|clipboard|operation-pdf|navigation|empty-document|font-height|distribution|date-format|sync)\.spec\.ts/,
       use: { viewport: { width: 1920, height: 1080 } },
     },
   ],

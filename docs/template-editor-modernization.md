@@ -19,7 +19,7 @@
 
 - React 작업공간: `TemplateEditorWorkspace.tsx`
 - 패키지 연결: `editor/examlist-template-editor-adapter.ts`
-- 배포 편집기: `vendor/examlist-template-editor-1.1.0.tgz`
+- 배포 편집기: `vendor/examlist-template-editor-1.1.13-examcheck.23.tgz`
 - 데이터블록 연결: `enhance-template-data-block.ts`
 - 트랜잭션 경계: `editor/template-editor-transaction-coordinator.ts`
 - 명령 경계: `editor/template-editor-command-dispatcher.ts`

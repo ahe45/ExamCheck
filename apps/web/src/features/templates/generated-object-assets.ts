@@ -14,7 +14,7 @@ export function createTemplateGeneratedObjectDataUrl(objectType: string, value: 
   const normalizedValue = String(value ?? "").trim() || "123100001";
   if (resolvedType === "qrcode") {
     const svg = renderSVG(normalizedValue, {
-      blackColor: "#111827",
+      blackColor: "#000000",
       border: 4,
       ecc: "M",
       pixelSize: 4,

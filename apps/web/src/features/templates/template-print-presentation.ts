@@ -42,6 +42,11 @@ export function getTemplatePrintPresentation(html: string) {
       width: ${width}px; min-height: ${height}px; margin: 0 auto;
       padding: ${margins.map((value) => `${value}px`).join(" ")};
       background: white; color: black; overflow: visible;
+      --text: #000000; --text-main: #000000;
+    }
+    .print-document, .print-document * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     .print-document .editor-document-surface { min-height: ${height - margins[0] - margins[2]}px; }
     .print-document .editor-document-surface .template-doc,

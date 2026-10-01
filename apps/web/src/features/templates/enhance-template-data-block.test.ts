@@ -21,6 +21,30 @@ vi.mock("examlist-template-editor/examlist/template-editor/candidate-block-grid-
 import { enhanceTemplateDataBlock } from "./enhance-template-data-block";
 
 describe("enhanceTemplateDataBlock", () => {
+  it("패키지가 새 페이지 복사본을 반환해도 최신 행 수 설정을 유지한다", () => {
+    const root = document.createElement("div");
+    root.innerHTML =
+      '<aside class="template-page-properties-panel"></aside><div data-template-editor-runtime-surface></div>';
+    let current = {
+      layout: { pages: [{ id: "page", type: "content", settings: { candidateBlockGrid: { rows: 20 } } }] },
+    };
+    const editor = {
+      getRuntime: () => ({}),
+      getSelectedPageId: () => "page",
+      getValue: () => (current = structuredClone(current)),
+    } as unknown as TemplateEditorInstance;
+    const transactions = {
+      request: vi.fn(),
+    } as unknown as import("./editor/template-editor-transaction-coordinator").TemplateEditorTransactionCoordinator;
+    enhanceTemplateDataBlock(root, editor, transactions);
+    const options = dataBlockMock.bind.mock.calls.at(-1)![0];
+    const activePage = options.appState.templateEditor.template.layout.pages[0];
+    activePage.settings.candidateBlockGrid.rows = 2;
+    options.onDirty();
+    expect(editor.getValue()).toMatchObject({ layout: { pages: [{ settings: { candidateBlockGrid: { rows: 2 } } }] } });
+    expect(options.appState.templateEditor.template.layout.pages[0]).toBe(activePage);
+  });
+
   it("선택된 본문 페이지와 편집기 런타임을 ExamList 데이터 블록 기능에 연결한다", async () => {
     const root = document.createElement("div");
     root.innerHTML = `

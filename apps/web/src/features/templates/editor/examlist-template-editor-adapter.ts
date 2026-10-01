@@ -10,7 +10,7 @@ import type {
 
 export const templateEditorCompatibility = Object.freeze({
   packageName: "examlist-template-editor",
-  packageVersion: "1.1.0",
+  packageVersion: "1.1.13-examcheck.23",
   supportedMajorVersion: 1,
   minimumMinorVersion: 1,
   requiredFunctions: Object.freeze([
@@ -29,7 +29,7 @@ interface ExternalMountedEditor {
   getHtml(): string;
   getRuntime(): TemplateEditorInstance["getRuntime"] extends () => infer Runtime ? Runtime : never;
   getSelectedPageId(): string;
-  getValue(): TemplateEditorValue;
+  getValue(options?: { sync?: boolean }): TemplateEditorValue;
   preview(context?: Record<string, unknown>): Promise<Record<string, unknown>>;
   save(context?: Record<string, unknown>): Promise<TemplateEditorValue | void>;
   sync(): TemplateEditorValue;
@@ -119,7 +119,7 @@ export function createExamlistTemplateEditorAdapter(
         getHtml: () => external.getHtml(),
         getRuntime: () => external.getRuntime(),
         getSelectedPageId: () => external.getSelectedPageId(),
-        getValue: () => external.getValue(),
+        getValue: (options) => external.getValue(options),
         preview: (context) => external.preview(context),
         save: (context) => external.save(context),
         sync: () => external.sync(),
