@@ -18,8 +18,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/build.ps1
 개발용 `.env`, 실제 DB, 로그, Git 정보는 패키지에 복사하지 않습니다.
 웹 API 주소는 `/api/v1`, 프린터 모드는 `browser-print`로 고정하여 빌드합니다.
 
-- `output/ExamCheck-0.1.0-win-x64.zip`: 전체를 압축 해제해 `stage/ExamCheck.cmd` 실행
-- `output/ExamCheck-0.1.0-Setup.exe`: Inno Setup 컴파일러가 있으면 함께 생성
+- `output/ExamCheck-0.1.1-win-x64.zip`: 전체를 압축 해제해 `stage/ExamCheck.cmd` 실행
+- `output/ExamCheck-0.1.1-Setup.exe`: Inno Setup 컴파일러가 있으면 함께 생성
 - `stage/`: 압축 전 배포 폴더, 그대로 다른 PC로 복사 가능
 
 Inno Setup은 **설치 파일을 만드는 개발 PC에만** 필요합니다.
@@ -81,6 +81,7 @@ Node.js LICENSE와 MariaDB의 라이선스/배포 파일을 패키지에 포함�
 ## 검증
 
 ```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/test-data-permissions.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/smoke-test.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/install-test.ps1
 ```
@@ -100,6 +101,22 @@ PowerShell 구문 검사와 실행 관리 창에 사용하는 Windows 객체 생
 새 패키지와 EXE 설치본 모두 서버 실행, 관리자 로그인, 백업·복원, 재실행 데이터 유지,
 업데이트 전 자동 백업 검사를 통과했으며 제거 후 데이터 보존도 확인했습니다.
 변경 및 검증 기록은 [양식 편집기 반영 기록](../docs/template-editor-sync-2026-10-02.md)에 있습니다.
+
+2026-10-06 일반 권한으로 두 번째 실행할 때 데이터 폴더의 `Set-Acl`이
+`SeSecurityPrivilege` 오류를 발생시키는 문제를 재현하고 수정했습니다.
+폴더 소유자와 감사 권한을 건드리지 않고 접근 권한(DACL)만 읽고 쓰도록 변경했습니다.
+사용자와 SYSTEM에만 접근을 허용하는 기존 제한은 유지합니다.
+권한 회귀 검사는 관리자 권한 없이 실행하며, 이전 버전이 만든 폴더의 반복 실행과 기존 파일 보존을 확인합니다.
+실행 검사는 서버를 시작할 때마다 관리 창과 동일한 폴더 권한 처리를 수행합니다.
+기존 사용자는 서버 관리 창을 완전히 닫고 수정된 EXE를 같은 Windows 계정으로 설치하면 됩니다.
+프로그램 설치 위치와 별도로 저장된 기존 DB와 설정은 그대로 유지됩니다.
+관리자 권한 없이 이전 권한의 폴더를 세 번 반복 처리하는 검사, 패키지 및 EXE 설치본의
+서버 시작·종료·재실행, 로그인, 백업·복원, 업데이트 전 백업, 제거 후 데이터 보존 검사가 모두 통과했습니다.
+프로젝트와 API·웹, 설치 정보 및 배포 파일의 버전은 `0.1.1`로 통일했습니다.
+설치 검사는 프로젝트 버전에서 EXE 경로를 계산하므로 다음 버전에도 현재 파일을 검사합니다.
+`0.1.1` EXE의 제품 버전, Windows 설치 목록의 버전 및 설치된 패키지 버전을 확인했습니다.
+일반 권한에서 설치본의 실행·재실행, 로그인, 백업·복원 및 제거 후 데이터 유지 검사도 통과했습니다.
+`ExamCheck-0.1.1-Setup.exe`의 SHA-256은 `1dcf1e3b2c0e0d4c795cacd1bb0b1fdc3b86ec4c721b0149c2955c8bbf7366a9`입니다.
 
 공식 참고: [Node.js 배포](https://nodejs.org/dist/),
 [MariaDB Windows ZIP](https://mariadb.com/docs/server/server-management/install-and-upgrade-mariadb/installing-mariadb/binary-packages/installing-mariadb-windows-zip-packages),

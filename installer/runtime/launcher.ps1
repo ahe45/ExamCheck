@@ -82,16 +82,8 @@ function Initialize-Settings {
     return $result -eq 'OK'
 }
 try {
-    New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
-    # Restrict inherited permissions before storing database/JWT credentials.
-    $acl = New-Object Security.AccessControl.DirectorySecurity
-    $acl.SetAccessRuleProtection($true, $false)
-    $userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
-    foreach ($sid in @($userSid, (New-Object Security.Principal.SecurityIdentifier('S-1-5-18')))) {
-        $rule = New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
-        $acl.AddAccessRule($rule)
-    }
-    Set-Acl -LiteralPath $DataDirectory -AclObject $acl
+    . (Join-Path $PSScriptRoot 'data-permissions.ps1')
+    Initialize-ExamCheckDataPermissions -DataDirectory $DataDirectory
     if (-not (Test-Path -LiteralPath $node)) { throw '실행 환경이 없습니다. 전체 배포 폴더를 사용해 주세요.' }
     if (-not (Initialize-Settings)) { exit }
     $form = New-Object Windows.Forms.Form

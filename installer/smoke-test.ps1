@@ -35,6 +35,7 @@ function Wait-State($Expected) {
     throw "Timed out waiting for $Expected. Check $data/logs/server.log."
 }
 function Start-Server($Action = 'start', $Archive = '') {
+    Initialize-ExamCheckDataPermissions -DataDirectory $data
     if (Test-Path -LiteralPath $statusPath) { Remove-Item -LiteralPath $statusPath }
     $arguments = "`"$server`" --data-dir `"$data`" --parent-pid $PID --action $Action"
     if ($Archive) { $arguments += " --archive `"$Archive`"" }
@@ -51,7 +52,8 @@ function Invoke-Db($Action) {
     & $node (Join-Path $PSScriptRoot 'smoke-db.mjs') $stage $data $Action
     if ($LASTEXITCODE -ne 0) { throw "DB check failed: $Action" }
 }
-New-Item -ItemType Directory -Path $data -Force | Out-Null
+. (Join-Path $stage 'runtime/data-permissions.ps1')
+Initialize-ExamCheckDataPermissions -DataDirectory $data
 $release = Get-Content (Join-Path $stage 'release.json') -Raw | ConvertFrom-Json
 $password = New-Secret
 $settings = @{

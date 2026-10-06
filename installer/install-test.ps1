@@ -1,5 +1,9 @@
-param([string]$SetupPath = (Join-Path $PSScriptRoot 'output\ExamCheck-0.1.0-Setup.exe'))
+param([string]$SetupPath)
 $ErrorActionPreference = 'Stop'
+$version = (Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) 'package.json') -Raw | ConvertFrom-Json).version
+if (-not $SetupPath) {
+    $SetupPath = Join-Path $PSScriptRoot "output\ExamCheck-$version-Setup.exe"
+}
 $key = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{BD33D457-7884-4E6F-9F49-4E54C94C712A}_is1'
 foreach ($hive in @('HKCU','HKLM')) {
     if (Test-Path -LiteralPath "${hive}:\$key") { throw 'An installed ExamCheck already exists. Use a separate Windows account or clean test PC for the installer test.' }
@@ -14,7 +18,16 @@ $setup = Start-Process -FilePath ([IO.Path]::GetFullPath($SetupPath)) -ArgumentL
 ) -WindowStyle Hidden -Wait -PassThru
 if ($setup.ExitCode -ne 0) { throw "Installation failed ($($setup.ExitCode)); see $testRoot/install.log." }
 try {
-    foreach ($file in @('server.mjs','api.mjs','launcher.ps1','firewall.ps1')) {
+    $installedRelease = Get-Content (Join-Path $destination 'release.json') -Raw | ConvertFrom-Json
+    if ($installedRelease.version -ne $version) { throw 'Installed release version does not match the project.' }
+    foreach ($manifest in @('package.json','apps/api/package.json','apps/web/package.json')) {
+        if ((Get-Content (Join-Path $destination $manifest) -Raw | ConvertFrom-Json).version -ne $version) {
+            throw "Installed package version does not match the project: $manifest"
+        }
+    }
+    $uninstallInfo = Get-ItemProperty -LiteralPath "HKCU:\$key"
+    if ($uninstallInfo.DisplayVersion -ne $version) { throw 'Windows installed-app version does not match the project.' }
+    foreach ($file in @('server.mjs','api.mjs','launcher.ps1','firewall.ps1','data-permissions.ps1')) {
         # PowerShell scripts gain a BOM when packaged, so compare decoded text.
         $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "runtime/$file"))
         $installed = [IO.File]::ReadAllText((Join-Path $destination "runtime/$file"))
