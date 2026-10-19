@@ -43,6 +43,21 @@ const layout = {
 };
 
 describe("renderLabelPayload", () => {
+  it("keeps Unicode text at the same top position when a legacy object box is taller than its font", async () => {
+    async function firstInkRow(heightMm: number) {
+      const payload = await renderLabelPayload(
+        { ...layout, elements: [{ ...layout.elements[0], content: "한글", heightMm, fontSizeMm: 4 }] },
+        {},
+      );
+      const match = /\^GFA,(\d+),\d+,(\d+),([0-9A-F]+)\^FS/.exec(payload)!;
+      const stride = Number(match[2]);
+      const bytes = Buffer.from(match[3]!, "hex");
+      return Math.floor(bytes.findIndex((value) => value !== 0) / stride);
+    }
+    const compact = await firstInkRow(4);
+    expect(compact).toBeGreaterThanOrEqual(0);
+    expect(await firstInkRow(12)).toBe(compact);
+  });
   it.each([203, 300])("%s dpi 한글 그래픽을 실제 픽셀 단위로 회전하며 캐시가 각도를 구분한다", async (dpi) => {
     const element = { ...layout.elements[0], widthMm: 20, heightMm: 8, content: "한글 A", align: "left" };
     const width = Math.round((20 * dpi) / 25.4);

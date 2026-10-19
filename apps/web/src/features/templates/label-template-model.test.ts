@@ -11,6 +11,20 @@ import {
 import { labelElementBounds } from "./label-element-alignment";
 
 describe("label template model", () => {
+  it("기존 텍스트의 높이를 글자 크기에 맞추고 너비와 상단 위치를 유지한다", () => {
+    const layout = cloneLabelLayout({
+      ...defaultLabelLayout,
+      elements: [{ ...defaultLabelLayout.elements[0]!, heightMm: 12 }],
+    });
+    expect(layout.elements[0]).toMatchObject({ widthMm: 67, heightMm: 9, fontSizeMm: 9, xMm: 4, yMm: 4 });
+    expect(clampLabelElement({ ...layout.elements[0]!, fontSizeMm: 5, widthMm: 40 }, layout)).toMatchObject({
+      widthMm: 40,
+      heightMm: 5,
+      fontSizeMm: 5,
+      xMm: 4,
+      yMm: 4,
+    });
+  });
   it.each([0, 90, 180, 270] as const)("%s° 개체를 양방향으로 회전해도 중심과 크기를 유지한다", (rotation) => {
     const element = { id: "rotate", kind: "box" as const, xMm: 25, yMm: 15, widthMm: 20, heightMm: 10, rotation };
     const original = labelElementBounds(element);

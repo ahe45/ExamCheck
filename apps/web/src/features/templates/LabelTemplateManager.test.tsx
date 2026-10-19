@@ -120,6 +120,26 @@ describe("LabelTemplateManager", () => {
     expect(JSON.parse(window.sessionStorage.getItem(LABEL_EDITOR_SESSION_KEY)!)).toEqual({ sourceCode: null });
   });
 
+  it("선택 개체의 설정에서 태그를 교체하고 위치와 크기를 유지한다", async () => {
+    render(<LabelTemplateManager token="token" />);
+    await openEditor();
+    fireEvent.click(screen.getByRole("button", { name: "데이터태그 변경" }));
+    let picker = screen.getByRole("dialog", { name: "데이터태그 변경" });
+    expect(within(picker).getByRole("button", { name: "가번호" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "데이터태그 변경" }));
+    picker = screen.getByRole("dialog", { name: "데이터태그 변경" });
+    fireEvent.click(within(picker).getByRole("button", { name: "수험번호" }));
+    expect(screen.queryByRole("dialog", { name: "데이터태그 변경" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await waitFor(() => expect(apiMock.saveLabelTemplate).toHaveBeenCalledTimes(1));
+    expect(apiMock.saveLabelTemplate.mock.calls[0]?.[1].layout.elements[0]).toEqual({
+      ...defaultLabelLayout.elements[0],
+      content: "{{candidate.examNo}}",
+    });
+  });
+
   it("바코드 삽입 시 데이터를 선택하며 닫으면 개체와 저장 상태를 변경하지 않는다", async () => {
     render(<LabelTemplateManager token="token" />);
     await openEditor();
@@ -230,6 +250,8 @@ describe("LabelTemplateManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await waitFor(() => expect(apiMock.saveLabelTemplate).toHaveBeenCalledTimes(1));
     expect(apiMock.saveLabelTemplate.mock.calls[0]?.[1].layout.elements[0].fontSizeMm).toBe(5);
+    expect(apiMock.saveLabelTemplate.mock.calls[0]?.[1].layout.elements[0].heightMm).toBe(5);
+    expect(screen.getByTitle("글자 크기에 따라 높이가 자동으로 설정됩니다.")).toHaveAttribute("readonly");
     expect(apiMock.saveLabelTemplate.mock.calls[0]?.[1].layout.elements[0].align).toBe("right");
     const object = screen.getAllByRole("button", { name: /^개체 \d:/ })[0]!;
     fireEvent.keyDown(object, { key: "Delete" });

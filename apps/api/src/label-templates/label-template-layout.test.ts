@@ -12,11 +12,14 @@ describe("label template layout", () => {
   it.each([11, 20, 48])("%spt 글자 크기가 반복 저장 후에도 유지된다", (points) => {
     const original = {
       ...defaultLabelTemplateLayout,
-      elements: [{ ...defaultLabelTemplateLayout.elements[0], fontSizeMm: (points * 25.4) / 72 }],
+      elements: [
+        { ...defaultLabelTemplateLayout.elements[0], heightMm: (points * 25.4) / 72, fontSizeMm: (points * 25.4) / 72 },
+      ],
     };
     const saved = parseLabelTemplateLayout(original);
     const reopened = parseLabelTemplateLayout(JSON.stringify(saved));
     expect((reopened.elements[0]!.fontSizeMm! * 72) / 25.4).toBeCloseTo(points, 4);
+    expect(reopened.elements[0]!.heightMm).toBe(reopened.elements[0]!.fontSizeMm);
     expect(reopened).toEqual(saved);
   });
   it.each([0, 90, 180, 270] as const)("%s° 회전값을 저장하고 텍스트와 바코드 출력 방향에 적용한다", (rotation) => {

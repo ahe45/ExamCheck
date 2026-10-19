@@ -132,8 +132,8 @@ export function resolveInitialAccountSeeds(
 function initialPassword(value: string | undefined, key: string, runtime: RuntimeEnvironment): string {
   const configured = nonBlank(value);
   if (runtime === "production") {
-    if (!configured || configured === DEVELOPMENT_INITIAL_PASSWORD) {
-      throw new Error(`${key} must be explicitly configured with a non-default value in production.`);
+    if (!configured || configured.length < 4) {
+      throw new Error(`${key} must be explicitly configured with at least 4 characters in production.`);
     }
     return configured;
   }

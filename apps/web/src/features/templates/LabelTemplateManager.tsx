@@ -1,6 +1,17 @@
 import { TemplateEditorMetadataBar } from "./TemplateEditorMetadataBar";
 import { BarcodeSourcePicker } from "./BarcodeSourcePicker";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { LabelCanvasText } from "./LabelCanvasText";
+import { labelElementBounds } from "./label-element-alignment";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { DataTagCatalog, DataTagDefinition } from "../../shared/templates/template-editor-contracts";
 import type { PrinterService } from "../printer/PrinterService";
 import type { PrinterDiagnostic } from "../printer/printer.types";
@@ -76,6 +87,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
   ref,
 ) {
   const dragRef = useRef<DragState | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [templates, setTemplates] = useState<LabelTemplateSummary[]>([]);
   const [dataTagCatalog, setDataTagCatalog] = useState<DataTagCatalog>(suppliedDataTags || { groups: [] });
   const [source, setSource] = useState<LabelTemplate | null>(null);
@@ -90,25 +102,43 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
   const [busy, setBusy] = useState<"save" | "print" | "active" | "copy" | "delete" | "load" | null>(null);
   const [notice, setNotice] = useState<TemplateNoticeValue | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!editorOpen || !canvas) return;
+    const updateHeight = (height: number) => {
+      if (!Number.isFinite(height) || height <= 0) return;
+      canvas.style.setProperty("--label-paper-height-px", `${height}px`);
+    };
+    const style = getComputedStyle(canvas);
+    updateHeight(parseFloat(style.height) - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth));
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) updateHeight(entry.contentRect.height);
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [editorOpen]);
   const [deleteTarget, setDeleteTarget] = useState<LabelTemplateSummary | null>(null);
   const [tagSearch, setTagSearch] = useState("");
   const [tagViewOptions, setTagViewOptions] = useState(readDataTagViewOptions);
   const [showTagSettings, setShowTagSettings] = useState(false);
   const [showBarcodeSource, setShowBarcodeSource] = useState(false);
   const [barcodeEditId, setBarcodeEditId] = useState<string | null>(null);
+  const [textEditId, setTextEditId] = useState<string | null>(null);
   const [restoredSession] = useState(readLabelEditorSession);
   const restorationDone = useRef(false);
 
   const loadTemplate = useCallback((template: LabelTemplate | null, nextCode = "") => {
     const nextLayout = template?.layout || defaultLabelLayout;
+    const editableLayout = cloneLabelLayout(nextLayout);
     setSource(template);
     setCode(template?.code || nextCode);
     setName(template?.name || "");
     setDescription(template?.description || "");
     setDefaultCopies(template?.defaultCopies ?? 1);
-    setLayout(cloneLabelLayout(nextLayout));
+    setLayout(editableLayout);
     setSelectedIds(nextLayout.elements[0] ? [nextLayout.elements[0].id] : []);
-    setDirty(false);
+    setDirty(Boolean(template && JSON.stringify(editableLayout.elements) !== JSON.stringify(nextLayout.elements)));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -554,7 +584,15 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
           aria-label="에디터 툴바"
         >
           <h3 className="label-editor-accessible-title">에디터 툴바</h3>
-          <LabelTextFormatting key={selected?.id ?? "no-selection"} element={selected} onChange={updateSelected} />
+          <LabelTextFormatting
+            key={selected?.id ?? "no-selection"}
+            element={selected}
+            maxSizeMm={Math.min(
+              200,
+              selected?.rotation === 90 || selected?.rotation === 270 ? layout.widthMm : layout.heightMm,
+            )}
+            onChange={updateSelected}
+          />
           <div className="template-toolbar-section label-insert-section">
             <span className="template-toolbar-section-label">삽입</span>
             <div className="template-toolbar-group-controls">
@@ -619,6 +657,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                 label="세로"
                 name="높이(mm)"
                 value={selected?.heightMm}
+                readOnly={selected?.kind === "text"}
                 min={0.5}
                 max={selected?.rotation === 90 || selected?.rotation === 270 ? layout.widthMm : layout.heightMm}
                 onChange={(heightMm) => updateSelected({ heightMm })}
@@ -785,6 +824,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
           </div>
           <div
             className="label-template-canvas"
+            ref={canvasRef}
             tabIndex={0}
             aria-label="라벨 용지"
             onKeyDown={(event) => {
@@ -848,7 +888,11 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                   transformOrigin: "top left",
                   ...(element.kind === "text"
                     ? {
-                        fontSize: `${((element.fontSizeMm ?? 3) / layout.widthMm) * 100}cqw`,
+                        fontSize: `calc(var(--label-paper-height-px, 0px) * ${
+                          (Math.max(8, Math.round(((element.fontSizeMm ?? 3) * layout.dpi) / 25.4)) * 25.4) /
+                          layout.dpi /
+                          layout.heightMm
+                        })`,
                         justifyContent:
                           element.align === "center" ? "center" : element.align === "right" ? "flex-end" : "flex-start",
                       }
@@ -903,6 +947,8 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
               >
                 {element.kind === "text" && (
                   <LabelElementPreview
+                    element={element}
+                    dpi={layout.dpi}
                     content={element.content || "텍스트"}
                     tags={flatDataTags}
                     groups={dataTagGroups}
@@ -922,6 +968,29 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                 )}
               </div>
             ))}
+            {selected?.kind === "text" && (
+              <button
+                type="button"
+                className="label-object-settings"
+                aria-label="데이터태그 변경"
+                title="데이터태그 변경"
+                style={{
+                  left: `clamp(4px, calc(${((selected.xMm + labelElementBounds(selected).width) / layout.widthMm) * 100}% - 26px), calc(100% - 30px))`,
+                  top: `calc(${(selected.yMm / layout.heightMm) * 100}% - 30px)`,
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setTextEditId(selected.id);
+                }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            )}
           </div>
           <p>
             방향키 1mm 이동 · Ctrl+방향키 0.1mm 이동 · Shift/Ctrl 클릭 다중 선택 · Ctrl+A 전체 선택 · Esc 선택 해제 ·
@@ -993,6 +1062,17 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
           }}
         />
       )}
+      {textEditId && (
+        <BarcodeSourcePicker
+          catalog={decoratedDataTags}
+          sourceType="text"
+          selectedKey={
+            /^\{\{([^{}]+)\}\}$/.exec(layout.elements.find((element) => element.id === textEditId)?.content ?? "")?.[1]
+          }
+          onClose={() => setTextEditId(null)}
+          onSelect={(key) => updateElement(textEditId, { content: `{{${key}}}` })}
+        />
+      )}
       {showTagSettings && (
         <DataTagSettingsModal
           catalog={decoratedDataTags}
@@ -1061,12 +1141,16 @@ function TagViewSwitch({
 }
 
 function LabelElementPreview({
+  element,
+  dpi,
   content,
   tags,
   groups,
   showIcons,
   showSamples,
 }: {
+  element: LabelTemplateElement;
+  dpi: number;
   content: string;
   tags: DataTagDefinition[];
   groups: ReturnType<typeof groupDataTags>;
@@ -1086,7 +1170,7 @@ function LabelElementPreview({
           dangerouslySetInnerHTML={{ __html: renderProjectDataTagIcon(group?.icon || "more") }}
         />
       )}
-      <span>{replaceLabelSamples(content, tags, showSamples)}</span>
+      <LabelCanvasText text={replaceLabelSamples(content, tags, showSamples)} element={element} dpi={dpi} />
     </>
   );
 }

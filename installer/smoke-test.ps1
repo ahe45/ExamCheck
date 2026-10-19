@@ -55,7 +55,8 @@ function Invoke-Db($Action) {
 . (Join-Path $stage 'runtime/data-permissions.ps1')
 Initialize-ExamCheckDataPermissions -DataDirectory $data
 $release = Get-Content (Join-Path $stage 'release.json') -Raw | ConvertFrom-Json
-$password = New-Secret
+# Exercise the minimum numeric-only initial password through the production bootstrap.
+$password = '1234'
 $settings = @{
     format = 1; mariadb = $release.mariadb; webPort = Get-FreePort; apiPort = Get-FreePort
     dbPort = Get-FreePort; lan = $false; dbPassword = New-Secret; jwtSecret = New-Secret
@@ -72,6 +73,11 @@ try {
     if (-not $login.token) { throw 'Admin login failed.' }
     $user = Invoke-RestMethod -Uri "$base/api/v1/auth/me" -Headers @{Authorization="Bearer $($login.token)"}
     if ($user.loginId -ne 'admin') { throw 'Authenticated user mismatch.' }
+    $operatorLoginId = -join ([char[]](0xAC00,0xBC88,0xD638))
+    foreach ($loginId in @($operatorLoginId,'dev')) {
+        $initialLogin = Invoke-RestMethod -Uri "$base/api/v1/auth/login" -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{loginId=$loginId; password=$password} | ConvertTo-Json)
+        if (-not $initialLogin.token) { throw "Four-character initial password login failed: $loginId" }
+    }
     $stored = Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
     if ($stored.initialPassword) { throw 'Initial password was retained after bootstrap.' }
     Invoke-Db 'seed'

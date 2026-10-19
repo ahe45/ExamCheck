@@ -15,19 +15,23 @@ export function BarcodeSourcePicker({
   onClose,
   showValueOption = false,
   initialShowText = true,
+  sourceType = "barcode",
+  selectedKey,
 }: {
   catalog: DataTagCatalog;
   onSelect(key: string, showText: boolean): void;
   onClose(): void;
   showValueOption?: boolean;
   initialShowText?: boolean;
+  sourceType?: "barcode" | "text";
+  selectedKey?: string;
 }) {
   const dialogRef = useDialogFocus<HTMLElement>();
   useEscapeKey(true, onClose);
   const titleId = useId();
   const [showText, setShowText] = useState(initialShowText);
   const groups = groupDataTags(catalog)
-    .map((group) => ({ ...group, tags: group.tags.filter(isBarcodeSource) }))
+    .map((group) => ({ ...group, tags: sourceType === "text" ? group.tags : group.tags.filter(isBarcodeSource) }))
     .filter((group) => group.tags.length > 0);
   return createPortal(
     <div
@@ -47,11 +51,15 @@ export function BarcodeSourcePicker({
         <header>
           <div>
             <p>데이터 선택</p>
-            <h2 id={titleId}>바코드 데이터</h2>
+            <h2 id={titleId}>{sourceType === "text" ? "데이터태그 변경" : "바코드 데이터"}</h2>
           </div>
           <ModalCloseButton onClick={onClose} />
         </header>
-        <p className="barcode-source-help">바코드에 연결할 데이터를 선택하세요.</p>
+        <p className="barcode-source-help">
+          {sourceType === "text"
+            ? "선택한 개체에 표시할 데이터태그를 선택하세요."
+            : "바코드에 연결할 데이터를 선택하세요."}
+        </p>
         {showValueOption && (
           <label className="barcode-source-value-option">
             <input type="checkbox" checked={showText} onChange={(event) => setShowText(event.target.checked)} />
@@ -60,7 +68,15 @@ export function BarcodeSourcePicker({
         )}
         <div className="template-tag-accordion barcode-source-options">
           {groups.map((group) => (
-            <details className="template-tag-accordion-group" key={group.id}>
+            <details
+              className="template-tag-accordion-group"
+              key={group.id}
+              open={
+                sourceType === "text" && group.tags.some((tag) => String(tag.key || tag.dataKey) === selectedKey)
+                  ? true
+                  : undefined
+              }
+            >
               <summary className="template-tag-accordion-summary" tabIndex={0}>
                 <span className="template-tag-group-heading">
                   <span
@@ -80,6 +96,7 @@ export function BarcodeSourcePicker({
                       key={key}
                       type="button"
                       className="template-tag-button template-tag-accordion-button"
+                      aria-pressed={sourceType === "text" ? key === selectedKey : undefined}
                       onClick={() => {
                         // Remove the modal's focus/inert layer before inserting into the canvas.
                         flushSync(onClose);

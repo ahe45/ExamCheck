@@ -80,12 +80,12 @@ describe("security configuration", () => {
     );
   });
 
-  it("rejects missing or default initial passwords in production", () => {
+  it("rejects missing or shorter-than-four initial passwords in production", () => {
     expect(() => resolveInitialAccountSeeds({ NODE_ENV: "production" })).toThrow("ADMIN_INITIAL_PASSWORD");
     expect(() =>
       resolveInitialAccountSeeds({
         NODE_ENV: "production",
-        ADMIN_INITIAL_PASSWORD: "1234",
+        ADMIN_INITIAL_PASSWORD: "123",
         USER_INITIAL_PASSWORD: "user-secret",
         DEVELOPER_INITIAL_PASSWORD: "developer-secret",
       }),
@@ -105,6 +105,24 @@ describe("security configuration", () => {
       }),
     ).toThrow("DEVELOPER_INITIAL_PASSWORD");
   });
+
+  it.each(["1234", "aaaa", "!!!!", "12345678"])(
+    "accepts %s without password complexity rules in production",
+    (password) => {
+      expect(
+        resolveInitialAccountSeeds({
+          NODE_ENV: "production",
+          ADMIN_INITIAL_PASSWORD: password,
+          USER_INITIAL_PASSWORD: password,
+          DEVELOPER_INITIAL_PASSWORD: password,
+        }),
+      ).toEqual([
+        { loginId: "admin", role: "ADMIN", password },
+        { loginId: "가번호", role: "OPERATOR", password },
+        { loginId: "dev", role: "DEVELOPER", password },
+      ]);
+    },
+  );
 
   it("resolves explicitly configured production bootstrap accounts", () => {
     expect(

@@ -229,7 +229,7 @@
 
 .label-canvas-element:focus-visible {
   outline: 2px solid #2563eb;
-  outline-offset: 2px;
+  outline-offset: 0;
 }
 .label-template-toolbox,
 .label-template-properties {
@@ -303,10 +303,9 @@
 
 .label-template-canvas {
   position: relative;
-  container-type: inline-size;
   width: min(100%, 720px);
   flex: 0 0 auto;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid #b9c8dc;
   background-color: #fff;
   background-image: linear-gradient(#eef2f7 1px, transparent 1px), linear-gradient(90deg, #eef2f7 1px, transparent 1px);
@@ -341,6 +340,57 @@
 .label-canvas-element.selected {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
+}
+
+.label-canvas-element.text {
+  align-items: flex-start;
+}
+
+.label-canvas-text {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ZPL ^A0 specifies glyph height; CSS font-size normally specifies the em box.
+   Match the visible capital/digit height, using the paper-height scale above. */
+.label-canvas-text-printer {
+  font-family: Arial, "Liberation Sans", sans-serif;
+  font-weight: 400;
+}
+
+/* Match the SVG font settings used by the server's Unicode raster renderer. */
+.label-canvas-text-unicode {
+  font-family: "Malgun Gothic", "Noto Sans CJK KR", "Arial Unicode MS", sans-serif;
+  font-weight: 600;
+  font-size-adjust: none;
+}
+
+.label-object-settings {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 3px;
+  border: 1px solid #2563eb;
+  border-radius: 5px;
+  background: white;
+  color: #2563eb;
+  cursor: pointer;
+  box-shadow: 0 1px 4px #0002;
+}
+
+.label-object-settings svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  stroke-width: 1.8;
 }
 
 .label-canvas-tag-icon {

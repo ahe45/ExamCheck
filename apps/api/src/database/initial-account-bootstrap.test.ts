@@ -44,7 +44,7 @@ describe("initial account bootstrap", () => {
     await expect(
       bootstrapInitialAccounts(
         connection,
-        { NODE_ENV: "production", ADMIN_INITIAL_PASSWORD: "1234" },
+        { NODE_ENV: "production", ADMIN_INITIAL_PASSWORD: "123" },
         vi.fn((password: string) => `hashed:${password}`),
       ),
     ).rejects.toThrow("ADMIN_INITIAL_PASSWORD");

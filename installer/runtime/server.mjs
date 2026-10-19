@@ -139,11 +139,11 @@ async function loadSettings() {
   const input = JSON.parse(await readFile(firstRun, "utf8"));
   if (
     typeof input.password !== "string" ||
-    input.password.trim().length < 8 ||
+    input.password.trim().length < 4 ||
     input.password.length > 200 ||
     input.password !== input.password.trim()
   )
-    throw new Error("초기 비밀번호는 8자 이상이어야 합니다.");
+    throw new Error("초기 비밀번호는 앞뒤 공백 없이 4자 이상 200자 이하로 입력해 주세요. 문자 조합 제한은 없습니다.");
   settings = {
     format: 1,
     mariadb: release.mariadb,

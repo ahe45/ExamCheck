@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import ExcelJS from "exceljs";
+import sharp from "sharp";
 import { execFile } from "node:child_process";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
@@ -259,39 +260,120 @@ test.describe("FHD 변경 작업 흐름", () => {
     await expect(page.getByLabel("양식 설명", { exact: true })).toHaveValue("공통 편집기 레이아웃 확인");
   });
 
-  test("라벨 글자 크기는 화면과 용지 너비가 달라져도 mm 비율을 유지한다", async ({ page }) => {
+  test("라벨 글자 크기는 용지 높이 비율과 출력 DPI에 맞고 숫자의 실제 높이도 유지한다", async ({ page }) => {
+    test.setTimeout(120_000);
     await login(page, accounts.admin);
     await page.getByRole("button", { name: "양식 관리", exact: true }).click();
     await page.getByRole("button", { name: "라벨 양식", exact: true }).click();
     await page.getByRole("button", { name: "새 양식", exact: true }).click();
     const text = page.locator(".label-canvas-element.text").first();
     const paperWidth = page.getByRole("complementary", { name: "용지 설정" }).getByLabel("너비(mm)", { exact: true });
+    const paperHeight = page.getByRole("complementary", { name: "용지 설정" }).getByLabel("높이(mm)", { exact: true });
+    const resolution = page.getByRole("complementary", { name: "용지 설정" }).getByRole("combobox");
 
     for (const viewportWidth of [1366, 1920]) {
       await page.setViewportSize({ width: viewportWidth, height: 1080 });
       for (const widthMm of [75, 150]) {
         await paperWidth.fill(String(widthMm));
-        for (const fontSizeMm of [1.5, 20, 200]) {
-          await page.getByRole("button", { name: "글꼴 크기 목록 열기" }).click();
-          const input = page.getByRole("spinbutton", { name: "글자 크기(mm)", exact: true });
-          await input.fill(String(fontSizeMm));
-          await input.press("Enter");
-          await expect
-            .poll(async () => {
-              const renderedSizeMm = await text.evaluate((element, labelWidthMm) => {
-                const canvasStyle = getComputedStyle(element.parentElement!);
-                const canvasWidth =
-                  Number.parseFloat(canvasStyle.width) -
-                  Number.parseFloat(canvasStyle.borderLeftWidth) -
-                  Number.parseFloat(canvasStyle.borderRightWidth);
-                return (Number.parseFloat(getComputedStyle(element).fontSize) / canvasWidth) * labelWidthMm;
-              }, widthMm);
-              return Math.abs(renderedSizeMm - fontSizeMm);
-            })
-            .toBeLessThan(0.01);
+        for (const heightMm of [45, 90]) {
+          await paperHeight.fill(String(heightMm));
+          for (const dpi of [203, 300]) {
+            await resolution.selectOption(String(dpi));
+            for (const fontSizeMm of [1.5, 20, Math.min(200, heightMm)]) {
+              await page.getByRole("button", { name: "글꼴 크기 목록 열기" }).click();
+              const input = page.getByRole("spinbutton", { name: "글자 크기(mm)", exact: true });
+              await input.fill(String(fontSizeMm));
+              await input.press("Enter");
+              await expect
+                .poll(async () => {
+                  const renderedSizeMm = await text.evaluate((element, labelHeightMm) => {
+                    const canvasStyle = getComputedStyle(element.parentElement!);
+                    const canvasHeight =
+                      Number.parseFloat(canvasStyle.height) -
+                      Number.parseFloat(canvasStyle.borderTopWidth) -
+                      Number.parseFloat(canvasStyle.borderBottomWidth);
+                    return (Number.parseFloat(getComputedStyle(element).fontSize) / canvasHeight) * labelHeightMm;
+                  }, heightMm);
+                  const printedSizeMm = (Math.max(8, Math.round((fontSizeMm * dpi) / 25.4)) * 25.4) / dpi;
+                  return Math.abs(renderedSizeMm - printedSizeMm);
+                })
+                .toBeLessThan(0.01);
+            }
+            await page.getByRole("button", { name: "글꼴 크기 목록 열기" }).click();
+            const fontInput = page.getByRole("spinbutton", { name: "글자 크기(mm)", exact: true });
+            await fontInput.fill("9");
+            await fontInput.press("Enter");
+            await expect(
+              page.locator(".label-template-tools").getByRole("spinbutton", { name: "높이(mm)", exact: true }),
+            ).toHaveValue("9");
+            await expect(
+              page.locator(".label-template-tools").getByRole("spinbutton", { name: "높이(mm)", exact: true }),
+            ).toHaveAttribute("readonly", "");
+            await expect(text.locator("svg.label-canvas-text-printer")).toHaveAttribute("data-preview-text", /\d/);
+            const canvasHeight = await text.evaluate((element) => {
+              const style = getComputedStyle(element.parentElement!);
+              return parseFloat(style.height) - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth);
+            });
+            const { data, info } = await sharp(await text.screenshot())
+              .removeAlpha()
+              .raw()
+              .toBuffer({ resolveWithObject: true });
+            let first = info.height,
+              last = -1;
+            for (let y = 0; y < info.height; y++)
+              for (let x = 0; x < info.width; x++) {
+                const offset = (y * info.width + x) * info.channels;
+                if (data[offset]! < 80 && data[offset + 1]! < 80 && data[offset + 2]! < 80) {
+                  first = Math.min(first, y);
+                  last = Math.max(last, y);
+                }
+              }
+            expect(last).toBeGreaterThanOrEqual(first);
+            expect(first).toBeLessThanOrEqual(2);
+            const printedMm = (Math.round((9 * dpi) / 25.4) * 25.4) / dpi;
+            expect(
+              Math.abs(last - first + 1 - Math.round((canvasHeight * Math.min(9, printedMm)) / heightMm)),
+            ).toBeLessThanOrEqual(2);
+          }
         }
       }
     }
+    await paperWidth.fill("75");
+    await paperHeight.fill("45");
+    await page.getByText("샘플데이터로 표시", { exact: true }).click();
+    await expect(page.getByRole("checkbox", { name: "샘플데이터로 표시" })).not.toBeChecked();
+    for (const size of [3, 16]) {
+      await page.getByRole("button", { name: "글꼴 크기 목록 열기" }).click();
+      const input = page.getByRole("spinbutton", { name: "글자 크기(mm)", exact: true });
+      await input.fill(String(size));
+      await input.press("Enter");
+      await expect(text.locator("svg")).toHaveAttribute("data-preview-text", "#가번호");
+      const { data, info } = await sharp(await text.screenshot())
+        .removeAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      let first = info.height,
+        last = -1;
+      for (let y = 0; y < info.height; y++)
+        for (let x = 0; x < info.width; x++) {
+          const offset = (y * info.width + x) * info.channels;
+          if (data[offset]! < 80 && data[offset + 1]! < 80 && data[offset + 2]! < 80) {
+            first = Math.min(first, y);
+            last = Math.max(last, y);
+          }
+        }
+      expect(first).toBeLessThanOrEqual(2);
+      expect(info.height - 1 - last).toBeLessThanOrEqual(2);
+    }
+    await page.getByRole("button", { name: "데이터태그 변경", exact: true }).click();
+    const picker = page.getByRole("dialog", { name: "데이터태그 변경" });
+    await expect(picker.getByRole("button", { name: "가번호", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await picker.getByRole("button", { name: "수험번호", exact: true }).click();
+    await expect(text.locator("svg")).toHaveAttribute("data-preview-text", "#수험번호");
+    await expect(
+      page.locator(".label-template-tools").getByRole("spinbutton", { name: "높이(mm)", exact: true }),
+    ).toHaveValue("16");
+    await page.screenshot({ path: "test-results/label-paper-height-scale.png", fullPage: true });
   });
 
   test("라벨 글자 서식과 개체 크기를 편집하고 Delete로 선택 개체를 삭제한다", async ({ page }) => {
@@ -329,7 +411,8 @@ test.describe("FHD 변경 작업 흐름", () => {
     await page.getByRole("button", { name: "오른쪽 정렬", exact: true }).click();
     await expect(objects.first()).toHaveCSS("justify-content", "flex-end");
     await properties.getByRole("spinbutton", { name: "너비(mm)", exact: true }).fill("40");
-    await properties.getByRole("spinbutton", { name: "높이(mm)", exact: true }).fill("10");
+    await expect(properties.getByRole("spinbutton", { name: "높이(mm)", exact: true })).toHaveValue("5");
+    await expect(properties.getByRole("spinbutton", { name: "높이(mm)", exact: true })).toHaveAttribute("readonly", "");
     await objects.first().click();
     await page.keyboard.press("Control+ArrowRight");
     await page.keyboard.press("ArrowDown");
@@ -351,7 +434,7 @@ test.describe("FHD 변경 작업 흐름", () => {
     await page.getByRole("button", { name: "저장", exact: true }).click();
     const savedLayout = (await (await saved).json()).layout;
     expect(savedLayout.elements[0].fontSizeMm).toBe(5);
-    expect(savedLayout.elements[0]).toMatchObject({ align: "right", widthMm: 40, heightMm: 10 });
+    expect(savedLayout.elements[0]).toMatchObject({ align: "right", widthMm: 40, heightMm: 5 });
     await page.getByRole("button", { name: "양식 목록", exact: true }).click();
     await page
       .locator(".label-template-card")
@@ -382,6 +465,8 @@ test.describe("FHD 변경 작업 흐름", () => {
     const height = properties.getByRole("spinbutton", { name: "높이(mm)", exact: true });
     const x = properties.getByRole("spinbutton", { name: "X(mm)", exact: true });
     const y = properties.getByRole("spinbutton", { name: "Y(mm)", exact: true });
+    await page.getByRole("button", { name: "글꼴 크기 목록 열기" }).click();
+    await page.getByRole("button", { name: "12mm", exact: true }).click();
     await width.fill("20");
     await properties.getByRole("button", { name: "반시계 방향 90도 회전", exact: true }).click();
     await x.fill("4");
@@ -394,7 +479,8 @@ test.describe("FHD 변경 작업 흐름", () => {
     await y.fill("5");
     await objects.nth(2).click();
     await width.fill("10");
-    await height.fill("6");
+    await page.getByRole("button", { name: "글꼴 크기 목록 열기" }).click();
+    await page.getByRole("button", { name: "6mm", exact: true }).click();
     await x.fill("60");
     await y.fill("30");
     await objects.nth(0).click({ modifiers: ["Shift"] });
@@ -532,19 +618,19 @@ test.describe("FHD 변경 작업 흐름", () => {
       const selected = page.locator(".label-canvas-element.selected");
       const canvasBox = (await canvas.boundingBox())!;
       const originalBox = (await selected.boundingBox())!;
-      // 30 x 12 mm becomes 12 x 30 mm; use the canvas content size (excluding its border).
+      // 30 x 9 mm text becomes 9 x 30 mm; height follows the 9 mm font size.
       const scale = (canvasBox.width - 2) / 75;
-      expect(originalBox.width).toBeCloseTo(12 * scale, 0);
+      expect(originalBox.width).toBeCloseTo(9 * scale, 0);
       expect(originalBox.height).toBeCloseTo(30 * scale, 0);
       expect(originalBox.x + originalBox.width / 2).toBeCloseTo(beforeRotation.x + beforeRotation.width / 2, 0);
       expect(originalBox.y + originalBox.height / 2).toBeCloseTo(beforeRotation.y + beforeRotation.height / 2, 0);
-      expect(originalBox.x - canvasBox.x - 1).toBeCloseTo(13 * scale, 0);
+      expect(originalBox.x - canvasBox.x - 1).toBeCloseTo(14.5 * scale, 0);
       // Grab above the existing barcode so overlapping elements do not change the selection.
       await page.mouse.move(originalBox.x + originalBox.width / 2, originalBox.y + originalBox.height / 5);
       await page.mouse.down();
       await page.mouse.move(canvasBox.x + canvasBox.width + 80, canvasBox.y + canvasBox.height + 80, { steps: 5 });
       await page.mouse.up();
-      await expect(properties.getByRole("spinbutton", { name: "X(mm)", exact: true })).toHaveValue("63");
+      await expect(properties.getByRole("spinbutton", { name: "X(mm)", exact: true })).toHaveValue("66");
       await expect(properties.getByRole("spinbutton", { name: "Y(mm)", exact: true })).toHaveValue("15");
       const movedBox = (await selected.boundingBox())!;
       expect(movedBox.x + movedBox.width).toBeLessThanOrEqual(canvasBox.x + canvasBox.width);

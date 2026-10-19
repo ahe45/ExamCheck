@@ -12,7 +12,7 @@ export const defaultLabelLayout: LabelTemplateLayout = {
       xMm: 4,
       yMm: 4,
       widthMm: 67,
-      heightMm: 12,
+      heightMm: 9,
       content: "{{candidate.temporaryNo}}",
       fontSizeMm: 9,
       align: "center",
@@ -33,7 +33,7 @@ export const defaultLabelLayout: LabelTemplateLayout = {
       xMm: 4,
       yMm: 37,
       widthMm: 67,
-      heightMm: 4,
+      heightMm: 2.8,
       content: "EXAM: {{candidate.examNo}}",
       fontSizeMm: 2.8,
       align: "center",
@@ -44,17 +44,20 @@ export const defaultLabelLayout: LabelTemplateLayout = {
 export function cloneLabelLayout(layout: LabelTemplateLayout): LabelTemplateLayout {
   return {
     ...layout,
-    elements: layout.elements.map((element) => ({
-      ...element,
-      ...(element.content ? { content: normalizeLegacyLabelTags(element.content) } : {}),
-    })),
+    elements: layout.elements.map((element) => {
+      const copy = {
+        ...element,
+        ...(element.content ? { content: normalizeLegacyLabelTags(element.content) } : {}),
+      };
+      return copy.kind === "text" ? clampLabelElement(copy, layout) : copy;
+    }),
     ...(layout.sampleData ? { sampleData: { ...layout.sampleData } } : {}),
   };
 }
 
 export function createLabelElement(kind: LabelElementKind, sequence: number): LabelTemplateElement {
   const common = { id: `${kind}-${sequence}`, kind, xMm: 5, yMm: 5, widthMm: 30, heightMm: 7 };
-  if (kind === "text") return { ...common, content: "텍스트", fontSizeMm: 3, align: "left" };
+  if (kind === "text") return { ...common, heightMm: 3, content: "텍스트", fontSizeMm: 3, align: "left" };
   if (kind === "barcode") return { ...common, heightMm: 14, content: "{{candidate.temporaryNo}}", showText: true };
   return { ...common, heightMm: kind === "line" ? 1 : 12, strokeWidthMm: 0.4 };
 }
@@ -78,14 +81,26 @@ export function replaceLabelSamples(content: string, tags: DataTagDefinition[], 
 
 export function clampLabelElement(element: LabelTemplateElement, layout: LabelTemplateLayout): LabelTemplateElement {
   const sideways = element.rotation === 90 || element.rotation === 270;
+  const fontSizeMm =
+    element.kind === "text"
+      ? Math.min(Math.max(1.5, element.fontSizeMm ?? 3), sideways ? layout.widthMm : layout.heightMm, 200)
+      : undefined;
   const widthMm = round(Math.min(Math.max(0.5, element.widthMm), sideways ? layout.heightMm : layout.widthMm));
-  const heightMm = round(Math.min(Math.max(0.5, element.heightMm), sideways ? layout.widthMm : layout.heightMm));
+  const heightMm =
+    fontSizeMm ?? round(Math.min(Math.max(0.5, element.heightMm), sideways ? layout.widthMm : layout.heightMm));
   return {
     ...element,
     widthMm: round(widthMm),
-    heightMm: round(heightMm),
-    xMm: round(Math.min(Math.max(0, element.xMm), layout.widthMm - (sideways ? heightMm : widthMm))),
-    yMm: round(Math.min(Math.max(0, element.yMm), layout.heightMm - (sideways ? widthMm : heightMm))),
+    heightMm,
+    ...(fontSizeMm !== undefined ? { fontSizeMm } : {}),
+    xMm: Math.min(
+      round(Math.max(0, element.xMm)),
+      Math.floor((layout.widthMm - (sideways ? heightMm : widthMm) + 1e-8) * 10) / 10,
+    ),
+    yMm: Math.min(
+      round(Math.max(0, element.yMm)),
+      Math.floor((layout.heightMm - (sideways ? widthMm : heightMm) + 1e-8) * 10) / 10,
+    ),
   };
 }
 

@@ -83,7 +83,7 @@ async function rasterizeText(
   const anchor = align === "center" ? "middle" : align === "right" ? "end" : "start";
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
     <rect width="100%" height="100%" fill="white"/>
-    <text x="${x}" y="${height / 2}" dominant-baseline="middle" text-anchor="${anchor}"
+    <text x="${x}" y="0" dominant-baseline="text-before-edge" text-anchor="${anchor}"
       font-family="${FONT_FAMILY}" font-size="${fontSize}" font-weight="600" fill="black">${escapeXml(content)}</text>
   </svg>`;
   const { data, info } = await sharp(Buffer.from(svg))

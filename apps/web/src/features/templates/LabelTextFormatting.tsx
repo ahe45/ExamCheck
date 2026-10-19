@@ -11,9 +11,11 @@ const alignments = [
 export function LabelTextFormatting({
   element,
   onChange,
+  maxSizeMm = 200,
 }: {
   element: LabelTemplateElement | null;
   onChange(patch: Partial<LabelTemplateElement>): void;
+  maxSizeMm?: number;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -62,7 +64,7 @@ export function LabelTextFormatting({
             </button>
             {open && enabled && (
               <div className="template-toolbar-combo-menu" id={menuId} role="group" aria-label="글꼴 크기 목록">
-                {FONT_SIZES.map((size) => (
+                {FONT_SIZES.filter((size) => size <= maxSizeMm).map((size) => (
                   <button
                     key={size}
                     type="button"
@@ -79,7 +81,7 @@ export function LabelTextFormatting({
                     type="number"
                     aria-label="글자 크기(mm)"
                     min={1.5}
-                    max={200}
+                    max={maxSizeMm}
                     step="any"
                     defaultValue={sizeMm}
                     onKeyDown={(event) => {
@@ -136,6 +138,7 @@ export function LabelObjectNumberField({
   min,
   max,
   onChange,
+  readOnly = false,
 }: {
   label: string;
   name: string;
@@ -143,6 +146,7 @@ export function LabelObjectNumberField({
   min: number;
   max: number;
   onChange(value: number): void;
+  readOnly?: boolean;
 }) {
   return (
     <label className="examlist-object-size-field">
@@ -158,8 +162,11 @@ export function LabelObjectNumberField({
           value={value ?? ""}
           placeholder="-"
           disabled={value === undefined}
+          readOnly={readOnly}
+          title={readOnly ? "글자 크기에 따라 높이가 자동으로 설정됩니다." : undefined}
           onChange={(event) => {
-            if (Number.isFinite(event.currentTarget.valueAsNumber)) onChange(event.currentTarget.valueAsNumber);
+            if (!readOnly && Number.isFinite(event.currentTarget.valueAsNumber))
+              onChange(event.currentTarget.valueAsNumber);
           }}
         />
         <small aria-hidden="true">mm</small>

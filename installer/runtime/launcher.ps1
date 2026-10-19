@@ -56,7 +56,7 @@ function Initialize-Settings {
     $confirm.MaxLength = 200
     $hint = New-Object Windows.Forms.Label
     $hint.SetBounds(20, 142, 390, 22)
-    $hint.Text = '비밀번호와 확인 비밀번호를 입력하세요. (8자 이상)'
+    $hint.Text = '비밀번호와 확인 비밀번호를 입력하세요. (4자 이상, 문자 조합 제한 없음)'
     $lan = New-Object Windows.Forms.CheckBox
     $lan.SetBounds(20, 167, 390, 24)
     $lan.Text = '같은 네트워크의 다른 PC에서도 접속 허용'
@@ -64,8 +64,8 @@ function Initialize-Settings {
     $ok.SetBounds(300, 204, 110, 30)
     $ok.Text = '설정 완료'
     $ok.Add_Click({
-        if ($password.Text.Trim().Length -lt 8 -or $password.Text -ne $password.Text.Trim() -or $password.Text -ne $confirm.Text) {
-            Show-Error '앞뒤 공백 없이 8자 이상의 동일한 비밀번호를 두 번 입력해 주세요.'
+        if ($password.Text.Trim().Length -lt 4 -or $password.Text -ne $password.Text.Trim() -or $password.Text -ne $confirm.Text) {
+            Show-Error '앞뒤 공백 없이 4자 이상의 동일한 비밀번호를 두 번 입력해 주세요. 문자 조합 제한은 없습니다.'
             return
         }
         if ($lan.Checked) {

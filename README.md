@@ -75,7 +75,7 @@ DB 준비 중 `unknown plugin auth_gssapi_client` 오류가 나면 MariaDB가 Wi
 더 강한 범위로 변경할 때 기존 데이터에 충돌이 있으면 설정과 데이터 변경을 모두 취소합니다. 기본값은 수험번호 `시스템 전체`, 가번호 `전형 전체`입니다.
 
 인증 비밀번호는 async scrypt로 검증하며 계정 비밀번호·권한·활성 상태 변경 시 기존 세션을
-무효화합니다. 운영 설정은 JWT secret과 초기 계정 기본 비밀번호를 차단하고 CORS allowlist,
+무효화합니다. 운영 설정은 기본 JWT secret을 차단하고 초기 계정 비밀번호의 명시적 설정과 4자 이상 길이를 확인하며 CORS allowlist,
 보안 헤더, 로그인 제한, 공통 오류·request ID를 적용합니다.
 
 API 환경값은 시작 시 불변 typed `AppConfig`로 한 번 해석하고 HTTP, DB, JWT/session, 로그인 제한,

@@ -185,7 +185,7 @@ function parseElement(
   const xMm = finiteNumber(value.xMm, "가로 위치");
   const yMm = finiteNumber(value.yMm, "세로 위치");
   const widthMm = finiteNumber(value.widthMm, "요소 너비");
-  const heightMm = finiteNumber(value.heightMm, "요소 높이");
+  const heightMm = finiteNumber(value.heightMm, "요소 높이", kind === "text" ? 6 : 1);
   const rotation = value.rotation === undefined ? 0 : value.rotation;
   if (rotation !== 0 && rotation !== 90 && rotation !== 180 && rotation !== 270) {
     throw new BadRequestException("회전 각도는 0°, 90°, 180°, 270° 중에서 선택해 주세요.");
