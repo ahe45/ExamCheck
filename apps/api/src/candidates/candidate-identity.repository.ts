@@ -60,9 +60,17 @@ interface CandidateSourceRow extends RowDataPacket {
   name: string;
   birthDate: string;
   groupName: string;
+  answerSheet: string;
   opt1: string;
   opt2: string;
   opt3: string;
+  opt4: string;
+  opt5: string;
+  opt6: string;
+  opt7: string;
+  opt8: string;
+  opt9: string;
+  opt10: string;
 }
 
 interface SystemProfileRow extends RowDataPacket {
@@ -257,7 +265,7 @@ export class CandidateIdentityRepository {
               cr.room_name AS roomName, cr.room_code AS roomCode,
               cr.examinee_no AS examineeNo, cr.temporary_no AS temporaryNo,
               cr.name, DATE_FORMAT(cr.birth_date, '%Y-%m-%d') AS birthDate,
-              cr.group_name AS groupName, cr.opt1, cr.opt2, cr.opt3
+              cr.group_name AS groupName, cr.answer_sheet AS answerSheet, cr.opt1, cr.opt2, cr.opt3, cr.opt4, cr.opt5, cr.opt6, cr.opt7, cr.opt8, cr.opt9, cr.opt10
        FROM candidate_record cr
        LEFT JOIN examinee e ON e.examinee_no = cr.examinee_no AND e.exam_name = ?
        WHERE cr.id = ? LIMIT 1`,
@@ -635,18 +643,34 @@ export class CandidateIdentityRepository {
       scheduleSegmentId,
       source.designatedSort,
       source.groupName,
+      source.answerSheet,
       source.opt1,
       source.opt2,
       source.opt3,
+      source.opt4 ?? "",
+      source.opt5 ?? "",
+      source.opt6 ?? "",
+      source.opt7 ?? "",
+      source.opt8 ?? "",
+      source.opt9 ?? "",
+      source.opt10 ?? "",
       preassigned?.value ?? null,
       preassigned?.displayWidth ?? null,
     ]);
     const values = [
       source.designatedSort,
       source.groupName,
+      source.answerSheet,
       source.opt1,
       source.opt2,
       source.opt3,
+      source.opt4 ?? "",
+      source.opt5 ?? "",
+      source.opt6 ?? "",
+      source.opt7 ?? "",
+      source.opt8 ?? "",
+      source.opt9 ?? "",
+      source.opt10 ?? "",
       preassigned?.value ?? null,
       preassigned?.displayWidth ?? null,
       hash,
@@ -654,7 +678,8 @@ export class CandidateIdentityRepository {
     if (existing) {
       await executor.execute(
         `UPDATE candidate_registration
-         SET designated_sort = ?, group_name = ?, opt1 = ?, opt2 = ?, opt3 = ?,
+         SET designated_sort = ?, group_name = ?, answer_sheet = ?, opt1 = ?, opt2 = ?, opt3 = ?,
+             opt4 = ?, opt5 = ?, opt6 = ?, opt7 = ?, opt8 = ?, opt9 = ?, opt10 = ?,
              preassigned_value = ?, preassigned_display_width = ?, source_hash = ?, status = 'ACTIVE'
          WHERE id = ?`,
         [...values, existing.id],
@@ -665,8 +690,9 @@ export class CandidateIdentityRepository {
       const [result] = await executor.execute<ResultSetHeader>(
         `INSERT INTO candidate_registration
           (candidate_id, schedule_segment_id, source_candidate_record_id, designated_sort,
-           group_name, opt1, opt2, opt3, preassigned_value, preassigned_display_width, source_hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           group_name, answer_sheet, opt1, opt2, opt3, opt4, opt5, opt6, opt7, opt8, opt9, opt10,
+           preassigned_value, preassigned_display_width, source_hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [candidateId, scheduleSegmentId, source.id, ...values],
       );
       return requiredInsertId(result, "candidate registration");

@@ -32,9 +32,17 @@ export interface ExamineeRow extends RowDataPacket {
   buildingCode: string;
   roomCode: string;
   groupName: string;
+  answerSheet?: string;
   opt1: string;
   opt2: string;
   opt3: string;
+  opt4?: string;
+  opt5?: string;
+  opt6?: string;
+  opt7?: string;
+  opt8?: string;
+  opt9?: string;
+  opt10?: string;
   absent: boolean;
 }
 

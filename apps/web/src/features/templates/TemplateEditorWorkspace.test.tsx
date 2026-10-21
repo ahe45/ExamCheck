@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const editorMock = vi.hoisted(() => ({
@@ -40,6 +40,7 @@ vi.mock("../../shared/api/form-templates", () => ({
 vi.mock("./template-renderer", () => ({
   openTemplatePrintWindow: vi.fn(),
   renderTemplateHtml: vi.fn((html: string) => html),
+  getTemplatePageSettings: vi.fn(() => ({})),
 }));
 
 import { saveFormTemplate } from "../../shared/api/form-templates";
@@ -144,7 +145,7 @@ describe("TemplateEditorWorkspace lifecycle", () => {
     }
   });
 
-  it("입력 라벨과 목록 이동을 제공하고 변경 전에는 저장 버튼을 비활성화한다", () => {
+  it("상단 바와 정보·목록 버튼 없이 우측 고정 영역에서 미리보기와 저장을 제공한다", () => {
     const onClose = vi.fn();
     const draft = createBlankDraft(100);
     const view = render(
@@ -164,25 +165,22 @@ describe("TemplateEditorWorkspace lifecycle", () => {
     );
 
     expect(screen.queryByRole("button", { name: "양식 정보" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "양식 목록" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("양식 목록으로 돌아가기")).not.toBeInTheDocument();
     expect(screen.queryByText("v새 양식")).not.toBeInTheDocument();
-    expect(screen.getByText("제목", { selector: ".template-editor-context-field > span" })).toBeVisible();
-    expect(screen.getByText("설명", { selector: ".template-editor-context-field > span" })).toBeVisible();
+    expect(view.container.querySelector(".template-editor-context-bar")).toBeNull();
     expect(screen.queryByText("저장되지 않음")).not.toBeInTheDocument();
-    const listButton = screen.getByRole("button", { name: "양식 목록" });
-    expect(listButton.querySelector(".button-action-icon")).not.toBeNull();
-    fireEvent.click(listButton);
-    expect(onClose).toHaveBeenCalledTimes(1);
-    const contextActions = document.querySelector<HTMLElement>(".template-editor-context-actions");
+    const contextActions = view.container.querySelector<HTMLElement>(".template-editor-panel-actions");
     expect(contextActions).not.toBeNull();
     expect(screen.getByRole("button", { name: "미리보기" })).toBeVisible();
     const saveButton = screen.getByRole("button", { name: "저장" });
     expect(saveButton).toBeDisabled();
     expect(Array.from(contextActions!.querySelectorAll("button")).map((button) => button.textContent?.trim())).toEqual([
-      "양식 목록",
       "미리보기",
       "저장",
     ]);
+    expect(contextActions?.parentElement?.parentElement).toHaveClass("template-page-properties-column");
+    expect(contextActions?.closest(".template-page-properties-panel")).toBeNull();
 
     view.rerender(
       <TemplateEditorWorkspace

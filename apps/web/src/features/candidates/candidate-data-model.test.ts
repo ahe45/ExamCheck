@@ -10,7 +10,7 @@ import {
 } from "./candidate-data-model";
 
 describe("candidate data model", () => {
-  it("업로드 양식과 동일한 데이터 컬럼 및 OPT1~3 구성을 제공한다", () => {
+  it("수험생 데이터 컬럼을 고사실명, 대기실명 순서로 표시하고 OPT1~10 구성을 제공한다", () => {
     expect(candidateColumns.map(({ key }) => key)).toEqual([
       "designatedSort",
       "date",
@@ -20,16 +20,24 @@ describe("candidate data model", () => {
       "unit",
       "major",
       "building",
-      "waitingRoom",
       "room",
+      "waitingRoom",
       "examineeNo",
       "temporaryNo",
       "name",
       "birth",
       "group",
+      "answerSheet",
       "opt1",
       "opt2",
       "opt3",
+      "opt4",
+      "opt5",
+      "opt6",
+      "opt7",
+      "opt8",
+      "opt9",
+      "opt10",
     ]);
     expect(candidateUploadPolicies.map(({ value }) => value)).toEqual(["insert-only", "insert-update", "all"]);
   });

@@ -1,0 +1,4 @@
+Source: user-provided identity badge and 01/02/03 number-ticket image.
+Edit tool: built-in image_gen, transparent_background=true.
+Purpose: background extraction and icon framing; Windows ICO size conversion is deterministic.
+Prompt: Remove only the pale background and excessive whitespace. Preserve the identity badge, person silhouette, overlapping number tickets, exact 01/02/03 text, blue/teal palette, outlines and arrangement. Center the complete symbol on a square transparent canvas and enlarge it proportionally to occupy about 88%, leaving a transparent margin. Do not add new text, objects or a background tile.

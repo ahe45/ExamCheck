@@ -1,18 +1,25 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { AuthUser } from "../../shared/api/auth";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import { AppLogoutIcon } from "../../shared/components/ActionIcons";
-import type { AdminSection } from "../../shared/navigation/admin-navigation";
+import type { AdminSection, TemplateKind } from "../../shared/navigation/admin-navigation";
+import { attendanceViews, getAttendanceView } from "../../shared/navigation/admin-navigation";
+import { readTemplateSession, TEMPLATE_TAB_SESSION_KEY } from "../../shared/session/template-session";
 
 interface Props {
   activeSection: AdminSection;
+  templateKind?: TemplateKind;
   user: AuthUser;
   systemProfile: DeveloperSettings;
-  onOpenSection(section: AdminSection): void;
+  onOpenSection(section: AdminSection, kind?: TemplateKind): void;
   onLogout(): void;
 }
 
-export function AdminHeader({ activeSection, user, systemProfile, onOpenSection, onLogout }: Props) {
+export function AdminHeader({ activeSection, templateKind, user, systemProfile, onOpenSection, onLogout }: Props) {
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [attendanceOpen, setAttendanceOpen] = useState(false);
+  const selectedKind =
+    templateKind ?? (readTemplateSession(TEMPLATE_TAB_SESSION_KEY) === "label" ? "label" : "document");
   const developerMode = user.role === "DEVELOPER";
   return (
     <header className="exam-admin-topbar">
@@ -37,18 +44,127 @@ export function AdminHeader({ activeSection, user, systemProfile, onOpenSection,
         </span>
       </button>
       <nav className="exam-admin-topnav" aria-label={developerMode ? "개발자 메뉴" : "관리자 메뉴"}>
+        <div
+          className="exam-admin-menu-group"
+          onMouseEnter={() => {
+            setAttendanceOpen(true);
+            setTemplatesOpen(false);
+          }}
+          onMouseLeave={() => setAttendanceOpen(false)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setAttendanceOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setAttendanceOpen(false);
+              event.currentTarget.querySelector("button")?.focus();
+            }
+          }}
+        >
+          <button
+            type="button"
+            className={getAttendanceView(activeSection) ? "active" : ""}
+            aria-expanded={attendanceOpen}
+            aria-controls="admin-attendance-submenu"
+            onClick={() => setAttendanceOpen((open) => !open)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setAttendanceOpen(true);
+              }
+            }}
+          >
+            <span>
+              <AttendanceIcon />
+            </span>
+            응시 현황
+            <svg className="exam-admin-menu-chevron" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m6 8 4 4 4-4" />
+            </svg>
+          </button>
+          <div id="admin-attendance-submenu" className="exam-admin-submenu" hidden={!attendanceOpen}>
+            {attendanceViews.map((view) => (
+              <button
+                key={view.key}
+                type="button"
+                className={getAttendanceView(activeSection) === view.key ? "active" : ""}
+                aria-current={getAttendanceView(activeSection) === view.key ? "page" : undefined}
+                onClick={() => {
+                  setAttendanceOpen(false);
+                  onOpenSection(`attendance-${view.key}`);
+                }}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <AdminMenuButton
           active={activeSection === "candidates"}
           icon={<CandidatesIcon />}
           label="수험생 데이터"
           onClick={() => onOpenSection("candidates")}
         />
-        <AdminMenuButton
-          active={activeSection === "templates"}
-          icon={<TemplateIcon />}
-          label="양식 관리"
-          onClick={() => onOpenSection("templates")}
-        />
+        <div
+          className="exam-admin-menu-group"
+          onMouseEnter={() => {
+            setTemplatesOpen(true);
+            setAttendanceOpen(false);
+          }}
+          onMouseLeave={() => setTemplatesOpen(false)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setTemplatesOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setTemplatesOpen(false);
+              event.currentTarget.querySelector("button")?.focus();
+            }
+          }}
+        >
+          <button
+            type="button"
+            className={activeSection === "templates" ? "active" : ""}
+            aria-expanded={templatesOpen}
+            aria-controls="admin-template-submenu"
+            onClick={() => setTemplatesOpen((open) => !open)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setTemplatesOpen(true);
+              }
+            }}
+          >
+            <span>
+              <TemplateIcon />
+            </span>
+            양식 관리
+            <svg className="exam-admin-menu-chevron" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="m6 8 4 4 4-4" />
+            </svg>
+          </button>
+          <div id="admin-template-submenu" className="exam-admin-submenu" hidden={!templatesOpen}>
+            {(
+              [
+                ["document", "문서 양식"],
+                ["label", "라벨 양식"],
+              ] as const
+            ).map(([kind, label]) => (
+              <button
+                key={kind}
+                type="button"
+                className={activeSection === "templates" && selectedKind === kind ? "active" : ""}
+                aria-current={activeSection === "templates" && selectedKind === kind ? "page" : undefined}
+                onClick={() => {
+                  setTemplatesOpen(false);
+                  onOpenSection("templates", kind);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         <AdminMenuButton
           active={activeSection === "settings"}
           icon={<NumberIcon />}
@@ -107,6 +223,14 @@ function NumberIcon() {
     <svg viewBox="0 0 20 20" aria-hidden="true">
       <path d="M6 3.5h8A2.5 2.5 0 0 1 16.5 6v8a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 14V6A2.5 2.5 0 0 1 6 3.5Z" />
       <path d="M7 7h6M7 10h6M7 13h3.5" />
+    </svg>
+  );
+}
+
+function AttendanceIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M3 16.5h14M5 13V9m5 4V4m5 9V7" />
     </svg>
   );
 }

@@ -6,9 +6,28 @@ import { candidateFields, type CandidateInput } from "./candidate-fields.js";
 import type { CandidatesApplicationService } from "./candidates.application.js";
 import type { CandidatesRepository } from "./candidates.repository.js";
 import { CandidatesService } from "./candidates.service.js";
+import { parseCandidateWorkbook } from "./candidate-workbook-parser.js";
 
 describe("CandidatesService compatibility facade", () => {
-  it("builds a workbook with required waiting-room and optional exam-room columns in order", async () => {
+  it("loads attendance within the caller's admission scope and exposes resolved statuses", async () => {
+    const fixture = createFixture();
+    fixture.repository.attendance.mockResolvedValue([
+      { id: 1, absent: 0, processed: 1, closed: 0 },
+      { id: 2, absent: 0, processed: 0, closed: 1 },
+      { id: 3, absent: 0, processed: 0, closed: 0 },
+    ]);
+    const user = { id: 7, loginId: "operator", role: "OPERATOR" as const, admissionNames: ["일반전형"] };
+    expect(await fixture.service.attendance(user)).toEqual([
+      { id: 1, attendance: "응시" },
+      { id: 2, attendance: "결시" },
+      { id: 3, attendance: "대기" },
+    ]);
+    const [pool, access] = fixture.repository.attendance.mock.calls[0]!;
+    expect(pool).toBe(fixture.pool);
+    expect(access.params).toEqual(["일반전형"]);
+  });
+
+  it("builds a workbook with required exam-room and optional waiting-room columns in order", async () => {
     const fixture = createFixture();
     const buffer = await fixture.service.buildTemplate();
     const workbook = new ExcelJS.Workbook();
@@ -19,17 +38,45 @@ describe("CandidatesService compatibility facade", () => {
     const roomColumn = candidateFields.findIndex((field) => field.key === "room") + 1;
 
     expect(headers.slice(1)).toEqual(candidateFields.map((field) => field.label));
-    expect(waitingRoomColumn).toBe(candidateFields.findIndex((field) => field.key === "building") + 2);
-    expect(roomColumn).toBe(waitingRoomColumn + 1);
+    expect(roomColumn).toBe(candidateFields.findIndex((field) => field.key === "building") + 2);
+    expect(waitingRoomColumn).toBe(roomColumn + 1);
     expect(worksheet.getRow(1).getCell(waitingRoomColumn).fill).toMatchObject({
-      fgColor: { argb: "FFFFFF00" },
-    });
-    expect(worksheet.getRow(1).getCell(roomColumn).fill).toMatchObject({
       fgColor: { argb: "FFE2F0D9" },
     });
-    expect(worksheet.getRow(2).getCell(waitingRoomColumn).text).toBe("101호 대기실");
-    expect(worksheet.getRow(2).getCell(roomColumn).text).toBe("");
+    expect(worksheet.getRow(1).getCell(roomColumn).fill).toMatchObject({
+      fgColor: { argb: "FFFFFF00" },
+    });
+    expect(worksheet.getRow(2).getCell(waitingRoomColumn).text).toBe("");
+    expect(worksheet.getRow(2).getCell(roomColumn).text).toBe("101호");
+    expect(worksheet.getRow(1).getCell(roomColumn).note).toContain("필수 입력");
+    expect(worksheet.getRow(1).getCell(waitingRoomColumn).note).toContain("선택 입력");
+    const answerSheetColumn = headers.indexOf("답안지");
+    expect(answerSheetColumn).toBe(headers.indexOf("조") + 1);
+    expect(answerSheetColumn).toBe(headers.indexOf("OPT1") - 1);
+    expect(worksheet.getRow(1).getCell(answerSheetColumn).fill).toMatchObject({ fgColor: { argb: "FFE2F0D9" } });
+    expect(worksheet.getRow(1).getCell(answerSheetColumn).note).toContain("선택 입력");
+    expect(worksheet.getRow(2).getCell(answerSheetColumn).text).toBe("");
   });
+
+  it.each(["", "A형", "001"])(
+    "accepts an optional answer-sheet value without changing OPT columns: %s",
+    async (answerSheet) => {
+      const fixture = createFixture();
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load((await fixture.service.buildTemplate()) as never);
+      const worksheet = workbook.worksheets[0]!;
+      for (const [key, value] of [
+        ["answerSheet", answerSheet],
+        ["opt1", "OPT1 값"],
+        ["opt2", "OPT2 값"],
+      ]) {
+        const column = candidateFields.findIndex((field) => field.key === key) + 1;
+        worksheet.getRow(2).getCell(column).value = value;
+      }
+      const rows = await parseCandidateWorkbook(Buffer.from(await workbook.xlsx.writeBuffer()));
+      expect(rows[0]).toMatchObject({ answerSheet, opt1: "OPT1 값", opt2: "OPT2 값" });
+    },
+  );
 
   it("builds dashboard statistics from scoped repository aggregates", async () => {
     const fixture = createFixture();
@@ -73,6 +120,11 @@ describe("CandidatesService compatibility facade", () => {
       ],
       admissionCounts: { waiting: 0, progress: 1, complete: 1 },
       breakdowns: {
+        unit: [],
+        major: [],
+        group: [],
+        date: [],
+        room: [],
         admission: [
           {
             name: "일반전형",
@@ -199,6 +251,7 @@ describe("CandidatesService compatibility facade", () => {
 function createFixture() {
   const pool = {} as Pool;
   const repository = {
+    attendance: vi.fn(),
     list: vi.fn(),
     listDashboardBreakdownCounts: vi.fn(),
     loadExisting: vi.fn().mockResolvedValue(new Map()),
@@ -243,9 +296,17 @@ function candidate(overrides: Partial<CandidateInput> = {}): CandidateInput {
     name: "홍길동",
     birth: "2000-01-01",
     group: "",
+    answerSheet: "",
     opt1: "",
     opt2: "",
     opt3: "",
+    opt4: "",
+    opt5: "",
+    opt6: "",
+    opt7: "",
+    opt8: "",
+    opt9: "",
+    opt10: "",
     ...overrides,
   };
 }

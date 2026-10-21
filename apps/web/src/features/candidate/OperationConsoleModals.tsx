@@ -205,6 +205,7 @@ interface OperationPrintModalProps {
   onPrintTargetChange(target: OperationPrintTarget): void;
   totalCount: number;
   presentCount: number;
+  absentCount: number;
   schedule: OperationSchedule;
   templates: FormTemplateSummary[];
   selectedTemplateCode: string;
@@ -227,11 +228,13 @@ export function OperationPrintModal({
   onPrintTargetChange,
   totalCount,
   presentCount,
+  absentCount,
   onSelect,
   onClose,
   onGenerate,
 }: OperationPrintModalProps) {
   const dialogRef = useDialogFocus<HTMLElement>();
+  const targetCount = printTarget === "PRESENT" ? presentCount : printTarget === "ABSENT" ? absentCount : totalCount;
   return (
     <div
       className="operator-modal-backdrop"
@@ -262,7 +265,6 @@ export function OperationPrintModal({
           <strong>
             {schedule.date} · {schedule.time} · {schedule.periodName}
           </strong>
-          <small>등록된 양식을 선택하면 현재 교시 데이터를 반영한 PDF 파일을 생성합니다.</small>
         </div>
         <fieldset className="operator-print-target" disabled={generating}>
           <legend>출력 대상</legend>
@@ -290,9 +292,19 @@ export function OperationPrintModal({
               응시만 <small>({presentCount.toLocaleString()}명)</small>
             </span>
           </label>
-          {(printTarget === "PRESENT" ? presentCount : totalCount) === 0 && (
-            <p>선택한 출력 대상에 해당하는 수험생이 없습니다.</p>
-          )}
+          <label>
+            <input
+              type="radio"
+              name="operator-print-target"
+              value="ABSENT"
+              checked={printTarget === "ABSENT"}
+              onChange={() => onPrintTargetChange("ABSENT")}
+            />
+            <span>
+              결시만 <small>({absentCount.toLocaleString()}명)</small>
+            </span>
+          </label>
+          {targetCount === 0 && <p>선택한 출력 대상에 해당하는 수험생이 없습니다.</p>}
         </fieldset>
         {generating && progress && (
           <div className="operator-print-progress" aria-live="polite">
@@ -352,12 +364,7 @@ export function OperationPrintModal({
             type="button"
             className="primary"
             onClick={onGenerate}
-            disabled={
-              !selectedTemplateCode ||
-              loading ||
-              generating ||
-              (printTarget === "PRESENT" ? presentCount : totalCount) === 0
-            }
+            disabled={!selectedTemplateCode || loading || generating || targetCount === 0}
           >
             <OperatorPrintIcon />
             <span>{generating ? "PDF 생성 중…" : "PDF 생성"}</span>

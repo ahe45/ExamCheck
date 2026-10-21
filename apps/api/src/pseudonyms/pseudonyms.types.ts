@@ -72,5 +72,6 @@ export interface UpdatePseudonymSettingInput {
   useCandidatePhotos: boolean;
   enableBulkDraw: boolean;
   showAttendanceSelection?: boolean;
+  useAnswerSheet?: boolean;
   ranges: PseudonymTimeRangeInput[];
 }

@@ -29,6 +29,7 @@ describe("UpdatePseudonymSettingUseCase audit boundary", () => {
         useCandidatePhotos: true,
         enableBulkDraw: false,
         showAttendanceSelection: true,
+        useAnswerSheet: false,
       },
     });
     const auditDetails = fixture.audit.record.mock.calls[0]?.[1].details;

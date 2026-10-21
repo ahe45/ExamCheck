@@ -18,6 +18,8 @@ describe("formTemplateDataTags", () => {
         "candidate.roomName",
         "candidate.seatNo",
         "candidate.opt3",
+        "candidate.opt10",
+        "candidate.answerSheet",
         "room.absentCount",
         "signature.author",
         "signature.reviewer",
@@ -36,6 +38,9 @@ describe("formTemplateDataTags", () => {
   });
 
   it("업로드 화면과 같은 사용자 용어를 사용한다", () => {
+    expect(formTemplateDataTags.groups.find((group) => group.key === "option")?.tags.map((tag) => tag.label)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `OPT${index + 1}`),
+    );
     expect(tags.find((tag) => tag.key === "candidate.examDate")?.label).toBe("시험날짜");
     expect(tags.find((tag) => tag.key === "candidate.buildingName")?.label).toBe("고사건물명");
     expect(formTemplateDataTags.groups.find((group) => group.key === "site")?.tags).toContainEqual({

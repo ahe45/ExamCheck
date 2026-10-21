@@ -36,6 +36,14 @@ export const legacyTemplateDataTagAliases = Object.freeze({
   "candidate.opt1": ["registration.opt1"],
   "candidate.opt2": ["registration.opt2"],
   "candidate.opt3": ["registration.opt3"],
+  "candidate.opt4": ["registration.opt4"],
+  "candidate.opt5": ["registration.opt5"],
+  "candidate.opt6": ["registration.opt6"],
+  "candidate.opt7": ["registration.opt7"],
+  "candidate.opt8": ["registration.opt8"],
+  "candidate.opt9": ["registration.opt9"],
+  "candidate.opt10": ["registration.opt10"],
+  "candidate.answerSheet": ["registration.answerSheet"],
 } satisfies Record<string, readonly string[]>);
 
 export function resolveTemplateDataTagValue(key: string, values: Readonly<Record<string, unknown>>): unknown {

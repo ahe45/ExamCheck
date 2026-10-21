@@ -59,17 +59,18 @@ export class ExamineesService {
     assertScheduleScope(scope);
     const admissionName = assertAdmissionAccess(user, scope.admissionName);
     const normalizedNumber = examineeNo.trim();
-    const current = await this.repository.findCurrent(normalizedNumber, scope, admissionName);
+    const useAnswerSheet = await this.repository.usesAnswerSheet(scope, admissionName);
+    const current = await this.repository.findCurrent(normalizedNumber, scope, admissionName, useAnswerSheet);
     if (current) {
       return { status: "CURRENT", examinee: normalizeExaminee(current, this.examName) };
     }
 
     const access = buildAdmissionAccessPredicate(user, ADMISSION_SQL_COLUMNS.candidateRecord);
-    const schedules = await this.repository.listOtherSchedules(normalizedNumber, access);
+    const schedules = await this.repository.listOtherSchedules(normalizedNumber, access, useAnswerSheet);
     if (!schedules.length) return { status: "NOT_FOUND", examineeNo: normalizedNumber };
     return {
       status: "OTHER_SCHEDULE",
-      examineeNo: normalizedNumber,
+      examineeNo: schedules[0].examineeNo,
       name: schedules[0].name,
       schedules,
     };

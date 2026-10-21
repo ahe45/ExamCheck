@@ -299,6 +299,10 @@ export class UpdatePseudonymSettingDto implements UpdatePseudonymSettingInput {
   @IsBoolean()
   showAttendanceSelection?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  useAnswerSheet?: boolean;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => PseudonymTimeRangeDto)

@@ -122,6 +122,187 @@
   min-width: 180px;
   max-width: 180px;
 }
+.candidate-data-table th.candidate-number-column,
+.candidate-data-table td.candidate-number-column,
+.candidate-data-table th.candidate-answer-sheet-column,
+.candidate-data-table td.candidate-answer-sheet-column {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
+.candidate-data-table td.candidate-number-column > span,
+.candidate-data-table td.candidate-answer-sheet-column > span {
+  max-width: 98px;
+}
+.candidate-editable-row {
+  cursor: pointer;
+}
+.candidate-editable-row:hover td,
+.candidate-editable-row:focus-visible td {
+  background: #f0f5ff;
+}
+.candidate-editable-row:focus-visible {
+  outline: 2px solid #3264f5;
+  outline-offset: -2px;
+}
+
+.candidate-detail-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, calc(100vw - 40px));
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 72px #17203333;
+}
+.candidate-detail-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid #e5eaf2;
+}
+.candidate-detail-modal header p {
+  margin: 0 0 4px;
+  color: #8793a5;
+  font-size: 11px;
+}
+.candidate-detail-modal h2 {
+  margin: 0;
+  color: #1d2738;
+  font-size: 19px;
+}
+.candidate-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 174px;
+  gap: 24px;
+  padding: 22px 24px;
+  overflow: auto;
+}
+.candidate-detail-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px 14px;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  border: 0;
+}
+.candidate-detail-fields label {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  color: #536177;
+  font-size: 12px;
+  font-weight: 600;
+}
+.candidate-detail-fields label b {
+  color: #e45454;
+}
+.candidate-detail-fields input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #dce3ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #344156;
+  font-size: 12px;
+}
+.candidate-detail-fields input:focus {
+  outline: 2px solid #3264f540;
+  border-color: #3264f5;
+}
+.candidate-detail-photo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-self: start;
+}
+.candidate-detail-photo-frame {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border: 1px solid #dce3ed;
+  border-radius: 10px;
+  background: #f6f8fc;
+}
+.candidate-detail-photo-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.candidate-detail-photo-frame > div {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+  color: #8793a5;
+  font-size: 11px;
+}
+.candidate-detail-photo-frame strong {
+  font-size: 13px;
+}
+.candidate-detail-photo-panel > p {
+  margin: 0;
+  color: #176b5f;
+  font-size: 11px;
+}
+.candidate-detail-modal > footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 24px;
+  border-top: 1px solid #e5eaf2;
+}
+.candidate-detail-required {
+  margin-right: auto;
+  color: #8793a5;
+  font-size: 11px;
+}
+.candidate-detail-error {
+  margin: 12px 24px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #a63a32;
+  background: #fff0ef;
+  font-size: 12px;
+}
+.candidate-detail-loading {
+  padding: 48px;
+  color: #8793a5;
+  text-align: center;
+}
+.candidate-detail-discard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+@media (max-width: 1000px) {
+  .candidate-detail-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 650px) {
+  .candidate-detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .candidate-detail-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .candidate-detail-photo-panel {
+    width: 150px;
+    justify-self: center;
+  }
+}
 .candidate-data-table th.candidate-row-number,
 .candidate-data-table td.candidate-row-number {
   position: sticky;
@@ -162,6 +343,10 @@
 }
 .candidate-data-table td.candidate-wide-column span {
   width: 100%;
+}
+.candidate-data-view .candidate-data-table td > span {
+  margin-inline: auto;
+  text-align: center;
 }
 .candidate-data-table td.emphasis {
   color: #2359da;
@@ -711,4 +896,15 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.candidate-data-actions .candidate-opt-toggle {
+  flex: 0 0 128px;
+  width: 128px;
+  min-width: 128px;
+  max-width: 128px;
+  white-space: nowrap;
+}
+.candidate-opt-toggle svg {
+  flex-shrink: 0;
 }

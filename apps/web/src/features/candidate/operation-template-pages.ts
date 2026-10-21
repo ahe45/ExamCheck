@@ -11,14 +11,16 @@ import {
 import { emptyTemplateSignatureNames, type TemplateSignatureNames } from "../templates/template-signatures";
 import { operationRowAttendance, type OperationGridContext, type OperationRow } from "./operation-view-model";
 
-export type OperationPrintTarget = "ALL" | "PRESENT";
+export type OperationPrintTarget = "ALL" | "PRESENT" | "ABSENT";
 
 export function selectOperationPrintRows(
   rows: OperationRow[],
   target: OperationPrintTarget,
   context: OperationGridContext,
 ) {
-  return target === "PRESENT" ? rows.filter((row) => operationRowAttendance(row, context) === "응시") : rows;
+  if (target === "ALL") return rows;
+  const attendance = target === "PRESENT" ? "응시" : "결시";
+  return rows.filter((row) => operationRowAttendance(row, context) === attendance);
 }
 
 export interface OperationTemplateContext {
@@ -66,7 +68,9 @@ export function createOperationTemplatePages(
     throw new Error(
       context.printTarget === "PRESENT"
         ? "응시한 수험생이 없어 출력할 수 없습니다."
-        : "PDF로 생성할 수험생 데이터가 없습니다.",
+        : context.printTarget === "ABSENT"
+          ? "결시한 수험생이 없어 출력할 수 없습니다."
+          : "PDF로 생성할 수험생 데이터가 없습니다.",
     );
   const statistics = new Map<OperationRow, { total: number; present: number; absent: number }>();
   for (const group of template.usageScope === "ROOM" ? groupByRoom(sourceRows) : [sourceRows]) {
@@ -206,6 +210,14 @@ function templateValues(
     "candidate.opt1": candidate?.opt1 || "",
     "candidate.opt2": candidate?.opt2 || "",
     "candidate.opt3": candidate?.opt3 || "",
+    "candidate.opt4": candidate?.opt4 || "",
+    "candidate.opt5": candidate?.opt5 || "",
+    "candidate.opt6": candidate?.opt6 || "",
+    "candidate.opt7": candidate?.opt7 || "",
+    "candidate.opt8": candidate?.opt8 || "",
+    "candidate.opt9": candidate?.opt9 || "",
+    "candidate.opt10": candidate?.opt10 || "",
+    "candidate.answerSheet": candidate?.answerSheet || "",
     "room.assignedCount": counts.total,
     "room.presentCount": counts.present,
     "room.absentCount": counts.absent,

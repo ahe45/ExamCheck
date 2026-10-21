@@ -56,6 +56,7 @@ describe("operation print modal", () => {
       printTarget: "ALL" as const,
       totalCount: 10,
       presentCount: 3,
+      absentCount: 7,
       onPrintTargetChange: onTarget,
       onSelect: vi.fn(),
       onClose: vi.fn(),
@@ -65,6 +66,15 @@ describe("operation print modal", () => {
     expect(screen.getByRole("radio", { name: "전체 (10명)" })).toBeChecked();
     fireEvent.click(screen.getByRole("radio", { name: "응시만 (3명)" }));
     expect(onTarget).toHaveBeenCalledWith("PRESENT");
+    expect(
+      screen.queryByText("등록된 양식을 선택하면 현재 교시 데이터를 반영한 PDF 파일을 생성합니다."),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "결시만 (7명)" }));
+    expect(onTarget).toHaveBeenCalledWith("ABSENT");
+    view.rerender(<OperationPrintModal {...props} printTarget="ABSENT" />);
+    expect(screen.getByRole("button", { name: "PDF 생성" })).toBeEnabled();
+    view.rerender(<OperationPrintModal {...props} printTarget="ABSENT" absentCount={0} />);
+    expect(screen.getByRole("button", { name: "PDF 생성" })).toBeDisabled();
     view.rerender(<OperationPrintModal {...props} printTarget="PRESENT" presentCount={0} />);
     expect(screen.getByRole("button", { name: "PDF 생성" })).toBeDisabled();
     expect(screen.getByText("선택한 출력 대상에 해당하는 수험생이 없습니다.")).toBeInTheDocument();
@@ -122,6 +132,7 @@ describe("operation print modal", () => {
         onPrintTargetChange={vi.fn()}
         totalCount={10}
         presentCount={8}
+        absentCount={2}
         schedule={schedule}
         templates={[]}
         selectedTemplateCode=""

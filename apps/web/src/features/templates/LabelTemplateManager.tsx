@@ -1,6 +1,6 @@
-import { TemplateEditorMetadataBar } from "./TemplateEditorMetadataBar";
 import { BarcodeSourcePicker } from "./BarcodeSourcePicker";
 import { LabelCanvasText } from "./LabelCanvasText";
+import { LabelResizeControls } from "./LabelResizeControls";
 import { labelElementBounds } from "./label-element-alignment";
 import {
   forwardRef,
@@ -34,7 +34,6 @@ import {
   DeleteButtonIcon,
   EditButtonIcon,
   RefreshButtonIcon,
-  ListButtonIcon,
   PreviewButtonIcon,
   SaveButtonIcon,
 } from "../../shared/components/ActionIcons";
@@ -239,11 +238,6 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     [dirty, editorOpen, persistTemplate],
   );
 
-  function editName(value: string) {
-    setName(value);
-    setDirty(true);
-  }
-
   function addElement(kind: LabelElementKind, content?: string, showText = true) {
     const element = createLabelElement(kind, Date.now());
     if (content) element.content = content;
@@ -329,14 +323,6 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
     setEditorOpen(true);
   }
 
-  function closeEditor() {
-    if (dirty && !window.confirm("저장하지 않은 변경 내용이 있습니다. 라벨 양식 목록으로 이동할까요?")) return;
-    setEditorOpen(false);
-    setSource(null);
-    setDirty(false);
-    onDirtyChange?.(false);
-  }
-
   async function changeActive(template: LabelTemplateSummary, active: boolean) {
     if (busy) return;
     setBusy("active");
@@ -416,6 +402,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
 
   const selected =
     selectedIds.length === 1 ? layout.elements.find((element) => element.id === selectedIds[0]) || null : null;
+  const selectedElements = layout.elements.filter((element) => selectedIds.includes(element.id));
   const decoratedDataTags = useMemo(
     () => updateTagExamples(decorateCatalog(dataTagCatalog), layout.sampleData || {}),
     [dataTagCatalog, layout.sampleData],
@@ -541,40 +528,6 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
   return (
     <section className="label-template-manager">
       <h2 className="label-editor-accessible-title">라벨 양식 편집</h2>
-      <TemplateEditorMetadataBar
-        name={name}
-        description={description}
-        onNameChange={editName}
-        onDescriptionChange={(value) => {
-          setDescription(value);
-          setDirty(true);
-        }}
-      >
-        <button
-          className="exam-outline-button template-editor-list-button"
-          onClick={closeEditor}
-          disabled={Boolean(busy)}
-        >
-          <ListButtonIcon />
-          <span>양식 목록</span>
-        </button>
-        <button
-          className="exam-ghost-button template-editor-preview-button"
-          onClick={() => void printTestLabel()}
-          disabled={Boolean(busy)}
-        >
-          <PreviewButtonIcon />
-          <span>{busy === "print" ? "전송 중…" : "테스트 출력"}</span>
-        </button>
-        <button
-          className="exam-primary-button template-editor-save-button"
-          onClick={() => void persistTemplate()}
-          disabled={Boolean(busy) || !dirty}
-        >
-          <SaveButtonIcon />
-          <span>{busy === "save" ? "저장 중…" : "저장"}</span>
-        </button>
-      </TemplateEditorMetadataBar>
 
       {notice && <TemplateNotice notice={notice} onClose={() => setNotice(null)} />}
 
@@ -656,7 +609,7 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
               <LabelObjectNumberField
                 label="세로"
                 name="높이(mm)"
-                value={selected?.heightMm}
+                value={selected?.kind === "text" ? Number(selected.heightMm.toFixed(2)) : selected?.heightMm}
                 readOnly={selected?.kind === "text"}
                 min={0.5}
                 max={selected?.rotation === 90 || selected?.rotation === 270 ? layout.widthMm : layout.heightMm}
@@ -968,6 +921,23 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                 )}
               </div>
             ))}
+            {selectedElements.map((element) => (
+              <LabelResizeControls
+                key={element.id}
+                element={element}
+                selectedElements={selectedElements}
+                layout={layout}
+                canvasRef={canvasRef}
+                onResize={(resized) => {
+                  dragRef.current = null;
+                  const updates = new Map(resized.map((item) => [item.id, item]));
+                  changeLayout((current) => ({
+                    ...current,
+                    elements: current.elements.map((item) => updates.get(item.id) ?? item),
+                  }));
+                }}
+              />
+            ))}
             {selected?.kind === "text" && (
               <button
                 type="button"
@@ -975,8 +945,8 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                 aria-label="데이터태그 변경"
                 title="데이터태그 변경"
                 style={{
-                  left: `clamp(4px, calc(${((selected.xMm + labelElementBounds(selected).width) / layout.widthMm) * 100}% - 26px), calc(100% - 30px))`,
-                  top: `calc(${(selected.yMm / layout.heightMm) * 100}% - 30px)`,
+                  left: `clamp(4px, calc(${((selected.xMm + labelElementBounds(selected).width) / layout.widthMm) * 100}% - 28px), calc(100% - 28px))`,
+                  top: `calc(${(selected.yMm / layout.heightMm) * 100}% + 4px)`,
                 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 onKeyDown={(event) => event.stopPropagation()}
@@ -986,67 +956,109 @@ export const LabelTemplateManager = forwardRef<LabelTemplateManagerHandle, Props
                 }}
               >
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3Z" />
+                  <path d="m9.5 3-.5 2-1.5.9-2-.6L3 9.7l1.5 1.4v1.8L3 14.3l2.5 4.4 2-.6L9 19l.5 2h5l.5-2 1.5-.9 2 .6 2.5-4.4-1.5-1.4v-1.8L21 9.7l-2.5-4.4-2 .6L15 5l-.5-2Z" />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
               </button>
             )}
           </div>
-          <p>
-            방향키 1mm 이동 · Ctrl+방향키 0.1mm 이동 · Shift/Ctrl 클릭 다중 선택 · Ctrl+A 전체 선택 · Esc 선택 해제 ·
-            Delete 삭제
-          </p>
         </main>
 
-        <aside className="label-template-paper label-template-properties" aria-label="용지 설정">
-          <h3>용지 설정</h3>
-          <div className="label-property-row">
-            <NumberField
-              label="너비(mm)"
-              value={layout.widthMm}
-              min={20}
-              max={200}
-              step={1}
-              onChange={(widthMm) => changeLayout((current) => resizeLayout(current, { widthMm }))}
-            />
-            <NumberField
-              label="높이(mm)"
-              value={layout.heightMm}
-              min={10}
-              max={150}
-              step={1}
-              onChange={(heightMm) => changeLayout((current) => resizeLayout(current, { heightMm }))}
-            />
-          </div>
-          <label>
-            해상도
-            <select
-              value={layout.dpi}
-              onChange={(event) =>
-                changeLayout((current) => ({ ...current, dpi: Number(event.target.value) as 203 | 300 }))
-              }
-            >
-              <option value={203}>203 dpi</option>
-              <option value={300}>300 dpi</option>
-            </select>
-          </label>
+        <aside className="label-template-properties-column" aria-label="라벨 설정 및 작업">
+          <div className="label-template-paper label-template-properties" aria-label="용지 설정">
+            <label>
+              제목
+              <input
+                aria-label="양식 제목"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setDirty(true);
+                }}
+              />
+            </label>
+            <label>
+              설명
+              <input
+                aria-label="양식 설명"
+                value={description}
+                onChange={(event) => {
+                  setDescription(event.target.value);
+                  setDirty(true);
+                }}
+              />
+            </label>
+            <h3>용지 설정</h3>
+            <div className="label-property-row">
+              <NumberField
+                label="너비(mm)"
+                value={layout.widthMm}
+                min={20}
+                max={200}
+                step={1}
+                onChange={(widthMm) => changeLayout((current) => resizeLayout(current, { widthMm }))}
+              />
+              <NumberField
+                label="높이(mm)"
+                value={layout.heightMm}
+                min={10}
+                max={150}
+                step={1}
+                onChange={(heightMm) => changeLayout((current) => resizeLayout(current, { heightMm }))}
+              />
+            </div>
+            <label>
+              해상도
+              <select
+                value={layout.dpi}
+                onChange={(event) =>
+                  changeLayout((current) => ({ ...current, dpi: Number(event.target.value) as 203 | 300 }))
+                }
+              >
+                <option value={203}>203 dpi</option>
+                <option value={300}>300 dpi</option>
+              </select>
+            </label>
 
-          <label>
-            기본 인쇄 매수
-            <input
-              type="number"
-              min={1}
-              max={10}
-              step={1}
-              value={defaultCopies}
-              disabled={Boolean(busy)}
-              onChange={(event) => {
-                setDefaultCopies(event.target.value === "" ? "" : Number(event.target.value));
-                setDirty(true);
-              }}
-            />
-          </label>
-          <p className="label-property-empty">1~10매 · 사용자 화면에서 출력 매수를 변경할 수 있습니다.</p>
+            <label>
+              기본 인쇄 매수
+              <input
+                type="number"
+                min={1}
+                max={10}
+                step={1}
+                value={defaultCopies}
+                disabled={Boolean(busy)}
+                onChange={(event) => {
+                  setDefaultCopies(event.target.value === "" ? "" : Number(event.target.value));
+                  setDirty(true);
+                }}
+              />
+            </label>
+            <p className="label-property-empty">1~10매 · 사용자 화면에서 출력 매수를 변경할 수 있습니다.</p>
+          </div>
+          <footer className="template-editor-panel-footer" aria-label="양식 작업">
+            <div className="template-editor-panel-actions">
+              <button
+                className="exam-ghost-button template-editor-preview-button"
+                type="button"
+                onClick={() => void printTestLabel()}
+                disabled={Boolean(busy)}
+              >
+                <PreviewButtonIcon />
+                <span>{busy === "print" ? "전송 중…" : "테스트 출력"}</span>
+              </button>
+              <button
+                className="exam-primary-button template-editor-save-button"
+                type="button"
+                onClick={() => void persistTemplate()}
+                disabled={Boolean(busy) || !dirty}
+              >
+                <SaveButtonIcon />
+                <span>{busy === "save" ? "저장 중…" : "저장"}</span>
+              </button>
+            </div>
+          </footer>
         </aside>
       </div>
 

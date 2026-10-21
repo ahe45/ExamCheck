@@ -8,6 +8,7 @@ import {
 } from "../../shared/api/form-templates";
 import type { DataTagCatalog } from "../../shared/templates/template-editor-contracts";
 import type { PrinterService } from "../printer/PrinterService";
+import type { TemplateKind } from "../../shared/navigation/admin-navigation";
 import type { PrinterDiagnostic } from "../printer/printer.types";
 import { LabelTemplateManager, type LabelTemplateManagerHandle } from "./LabelTemplateManager";
 import type { TemplateEditorWorkspaceHandle } from "./TemplateEditorWorkspace";
@@ -65,17 +66,20 @@ export interface FormTemplateManagerHandle {
 interface FormTemplateManagerProps {
   token: string;
   resetKey?: number;
+  kind?: TemplateKind;
   printerService?: PrinterService;
   printerDiagnostic?: PrinterDiagnostic;
   onDirtyChange?(dirty: boolean): void;
 }
 
 export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTemplateManagerProps>(
-  function FormTemplateManager({ token, resetKey = 0, printerService, printerDiagnostic, onDirtyChange }, ref) {
+  function FormTemplateManager({ token, resetKey = 0, kind, printerService, printerDiagnostic, onDirtyChange }, ref) {
     const workspaceRef = useRef<TemplateEditorWorkspaceHandle>(null);
     const labelManagerRef = useRef<LabelTemplateManagerHandle>(null);
     const [initialEditorSession] = useState(() =>
-      resetKey === 0 && readTemplateSession(TEMPLATE_TAB_SESSION_KEY) !== "label" ? readEditorSession() : null,
+      resetKey === 0 && (kind ?? readTemplateSession(TEMPLATE_TAB_SESSION_KEY)) !== "label"
+        ? readEditorSession()
+        : null,
     );
     const restoredSessionRef = useRef<FormTemplateEditorSession | null>(initialEditorSession);
     const editorSourceIdRef = useRef("");
@@ -96,10 +100,10 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [notice, setNotice] = useState<TemplateNoticeValue | null>(null);
-    const [templateKind, setTemplateKind] = useState<"document" | "label">(() =>
-      resetKey === 0 && readTemplateSession(TEMPLATE_TAB_SESSION_KEY) === "label" ? "label" : "document",
+    const [templateKind, setTemplateKind] = useState<"document" | "label">(
+      () =>
+        kind ?? (resetKey === 0 && readTemplateSession(TEMPLATE_TAB_SESSION_KEY) === "label" ? "label" : "document"),
     );
-    const [sectionDirty, setSectionDirty] = useState(false);
 
     useImperativeHandle(
       ref,
@@ -114,7 +118,6 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
 
     const handleDirtyChange = useCallback(
       (dirty: boolean) => {
-        setSectionDirty(dirty);
         onDirtyChange?.(dirty);
       },
       [onDirtyChange],
@@ -173,20 +176,15 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
       if (resetKey > 0) {
         clearEditorSession();
         clearTemplateSession(LABEL_EDITOR_SESSION_KEY);
-        writeTemplateSession(TEMPLATE_TAB_SESSION_KEY, "document");
+        writeTemplateSession(TEMPLATE_TAB_SESSION_KEY, kind ?? "document");
         restoredSessionRef.current = null;
         editorSourceIdRef.current = "";
         setEditorSourceId("");
         setDraft(null);
-        setTemplateKind("document");
+        setTemplateKind(kind ?? "document");
         handleDirtyChange(false);
       }
-    }, [handleDirtyChange, resetKey]);
-
-    function selectTemplateKind(kind: "document" | "label") {
-      setTemplateKind(kind);
-      writeTemplateSession(TEMPLATE_TAB_SESSION_KEY, kind);
-    }
+    }, [handleDirtyChange, resetKey, kind]);
 
     useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
@@ -304,22 +302,6 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
     if (!draft) {
       return (
         <div className="template-management-shell">
-          <nav className="template-kind-tabs" aria-label="양식 종류">
-            <button
-              className={templateKind === "document" ? "active" : ""}
-              onClick={() => selectTemplateKind("document")}
-              disabled={sectionDirty && templateKind !== "document"}
-            >
-              문서 양식
-            </button>
-            <button
-              className={templateKind === "label" ? "active" : ""}
-              onClick={() => selectTemplateKind("label")}
-              disabled={sectionDirty && templateKind !== "label"}
-            >
-              라벨 양식
-            </button>
-          </nav>
           {templateKind === "document" ? (
             <TemplateLibrary
               token={token}
@@ -335,6 +317,7 @@ export const FormTemplateManager = forwardRef<FormTemplateManagerHandle, FormTem
             />
           ) : (
             <LabelTemplateManager
+              key={resetKey}
               ref={labelManagerRef}
               token={token}
               service={printerService}

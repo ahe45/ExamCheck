@@ -57,6 +57,7 @@ interface Options {
   configuredRanges: PseudonymTimeRange[];
   useCandidatePhotos: boolean;
   showAttendanceSelection?: boolean;
+  useAnswerSheet?: boolean;
   range: { start: number; end: number };
   autoDrawEnabled: boolean;
   autoDrawDelaySeconds: number;
@@ -183,7 +184,13 @@ export function useOperationCandidateController(options: Options) {
         );
         if (!isCurrentScheduleRequest(request, lookupRequestSequenceRef.current, currentScheduleKeyRef.current)) return;
         if (lookup.status === "NOT_FOUND") {
-          dispatch({ type: "SET_NOTICE", value: { kind: "error", text: "존재하지 않는 수험번호입니다." } });
+          dispatch({
+            type: "SET_NOTICE",
+            value: {
+              kind: "error",
+              text: config.useAnswerSheet ? "등록된 답안지 값을 찾을 수 없습니다." : "존재하지 않는 수험번호입니다.",
+            },
+          });
           return;
         }
         if (lookup.status === "OTHER_SCHEDULE") {

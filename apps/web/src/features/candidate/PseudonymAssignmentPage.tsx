@@ -1,3 +1,6 @@
+import { createPortal } from "react-dom";
+import { OperationCandidateDisplay } from "./OperationCandidateDisplay";
+import { useCandidateDisplayWindow } from "./useCandidateDisplayWindow";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import type { AuthUser } from "../../shared/api/auth";
 import { deleteCandidateHistory } from "../../shared/api/pseudonyms";
@@ -77,6 +80,7 @@ export function PseudonymAssignmentPage(props: Props) {
     configuredRanges,
     useCandidatePhotos,
     showAttendanceSelection,
+    useAnswerSheet,
     autoDrawEnabled,
     autoDrawDelaySeconds,
     printPreassignedLabel,
@@ -128,6 +132,7 @@ export function PseudonymAssignmentPage(props: Props) {
     useCandidatePhotos,
     range,
     showAttendanceSelection,
+    useAnswerSheet,
     autoDrawEnabled: autoDrawEnabled && !historyResetOpen,
     autoDrawDelaySeconds,
     onRangeChange: setRange,
@@ -383,27 +388,53 @@ export function PseudonymAssignmentPage(props: Props) {
     });
   }
 
-  if (printerPageOpen) {
-    return (
-      <PrinterSetupPage
-        mode={props.mode}
-        token={props.token}
-        user={props.user}
-        service={props.service}
-        diagnostic={props.diagnostic}
-        printers={props.printers}
-        selectedPrinterId={props.selectedPrinterId}
-        busy={props.diagnosticBusy}
-        onDiagnose={props.onDiagnose}
-        onSelectPrinter={props.onSelectPrinter}
-        onBack={() => setPrinterPageOpen(false)}
-        onLogout={props.onLogout}
-      />
+  const displayBlocked = useCallback(
+    () =>
+      setNotice({
+        kind: "error",
+        text: "수험생 안내 창을 열 수 없습니다. 브라우저에서 팝업을 허용한 후 다시 눌러 주세요.",
+      }),
+    [setNotice],
+  );
+  const candidateDisplay = useCandidateDisplayWindow(displayBlocked);
+  const drawProps = {
+    showAttendanceSelection: showAttendanceSelection,
+    registrationAbsent: candidateController.registrationAbsent,
+    position: drawPopoverPosition ?? { left: 0, top: 0 },
+    sequential: selectedMode === "SEQUENTIAL",
+    matching: selectedMode === "MANUAL",
+    manualNumber: manualNumber,
+    onManualNumber: setManualNumber,
+    sequentialPreviewNumber: sequentialPreviewNumber,
+    previewLoading: searching,
+    assignment: assignment,
+    previewNumber: drawPreviewNumber,
+    autoDrawEnabled: autoDrawEnabled,
+    remainingMs: autoDrawRemainingMs,
+    delaySeconds: autoDrawDelaySeconds,
+    canAssign: Boolean(canAssign),
+    assigning: assigning,
+    onClose: closeDrawPopover,
+    onAssign: () => void assign(),
+  };
+  const display =
+    candidateDisplay.container &&
+    createPortal(
+      <OperationCandidateDisplay
+        candidate={candidate}
+        assignment={assignment}
+        selectedMode={selectedMode}
+        useCandidatePhotos={useCandidatePhotos}
+        photoUrl={photoUrl}
+        drawOpen={drawPopoverOpen}
+        drawProps={drawProps}
+      />,
+      candidateDisplay.container,
     );
-  }
 
   return (
     <div className="operator-console">
+      {display}
       <OperationConsoleHeader
         systemProfile={props.systemProfile}
         schedule={props.schedule}
@@ -417,10 +448,13 @@ export function PseudonymAssignmentPage(props: Props) {
         settingsRef={headerSettingsRef}
         labelPrintingEnabled={labelPrintingEnabled}
         loginId={props.user.loginId}
+        candidateDisplayOpen={Boolean(candidateDisplay.container)}
+        onOpenCandidateDisplay={candidateDisplay.open}
         onChangeSchedule={props.onChangeSchedule}
         onToggleSettings={() => setHeaderSettingsOpen((current) => !current)}
         onOpenPrinter={() => {
           setHeaderSettingsOpen(false);
+          closeDrawPopover();
           setPrinterPageOpen(true);
         }}
         resetDisabled={
@@ -452,6 +486,7 @@ export function PseudonymAssignmentPage(props: Props) {
           showAttendanceSelection={
             settingLoaded && showAttendanceSelection && selectedMode !== "PREASSIGNED" && props.user.role !== "VIEWER"
           }
+          useAnswerSheet={useAnswerSheet}
           registrationAbsent={candidateController.registrationAbsent}
           attendanceLocked={candidateController.attendanceLocked}
           attendanceDisabled={operationStatus.closed || !operationStatusLoaded || closingOperation}
@@ -464,6 +499,11 @@ export function PseudonymAssignmentPage(props: Props) {
           photoUrl={photoUrl}
           selectedMode={selectedMode}
           assignment={assignment}
+          labelPrintingEnabled={labelPrintingEnabled}
+          labelCopies={operationLabelPrint.copies}
+          labelCopiesValid={operationLabelPrint.copiesValid}
+          labelTemplateName={operationSettings.labelPrintDefaults?.templateName}
+          onLabelCopiesChange={operationLabelPrint.setCopies}
           onSearch={search}
           onInput={setInput}
           onReset={resetLookup}
@@ -496,9 +536,7 @@ export function PseudonymAssignmentPage(props: Props) {
             assignment,
             printing: printing || lookupAndPrint.busy,
             labelAlreadyPrinted: operationLabelPrint.alreadyPrinted,
-            labelCopies: operationLabelPrint.copies,
             labelCopiesValid: operationLabelPrint.copiesValid,
-            labelTemplateName: operationSettings.labelPrintDefaults?.templateName,
           }}
           actions={{
             recheckPrinter: () => void recheckPrinter(),
@@ -508,13 +546,20 @@ export function PseudonymAssignmentPage(props: Props) {
             openPrint: () => void operationPrint.show(),
             download: () =>
               void operationRoster.download(toRosterExportQuery(rosterGrid.filters, rosterGrid.sort, rosterColumns)),
-            setLabelCopies: operationLabelPrint.setCopies,
             printLabel: () =>
               void operationLabelPrint.print().then(() => {
                 if (isCurrentSchedule(currentScheduleKey)) void operationRoster.refresh(false);
               }),
             select: (examineeNo) => {
-              if (!deletingHistoryRef.current && !lookupAndPrint.busy && !printing) selectOperationRow(examineeNo);
+              if (deletingHistoryRef.current || lookupAndPrint.busy || printing) return;
+              const value = useAnswerSheet
+                ? operationRows.find((row) => row.candidate.examineeNo === examineeNo)?.candidate.answerSheet
+                : examineeNo;
+              if (!value?.trim()) {
+                setNotice({ kind: "error", text: "이 수험생의 답안지 값이 등록되어 있지 않습니다." });
+                return;
+              }
+              selectOperationRow(value);
             },
           }}
         />
@@ -532,6 +577,20 @@ export function PseudonymAssignmentPage(props: Props) {
         onReset={rosterGrid.resetFilter}
         onApply={rosterGrid.applyFilter}
       />
+      {printerPageOpen && (
+        <PrinterSetupPage
+          mode={props.mode}
+          token={props.token}
+          service={props.service}
+          diagnostic={props.diagnostic}
+          printers={props.printers}
+          selectedPrinterId={props.selectedPrinterId}
+          busy={props.diagnosticBusy}
+          onDiagnose={props.onDiagnose}
+          onSelectPrinter={props.onSelectPrinter}
+          onClose={() => setPrinterPageOpen(false)}
+        />
+      )}
       {historyResetOpen && (
         <OperationHistoryResetModal
           token={props.token}
@@ -582,6 +641,7 @@ export function PseudonymAssignmentPage(props: Props) {
           onPrintTargetChange={operationPrint.setPrintTarget}
           totalCount={operationPrint.totalCount}
           presentCount={operationPrint.presentCount}
+          absentCount={operationPrint.absentCount}
           onClose={operationPrint.close}
           onGenerate={() => void operationPrint.generate()}
         />
@@ -601,28 +661,7 @@ export function PseudonymAssignmentPage(props: Props) {
       {drawPopoverOpen &&
         candidate &&
         (selectedMode === "RANDOM" || selectedMode === "SEQUENTIAL" || selectedMode === "MANUAL") &&
-        drawPopoverPosition && (
-          <OperationDrawPopover
-            showAttendanceSelection={showAttendanceSelection}
-            registrationAbsent={candidateController.registrationAbsent}
-            position={drawPopoverPosition}
-            sequential={selectedMode === "SEQUENTIAL"}
-            matching={selectedMode === "MANUAL"}
-            manualNumber={manualNumber}
-            onManualNumber={setManualNumber}
-            sequentialPreviewNumber={sequentialPreviewNumber}
-            previewLoading={searching}
-            assignment={assignment}
-            previewNumber={drawPreviewNumber}
-            autoDrawEnabled={autoDrawEnabled}
-            remainingMs={autoDrawRemainingMs}
-            delaySeconds={autoDrawDelaySeconds}
-            canAssign={Boolean(canAssign)}
-            assigning={assigning}
-            onClose={closeDrawPopover}
-            onAssign={() => void assign()}
-          />
-        )}
+        drawPopoverPosition && <OperationDrawPopover {...drawProps} />}
     </div>
   );
 }

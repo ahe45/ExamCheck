@@ -11,6 +11,9 @@ import {
   Headers,
   Inject,
   Post,
+  Patch,
+  Put,
+  ParseIntPipe,
   Param,
   Query,
   StreamableFile,
@@ -24,12 +27,20 @@ import { CurrentUser } from "../auth/current-user.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { RequirePermissions } from "../auth/permissions.js";
 import { RolesGuard } from "../auth/roles.js";
-import { PHOTO_ARCHIVE_UPLOAD_MAX_BYTES, WORKBOOK_UPLOAD_MAX_BYTES } from "./candidate-upload-security.js";
+import {
+  PHOTO_ARCHIVE_UPLOAD_MAX_BYTES,
+  WORKBOOK_UPLOAD_MAX_BYTES,
+  PHOTO_ARCHIVE_MAX_ENTRY_BYTES,
+  validateCandidatePhotoBuffer,
+  normalizeMultipartFileName,
+} from "./candidate-upload-security.js";
+import { extname } from "node:path";
 import {
   CandidateDashboardQueryDto,
   CandidateImportQueryDto,
   CandidateListQueryDto,
   CandidateFilterQueryDto,
+  CandidateUpdateDto,
 } from "./candidates.dto.js";
 import { CandidatesService } from "./candidates.service.js";
 
@@ -47,6 +58,11 @@ export class CandidatesController {
   @Get("dashboard-summary")
   dashboardSummary(@Query() query: CandidateDashboardQueryDto, @CurrentUser() user: AuthenticatedUser) {
     return this.candidatesService.dashboardSummary(user, query.admissionName);
+  }
+
+  @Get("attendance")
+  attendance(@CurrentUser() user: AuthenticatedUser) {
+    return this.candidatesService.attendance(user);
   }
 
   @Get()
@@ -134,6 +150,40 @@ export class CandidatesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.uploads.preview(uploadedFile, "PHOTO_ARCHIVE", user.id);
+  }
+
+  @Get(":id/photo")
+  async candidatePhoto(@Param("id", ParseIntPipe) id: number) {
+    const photo = await this.candidatesService.photo(id);
+    return new StreamableFile(photo.content, { type: photo.mimeType, disposition: "inline" });
+  }
+
+  @Put(":id/photo")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: PHOTO_ARCHIVE_MAX_ENTRY_BYTES, files: 1 } }))
+  saveCandidatePhoto(
+    @Param("id", ParseIntPipe) id: number,
+    @UploadedFile() file: { originalname: string; buffer: Buffer } | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!file?.buffer?.length) throw new BadRequestException("사진 파일을 선택해 주세요.");
+    const fileName = normalizeMultipartFileName(file.originalname);
+    const photo = validateCandidatePhotoBuffer(file.buffer, extname(fileName).slice(1));
+    if (!photo) throw new BadRequestException("올바른 JPG, JPEG, PNG 사진을 선택해 주세요.");
+    return this.candidatesService.savePhoto(id, { ...photo, fileName }, user.id);
+  }
+
+  @Get(":id")
+  candidateDetail(@Param("id", ParseIntPipe) id: number) {
+    return this.candidatesService.detail(id);
+  }
+
+  @Patch(":id")
+  updateCandidate(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() input: CandidateUpdateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.candidatesService.update(id, input, user.id);
   }
 
   @Post("photo-archive")

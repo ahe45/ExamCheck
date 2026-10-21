@@ -1,7 +1,46 @@
 import { describe, expect, it } from "vitest";
 import { buildDashboardStatistics } from "./dashboard-statistics";
+import { attendanceViews } from "../../shared/navigation/admin-navigation";
 
 describe("dashboard statistics", () => {
+  it.each(attendanceViews.filter((view) => view.key !== "candidate"))(
+    "집계 합계를 $label 기준에서도 유지한다",
+    ({ key }) => {
+      const candidates = [
+        {
+          admission: "일반",
+          unit: "음악",
+          major: "피아노",
+          group: "1조",
+          date: "2026-10-21",
+          time: "09:00",
+          period: "1교시",
+          building: "본관",
+          room: "101",
+          waitingRoom: "201",
+          assignedNumber: "1",
+        },
+        {
+          admission: "특별",
+          unit: "음악",
+          major: "피아노",
+          group: "1조",
+          date: "2026-10-22",
+          time: "09:00",
+          period: "1교시",
+          building: "별관",
+          room: "101",
+          waitingRoom: "201",
+          assignedNumber: null,
+        },
+      ];
+      const groups = buildDashboardStatistics(candidates).breakdowns[key];
+      expect(groups.reduce((sum, row) => sum + row.total, 0)).toBe(2);
+      expect(groups.reduce((sum, row) => sum + row.assigned, 0)).toBe(1);
+      expect(groups).toHaveLength(2);
+    },
+  );
+
   it("수험생을 전형별로 묶고 가번호 부여 상태를 계산한다", () => {
     const statistics = buildDashboardStatistics([
       { admission: "학생부교과", assignedNumber: null },

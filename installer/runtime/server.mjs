@@ -12,6 +12,7 @@ import express from "express";
 import compression from "compression";
 import mysql from "mysql2/promise";
 import AdmZip from "adm-zip";
+import { readInitialPasswords, initialAccountEnvironment, clearInitialPasswords } from "./initial-accounts.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -108,9 +109,7 @@ function environment() {
     IDENTITY_TRANSITION_ENABLED: "false",
     FRONTEND_ORIGIN: "",
     FRONTEND_ORIGINS: "",
-    ADMIN_INITIAL_PASSWORD: settings.initialPassword || "",
-    USER_INITIAL_PASSWORD: settings.initialPassword || "",
-    DEVELOPER_INITIAL_PASSWORD: settings.initialPassword || "",
+    ...initialAccountEnvironment(settings),
   };
 }
 async function connection() {
@@ -137,13 +136,7 @@ async function loadSettings() {
   }
   const firstRun = join(data, "first-run.json");
   const input = JSON.parse(await readFile(firstRun, "utf8"));
-  if (
-    typeof input.password !== "string" ||
-    input.password.trim().length < 4 ||
-    input.password.length > 200 ||
-    input.password !== input.password.trim()
-  )
-    throw new Error("초기 비밀번호는 앞뒤 공백 없이 4자 이상 200자 이하로 입력해 주세요. 문자 조합 제한은 없습니다.");
+  const passwords = readInitialPasswords(input);
   settings = {
     format: 1,
     mariadb: release.mariadb,
@@ -153,7 +146,7 @@ async function loadSettings() {
     lan: input.lan === true,
     dbPassword: randomBytes(36).toString("base64url"),
     jwtSecret: randomBytes(48).toString("base64url"),
-    initialPassword: input.password,
+    ...passwords,
     bootstrapped: false,
   };
   await json(paths.settings, settings);
@@ -214,7 +207,7 @@ async function migrate() {
     },
   );
   settings.bootstrapped = true;
-  delete settings.initialPassword;
+  clearInitialPasswords(settings);
   settings.lastRelease = release.releaseId;
   await json(paths.settings, settings);
 }

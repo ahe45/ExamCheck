@@ -1,7 +1,8 @@
 import type { CandidateRecord } from "../../shared/api/candidates";
+import type { AttendanceView } from "../../shared/navigation/admin-navigation";
 
 export type AdmissionStatus = "waiting" | "progress" | "complete";
-export type DashboardBreakdown = "admission" | "building" | "period" | "waitingRoom";
+export type DashboardBreakdown = Exclude<AttendanceView, "candidate">;
 
 export interface AdmissionStatistic {
   name: string;
@@ -23,14 +24,43 @@ export interface DashboardStatistics {
 }
 
 type DashboardCandidate = Pick<CandidateRecord, "admission" | "assignedNumber"> &
-  Partial<Pick<CandidateRecord, "building" | "waitingRoom" | "date" | "time" | "period">>;
+  Partial<
+    Pick<CandidateRecord, "building" | "waitingRoom" | "date" | "time" | "period" | "unit" | "major" | "group" | "room">
+  >;
 
 export function buildDashboardStatistics(candidates: readonly DashboardCandidate[]): DashboardStatistics {
   const breakdowns = {
     admission: groupDashboardCandidates(candidates, (candidate) => candidate.admission.trim() || "미지정 전형"),
+    unit: groupDashboardCandidates(candidates, (candidate) =>
+      [candidate.admission.trim() || "미지정 전형", candidate.unit?.trim() || "미지정 모집단위"].join(" · "),
+    ),
+    major: groupDashboardCandidates(candidates, (candidate) =>
+      [
+        candidate.admission.trim() || "미지정 전형",
+        candidate.unit?.trim() || "미지정 모집단위",
+        candidate.major?.trim() || "미지정 전공",
+      ].join(" · "),
+    ),
+    group: groupDashboardCandidates(candidates, (candidate) =>
+      [
+        candidate.admission.trim() || "미지정 전형",
+        candidate.unit?.trim() || "미지정 모집단위",
+        candidate.major?.trim() || "미지정 전공",
+        periodGroupName(candidate),
+        candidate.group?.trim() || "미지정 조",
+      ].join(" · "),
+    ),
+    date: groupDashboardCandidates(
+      candidates,
+      (candidate) => candidate.date?.trim().replaceAll("-", ".") || "미지정 날짜",
+    ),
     building: groupDashboardCandidates(candidates, (candidate) => candidate.building?.trim() || "미지정 건물"),
     period: groupDashboardCandidates(candidates, periodGroupName),
     waitingRoom: groupDashboardCandidates(candidates, waitingRoomGroupName),
+    room: groupDashboardCandidates(
+      candidates,
+      (candidate) => `${candidate.building?.trim() || "미지정 건물"} · ${candidate.room?.trim() || "미지정 고사실"}`,
+    ),
   };
   const admissionRows = breakdowns.admission;
   const assignedCandidates = candidates.filter((candidate) => Boolean(candidate.assignedNumber)).length;

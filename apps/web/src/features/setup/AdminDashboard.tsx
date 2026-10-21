@@ -1,6 +1,7 @@
 import { ToastNotice } from "../../shared/components/ToastNotice";
 import { useState, type CSSProperties } from "react";
 import { ConfirmButtonIcon, RefreshButtonIcon } from "../../shared/components/ActionIcons";
+import { attendanceViews } from "../../shared/navigation/admin-navigation";
 import {
   type AdmissionStatistic,
   type AdmissionStatus,
@@ -287,12 +288,9 @@ function admissionStatusLabel(status: AdmissionStatus) {
   return "부여 대기";
 }
 
-const DASHBOARD_BREAKDOWN_OPTIONS: ReadonlyArray<{ value: DashboardBreakdown; label: string }> = [
-  { value: "admission", label: "전형" },
-  { value: "period", label: "교시" },
-  { value: "building", label: "건물" },
-  { value: "waitingRoom", label: "대기실" },
-];
+const DASHBOARD_BREAKDOWN_OPTIONS: ReadonlyArray<{ value: DashboardBreakdown; label: string }> = attendanceViews
+  .filter((view) => view.key !== "candidate")
+  .map((view) => ({ value: view.key, label: view.label.slice(0, -1) }));
 
 function formatDashboardTime(date: Date) {
   return new Intl.DateTimeFormat("ko-KR", {

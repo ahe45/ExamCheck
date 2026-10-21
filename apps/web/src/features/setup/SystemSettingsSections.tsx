@@ -36,6 +36,8 @@ const assignmentMethods: Array<{
 ];
 
 export function AssignmentMethodSection({
+  useAnswerSheet = false,
+  onUseAnswerSheetChange,
   assignmentMethod,
   onAssignmentMethodChange,
   autoDrawEnabled,
@@ -48,6 +50,8 @@ export function AssignmentMethodSection({
   labelTemplates,
   onLabelTemplateIdChange,
 }: {
+  useAnswerSheet?: boolean;
+  onUseAnswerSheetChange?(value: boolean): void;
   assignmentMethod: PseudonymAssignmentMethod;
   onAssignmentMethodChange(value: PseudonymAssignmentMethod): void;
   autoDrawEnabled: boolean;
@@ -75,7 +79,7 @@ export function AssignmentMethodSection({
       <div className="assignment-method-list">
         {assignmentMethods.map((method) => (
           <div
-            className={`assignment-method-row ${method.value === "DRAW" ? "draw" : ""} ${method.value === "PREASSIGNED" ? "preassigned" : ""} ${assignmentMethod === method.value ? "selected" : ""}`}
+            className={`assignment-method-row ${method.value === "DRAW" ? "draw" : ""} ${method.value === "PREASSIGNED" ? "preassigned" : ""} ${method.value === "SEQUENTIAL" || method.value === "MATCHING" ? "answer-sheet" : ""} ${assignmentMethod === method.value ? "selected" : ""}`}
             key={method.value}
           >
             <label className="assignment-method-row-choice">
@@ -92,7 +96,11 @@ export function AssignmentMethodSection({
                   {method.title}
                   <b>{method.badge}</b>
                 </strong>
-                <small>{method.description}</small>
+                <small>
+                  {method.value === "MATCHING" && useAnswerSheet
+                    ? "답안지 값을 인식한 뒤 입력한 가번호를 해당 수험생과 매칭합니다."
+                    : method.description}
+                </small>
               </span>
             </label>
             {method.value === "DRAW" && (
@@ -122,6 +130,17 @@ export function AssignmentMethodSection({
                     <em aria-hidden="true">초</em>
                   </div>
                 </label>
+              </div>
+            )}
+            {(method.value === "SEQUENTIAL" || method.value === "MATCHING") && (
+              <div className="assignment-row-auto-option">
+                <SettingSwitch
+                  title="답안지 사용"
+                  description="수험번호 대신 업로드한 답안지 값으로 수험생을 조회합니다."
+                  checked={useAnswerSheet}
+                  disabled={assignmentMethod !== method.value}
+                  onChange={(value) => onUseAnswerSheetChange?.(value)}
+                />
               </div>
             )}
             {method.value === "PREASSIGNED" && (

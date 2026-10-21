@@ -3,7 +3,7 @@
   --operator-blue: #2d63f5;
   --operator-blue-strong: #1f4ed8;
   --operator-text: #172033;
-  --operator-control-width: clamp(450px, calc(450px + (100vh - 1000px) * 0.68), 900px);
+  --operator-control-width: calc(clamp(450px, calc(450px + (100vh - 1000px) * 0.68), 900px) * 1.3);
   --operator-control-field-size: clamp(74px, calc(74px + (100vh - 1000px) * 0.035), 112px);
   --operator-control-label-width: clamp(98px, calc(98px + (100vh - 1000px) * 0.04), 142px);
   --operator-control-row-height: clamp(48px, calc(48px + (100vh - 1000px) * 0.02), 70px);
@@ -321,6 +321,7 @@
 }
 .operator-control-panel,
 .operator-roster-panel {
+  --operator-roster-control-height: clamp(40px, calc(40px + (100vh - 1000px) * 0.045), 54px);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -330,6 +331,8 @@
   box-shadow: none;
 }
 .operator-control-panel {
+  display: flex;
+  flex-direction: column;
   padding: 14px 14px 16px;
   overflow-y: auto;
 }
@@ -341,40 +344,38 @@
   height: var(--operator-control-field-size);
   min-width: 0;
   margin: 0;
-  padding: 5px;
-  border: 1px solid #cfd9e6;
+  padding: 0;
+  border: 0;
   border-radius: 14px;
-  background: #fff;
+  background: transparent;
 }
 .operator-attendance-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 9px;
-  background: #f5f7fb;
+  gap: 8px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .operator-attendance-switch button {
   min-width: 0;
   min-height: 0;
   padding: 0 4px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
+  border: 0;
+  border-radius: 14px;
+  background: #f5f7fb;
   color: #526580;
   font-size: var(--operator-fs-16);
   font-weight: 700;
   white-space: nowrap;
 }
 .operator-attendance-switch button[aria-pressed="true"] {
-  border-color: #bddfd2;
-  background: #e8f6f1;
-  color: #176b5f;
+  background: #b7e4d4;
+  color: #105d4c;
 }
 .operator-attendance-selector.absent .operator-attendance-switch button[aria-pressed="true"] {
-  border-color: #f1d4d0;
-  background: #fff1ef;
-  color: #ae4940;
+  background: #f4c3bd;
+  color: #8f3028;
 }
 .operator-attendance-switch button:focus-visible {
   outline: 2px solid #2d63f5;
@@ -595,22 +596,67 @@
   letter-spacing: 0.06em;
 }
 .operator-lookup {
+  flex: none;
   position: relative;
   display: grid;
 }
 .operator-lookup-field {
-  --operator-attendance-width: clamp(112px, 6vw, 128px);
-  /* 상태 선택 영역의 테두리·안쪽 여백·버튼 간격 합계는 18px입니다. */
-  --operator-search-width: calc((var(--operator-attendance-width) - 18px) / 2);
+  --operator-control-field-size: clamp(63px, 3.4vw, 71px);
+  --operator-search-width: var(--operator-control-field-size);
+  --operator-attendance-width: calc(var(--operator-control-field-size) * 2 + 8px);
   display: grid;
+  align-items: center;
   grid-template-columns: minmax(0, 1fr) var(--operator-search-width);
   gap: 8px;
 }
 .operator-lookup-field.with-attendance {
   grid-template-columns: minmax(0, 1fr) var(--operator-search-width) var(--operator-attendance-width);
 }
+.operator-lookup-field.with-label-copies {
+  grid-template-columns: minmax(0, 1fr) var(--operator-search-width) auto;
+}
+.operator-lookup-field.with-label-copies.with-attendance {
+  grid-template-columns: minmax(0, 1fr) var(--operator-search-width) auto var(--operator-attendance-width);
+}
+.operator-lookup-copies {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: var(--operator-control-field-size);
+  padding: 0 12px;
+  color: #526580;
+  border: 1px solid #cfd9e6;
+  border-radius: 14px;
+  background: #f8fafc;
+  font-size: 18px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.operator-lookup-field .operator-lookup-copies input[type="number"] {
+  width: 56px;
+  height: 40px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 22px;
+  box-shadow: none;
+}
+.operator-lookup-field .operator-lookup-copies input[aria-invalid="true"] {
+  border-color: #c84242;
+}
+.operator-lookup-copies input[type="number"]::-webkit-inner-spin-button,
+.operator-lookup-copies input[type="number"]::-webkit-outer-spin-button {
+  opacity: 1;
+}
 .operator-lookup-field .operator-search-button {
-  width: 100%;
+  width: var(--operator-search-width);
+  height: var(--operator-search-width);
+  aspect-ratio: 1;
+}
+.operator-lookup-field .operator-attendance-switch button {
+  width: var(--operator-search-width);
+  height: var(--operator-search-width);
+  aspect-ratio: 1;
 }
 .operator-lookup-field.with-attendance input:not([type="checkbox"]) {
   padding-left: 12px;
@@ -976,39 +1022,34 @@
   }
 }
 .operator-roster-panel {
+  --operator-grid-font-size: clamp(16px, calc(16px + (100vh - 1000px) * 0.01), 20px);
+  --operator-grid-badge-font-size: clamp(18px, calc(18px + (100vh - 1000px) * 0.01), 22px);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 .operator-roster-heading {
-  --operator-roster-control-height: clamp(40px, calc(40px + (100vh - 1000px) * 0.045), 54px);
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 14px;
+  border-bottom: 1px solid #e4e9f1;
+}
+.operator-roster-stats {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  width: 100%;
+  justify-content: flex-start;
   min-width: 0;
-  min-height: clamp(66px, calc(66px + (100vh - 1000px) * 0.07), 88px);
-  padding: 9px 14px;
-  overflow: hidden;
-  border-bottom: 1px solid #e4e9f1;
-}
-.operator-roster-heading > div:first-child {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  min-width: 0;
-}
-.operator-roster-heading > div.operator-roster-stats {
-  flex: 1;
-  min-width: 330px;
-  align-items: center;
   gap: 8px;
+  padding: 9px 14px;
+  border-top: 1px solid #e4e9f1;
+  background: #fff;
 }
 .operator-roster-stats > div {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  flex: 0 1 180px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  flex: 0 0 180px;
   align-items: stretch;
   width: 180px;
   min-width: 0;
@@ -1024,8 +1065,8 @@
   min-width: 0;
   align-items: center;
   justify-content: center;
-  padding: 0 8px;
-  font-size: var(--operator-fs-11);
+  padding: 0 4px;
+  font-size: var(--operator-grid-font-size);
   line-height: 1;
   white-space: nowrap;
 }
@@ -1038,13 +1079,14 @@
   color: #263751;
   font-weight: 800;
 }
-.operator-roster-heading > div:last-child {
+.operator-roster-heading > div {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  flex: none;
-  max-width: 100%;
-  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: none;
+  gap: 16px;
 }
 .operator-printer-status {
   display: inline-flex;
@@ -1093,16 +1135,18 @@
 .operator-roster-heading button {
   height: var(--operator-roster-control-height);
   min-height: var(--operator-roster-control-height);
-  padding: 9px 14px;
+  padding: 0 10px;
   color: #617087;
   border: 1px solid #dfe5ed;
   border-radius: 9px;
   background: #fff;
-  font-size: var(--operator-fs-11);
+  font-size: 18px;
+  line-height: 1.2;
 }
 .operator-roster-heading button > svg {
-  width: 18px;
-  height: 18px;
+  flex: none;
+  width: 22px;
+  height: 22px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -1133,6 +1177,7 @@
   background: #f2f6ff;
 }
 .operator-roster-heading button.operator-operation-close-button {
+  width: 132px;
   min-width: 132px;
   color: #fff;
   border-color: #2d63f5;
@@ -1146,6 +1191,8 @@
   box-shadow: none;
 }
 .operator-roster-heading button.operator-template-print-button {
+  width: 132px;
+  min-width: 132px;
   color: #2c5fd7;
   border-color: #cfdaf3;
   background: #f7f9ff;
@@ -1174,11 +1221,21 @@
 .operator-roster-heading button.operator-delete-button,
 .operator-roster-heading button.operator-refresh-button,
 .operator-roster-heading button.operator-download-button {
-  width: var(--operator-roster-control-height);
-  min-width: var(--operator-roster-control-height);
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 132px;
+  min-width: 132px;
+  padding: 0 10px;
+  gap: 7px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 .operator-roster-heading button.operator-roster-label-button {
+  width: 132px;
+  min-width: 132px;
+  padding-inline: 10px;
+  gap: 7px;
   color: #fff;
   border-color: #147d73;
   background: #147d73;
@@ -1820,11 +1877,11 @@
   }
 }
 .operator-roster-panel .operator-roster-table {
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: 1042px;
   height: auto;
-  table-layout: auto;
-  font-size: var(--operator-fs-11);
+  table-layout: fixed;
+  font-size: var(--operator-grid-font-size);
 }
 .operator-roster-panel .operator-roster-table th {
   width: auto;
@@ -1835,11 +1892,11 @@
   border-right: 0;
   border-bottom: 1px solid #dfe5ed;
   background: #f8fafc;
-  font-size: var(--operator-fs-11);
+  font-size: var(--operator-grid-font-size);
 }
 .operator-roster-panel .operator-roster-table .candidate-sort-button,
 .operator-roster-panel .operator-roster-table .candidate-filter-button {
-  font-size: var(--operator-fs-11);
+  font-size: var(--operator-grid-font-size);
 }
 .operator-roster-panel .operator-roster-table th.filtered {
   color: #2d63f5;
@@ -1847,54 +1904,31 @@
 }
 .operator-roster-panel .operator-roster-table th.candidate-compact-column,
 .operator-roster-panel .operator-roster-table td.candidate-compact-column {
-  width: 1%;
+  width: auto;
 }
 .operator-roster-panel .operator-roster-table th.candidate-wide-column,
 .operator-roster-panel .operator-roster-table td.candidate-wide-column {
-  width: 180px;
-  min-width: 180px;
-  max-width: 180px;
+  width: auto;
+  min-width: 0;
+  max-width: none;
 }
 .operator-roster-panel .operator-roster-table th.candidate-row-number,
 .operator-roster-panel .operator-roster-table td.candidate-row-number {
-  width: 29px;
-  min-width: 29px;
-  max-width: 29px;
-}
-.operator-roster-panel .operator-roster-table .operator-roster-column-pseudonymNumber {
-  width: 128px;
-  min-width: 128px;
-  max-width: 128px;
-}
-.operator-roster-panel .operator-roster-table .operator-roster-column-examineeNo {
-  width: 143px;
-  min-width: 143px;
-  max-width: 143px;
-}
-.operator-roster-panel .operator-roster-table .operator-roster-column-name {
-  width: 113px;
-  min-width: 113px;
-  max-width: 113px;
+  width: 76.5px;
+  min-width: 76.5px;
+  max-width: 76.5px;
 }
 .operator-roster-panel .operator-roster-table .operator-roster-column-assignedAt,
 .operator-roster-panel .operator-roster-table .operator-roster-column-printedAt {
-  width: 165px;
-  min-width: 165px;
-  max-width: 165px;
+  width: 181.5px;
+  min-width: 181.5px;
+  max-width: 181.5px;
 }
 .operator-roster-panel .operator-roster-table .operator-roster-column-attendance,
 .operator-roster-panel .operator-roster-table .operator-roster-column-status {
   width: 92px;
   min-width: 92px;
   max-width: 92px;
-}
-.operator-roster-panel .operator-roster-table th.operator-roster-column-unitName,
-.operator-roster-panel .operator-roster-table td.operator-roster-column-unitName,
-.operator-roster-panel .operator-roster-table th.operator-roster-column-majorName,
-.operator-roster-panel .operator-roster-table td.operator-roster-column-majorName {
-  width: 103px;
-  min-width: 103px;
-  max-width: 103px;
 }
 .operator-roster-panel .operator-roster-table td {
   height: clamp(42px, calc(42px + (100vh - 1000px) * 0.047), 56px);
@@ -1903,7 +1937,7 @@
   border-right: 0;
   border-bottom: 1px solid #edf0f4;
   background: #fff;
-  font-size: var(--operator-fs-11);
+  font-size: var(--operator-grid-font-size);
 }
 .operator-roster-panel .operator-roster-table tbody tr:not(.operator-roster-empty) {
   cursor: pointer;
@@ -1937,10 +1971,19 @@
 .operator-roster-panel .operator-roster-table tbody tr.is-selected:not(.operator-roster-empty):hover td {
   background: #edf3ff;
 }
+.operator-roster-panel .operator-roster-table tbody tr.is-absent:not(.operator-roster-empty) td {
+  background: #f1f3f5;
+}
+.operator-roster-panel .operator-roster-table tbody tr.is-absent:not(.operator-roster-empty):hover td,
+.operator-roster-panel .operator-roster-table tbody tr.is-absent:not(.operator-roster-empty):focus-visible td {
+  background: #e7eaee;
+}
 .operator-roster-panel .operator-roster-table td > span {
   display: block;
-  width: auto;
-  max-width: 200px;
+  width: 100%;
+  max-width: none;
+  margin-inline: auto;
+  text-align: center;
   padding: 0;
   overflow: hidden;
   color: inherit;
@@ -1959,47 +2002,53 @@
   color: #2359da;
   font-weight: 800;
 }
-.operator-roster-panel .operator-roster-table td:last-child > span {
-  display: inline-block;
-  width: auto;
-  padding: 4px 8px;
-  color: #176b5f;
-  border-radius: 999px;
-  background: #e8f6f1;
-  font-size: var(--operator-fs-9);
-  font-weight: 800;
+.operator-roster-panel .operator-roster-table td.operator-roster-column-attendance,
+.operator-roster-panel .operator-roster-table td.operator-roster-column-status {
+  padding: 4px 6px;
 }
-.operator-roster-panel .operator-roster-table td:last-child > span.status-waiting {
-  color: #87601a;
-  background: #fff2d9;
-}
-.operator-roster-panel .operator-roster-table td:last-child > span.status-progress {
-  color: #2359da;
-  background: #e9f0ff;
-}
-.operator-roster-panel .operator-roster-table td:last-child > span.status-closed {
-  color: #176b5f;
-  background: #e8f6f1;
-}
+.operator-roster-panel .operator-roster-table td.operator-roster-column-status > span,
 .operator-roster-panel .operator-roster-table td.operator-roster-column-attendance > span {
-  display: inline-block;
-  width: auto;
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: var(--operator-fs-9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 34px;
+  padding: 4px 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: var(--operator-grid-badge-font-size);
+  line-height: 1.2;
   font-weight: 800;
 }
-.operator-roster-panel .operator-roster-table td.operator-roster-column-attendance > span.attendance-present {
-  color: #176b5f;
-  background: #e8f6f1;
+.operator-roster-panel .operator-roster-table td > span.status-waiting {
+  color: #72500b;
+  border-color: #dcc070;
+  background: #f5dfa0;
 }
-.operator-roster-panel .operator-roster-table td.operator-roster-column-attendance > span.attendance-absent {
-  color: #ad3a44;
-  background: #fdebed;
+.operator-roster-panel .operator-roster-table td > span.status-progress {
+  color: #1745a8;
+  border-color: #a6bef2;
+  background: #c7d9ff;
 }
-.operator-roster-panel .operator-roster-table td.operator-roster-column-attendance > span.attendance-pending {
-  color: #77859a;
-  background: #eef1f5;
+.operator-roster-panel .operator-roster-table td > span.attendance-present {
+  color: #105d4c;
+  border-color: #85c8af;
+  background: #b7e4d4;
+}
+.operator-roster-panel .operator-roster-table td > span.status-closed {
+  color: #5b3395;
+  border-color: #c4ace5;
+  background: #e9ddf8;
+}
+.operator-roster-panel .operator-roster-table td > span.attendance-absent {
+  color: #8f3028;
+  border-color: #dda299;
+  background: #f4c3bd;
+}
+.operator-roster-panel .operator-roster-table td > span.attendance-pending {
+  color: #526176;
+  border-color: #c2ccd9;
+  background: #dfe5ee;
 }
 .operator-roster-panel .operator-roster-table.is-empty tbody,
 .operator-roster-panel .operator-roster-table.is-empty tbody tr {
@@ -2453,33 +2502,63 @@
 }
 .operator-label-copies,
 .operator-printer-control {
-  display: grid;
-  grid-template-rows: 14px minmax(0, 1fr);
+  display: inline-flex;
+  align-items: center;
+  flex: none;
   height: var(--operator-roster-control-height);
-  gap: 2px;
+  gap: 10px;
   color: var(--text-secondary, #526580);
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 14px;
+  line-height: 1.3;
+  white-space: nowrap;
   text-align: center;
+}
+.operator-output-settings {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: var(--operator-roster-control-height);
+  border: 1px solid #d3ddeb;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+.operator-output-settings > .operator-label-copies,
+.operator-output-settings > .operator-printer-control {
+  height: 100%;
+  padding: 0 12px;
+}
+.operator-output-settings > .operator-printer-control {
+  border-left: 0;
+}
+.operator-output-settings .operator-label-copies input {
+  width: 64px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.operator-roster-heading .operator-output-settings button.operator-printer-status {
+  min-width: 100px;
+  border: 0;
+  background: transparent;
 }
 .operator-printer-control {
   width: max-content;
-  grid-template-columns: minmax(0, 1fr);
 }
 .operator-roster-heading button.operator-printer-status {
   box-sizing: border-box;
-  contain: inline-size;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  width: 100%;
+  width: auto;
   height: 100%;
-  min-width: 0;
+  min-width: 110px;
   min-height: 0;
-  padding: 0 4px;
-  gap: 4px;
+  padding: 0 12px;
+  gap: 8px;
   border-radius: 7px;
   background: #f8fafc;
-  font-size: var(--operator-fs-10);
+  font-size: 18px;
   color: #65758b;
 }
 .operator-roster-heading button.operator-printer-status.ready {
@@ -2503,7 +2582,7 @@
 }
 
 .operator-label-copies input {
-  width: 68px;
+  width: 76px;
   height: 100%;
   min-height: 0;
   padding: 0 8px;
@@ -2512,7 +2591,7 @@
   background: #fff;
   color: inherit;
   font: inherit;
-  font-size: 16px;
+  font-size: 20px;
   text-align: center;
 }
 
@@ -2579,6 +2658,9 @@
 
 .operator-roster-heading button.operator-delete-button {
   display: inline-flex;
+  width: auto;
+  min-width: 0;
+  padding-inline: 12px;
   align-items: center;
   justify-content: center;
   color: #b33a39;
@@ -2627,4 +2709,289 @@
   margin: 0;
   font-size: 13px;
   color: #64748b;
+}
+
+.operator-console.operator-candidate-display {
+  --candidate-display-padding: clamp(16px, 2vw, 32px);
+  --operator-control-label-width: 140px;
+  --operator-fs-11: 14px;
+  --operator-fs-12: 16px;
+  --operator-fs-13: 18px;
+  --operator-fs-16: 22px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  height: 100dvh;
+  padding: var(--candidate-display-padding);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.operator-candidate-display-fit {
+  position: relative;
+}
+.operator-candidate-display-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  position: absolute;
+  inset: 0 auto auto 0;
+  height: 800px;
+  width: 1200px;
+  gap: 32px;
+  transform-origin: top left;
+}
+.operator-candidate-display .operator-candidate-preview {
+  display: grid;
+  grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  margin: 0;
+  height: 100%;
+  min-width: 0;
+}
+.operator-candidate-display .operator-candidate-preview dl {
+  display: grid;
+  grid-template-rows: repeat(7, minmax(0, 1fr));
+  min-height: 0;
+}
+.operator-candidate-display .operator-candidate-preview dl > div {
+  min-height: 0;
+}
+.operator-candidate-display .operator-photo-row {
+  min-height: 0;
+}
+.operator-candidate-display .operator-candidate-preview dt {
+  font-size: 20px;
+}
+.operator-candidate-display .operator-candidate-preview dd {
+  font-size: 26px;
+  line-height: 1.3;
+  padding: 4px 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.operator-candidate-display .operator-photo-area {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: auto;
+  overflow: hidden;
+}
+.operator-candidate-display .operator-photo-area img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.operator-candidate-display-draw-slot {
+  display: grid;
+  align-items: stretch;
+  min-height: 0;
+  min-width: 0;
+}
+.operator-candidate-display .operator-draw-popover {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  padding: 26px;
+  gap: 20px;
+}
+.operator-candidate-display .operator-draw-popover::before {
+  display: none;
+}
+.operator-candidate-display .operator-draw-number {
+  flex: 1;
+  min-height: 100px;
+}
+.operator-candidate-display .operator-draw-number > span {
+  font-size: 110px;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.operator-console-actions .operator-display-window-button:disabled {
+  color: #8995a7;
+  border-color: #dce2eb;
+  background: #e9edf3;
+  cursor: default;
+  box-shadow: none;
+}
+
+.operator-control-panel .operator-candidate-preview {
+  --operator-control-row-height: clamp(52px, 6.8dvh, 80px);
+  --operator-control-label-width: calc(clamp(98px, calc(98px + (100vh - 1000px) * 0.04), 142px) * 1.3 * 1.3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(140px, 1fr);
+  flex: 1 0 auto;
+  min-height: calc(var(--operator-control-row-height) * 7 + 142px);
+}
+.operator-control-panel .operator-candidate-preview dt,
+.operator-control-panel .operator-candidate-preview dd,
+.operator-control-panel .operator-photo-label {
+  font-size: var(--operator-fs-25);
+}
+
+.operator-control-panel .operator-photo-area {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  aspect-ratio: auto;
+  overflow: hidden;
+}
+.operator-control-panel .operator-photo-area img {
+  position: absolute;
+  inset: 0;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.operator-roster-panel .operator-roster-empty strong {
+  font-size: var(--operator-grid-font-size);
+}
+.operator-roster-panel .operator-roster-empty td > span {
+  font-size: var(--operator-grid-badge-font-size) !important;
+}
+
+.operator-roster-heading button.operator-download-button > svg,
+.operator-roster-heading button.operator-refresh-button > svg,
+.operator-roster-heading button.operator-delete-button > svg {
+  width: 28px;
+  height: 28px;
+}
+
+.operator-roster-panel .operator-roster-table th,
+.operator-roster-panel .operator-roster-table td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Match the schedule screen's readable type scale in every operator dialog. */
+.operator-modal-backdrop > .operator-printer-modal[role="dialog"] {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, calc(100vw - 48px));
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  border: 1px solid #dbe3ef;
+  border-radius: 20px;
+  background: #f8fafd;
+  box-shadow: 0 28px 80px rgba(20, 34, 58, 0.3);
+}
+.operator-printer-modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e0e6ef;
+  background: #fff;
+}
+.operator-printer-modal > header p,
+.operator-printer-modal > header h2 {
+  margin: 0;
+}
+.operator-printer-modal > header p {
+  color: #2d63f5;
+  font-weight: 800;
+}
+.operator-printer-modal > .operator-printer-page {
+  min-height: 0;
+  min-width: 0;
+  padding: 24px;
+  overflow: auto;
+}
+.operator-printer-modal .setup-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.operator-printer-modal .install-heading {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.operator-printer-modal .setup-actions {
+  flex-wrap: wrap;
+}
+.operator-modal-backdrop .operator-printer-modal .printer-device-settings header p:last-child {
+  font-size: var(--operator-modal-caption-size);
+}
+.operator-modal-backdrop {
+  --operator-modal-body-size: clamp(18px, 1.05vw, 20px);
+  --operator-modal-caption-size: clamp(16px, 0.95vw, 18px);
+  --operator-modal-title-size: clamp(24px, 1.5vw, 28px);
+}
+.operator-modal-backdrop > :is([role="dialog"], [role="alertdialog"]) {
+  width: min(800px, calc(100vw - 48px));
+  overflow-y: auto;
+  font-size: var(--operator-modal-body-size);
+  line-height: 1.5;
+}
+.operator-modal-backdrop > .operator-print-modal {
+  width: min(960px, calc(100vw - 48px));
+}
+.operator-modal-backdrop > .operator-signature-modal {
+  width: min(680px, calc(100vw - 48px));
+}
+.operator-modal-backdrop
+  > :is([role="dialog"], [role="alertdialog"])
+  :is(p, span, strong, small, label, input, select, textarea, button, h3, em, legend) {
+  font-size: var(--operator-modal-body-size);
+  line-height: 1.5;
+}
+.operator-modal-backdrop > :is([role="dialog"], [role="alertdialog"]) > header h2 {
+  font-size: var(--operator-modal-title-size);
+  line-height: 1.35;
+}
+.operator-modal-backdrop > :is([role="dialog"], [role="alertdialog"]) > header p,
+.operator-modal-backdrop > :is([role="dialog"], [role="alertdialog"]) :is(small, em) {
+  font-size: var(--operator-modal-caption-size);
+}
+.operator-modal-backdrop .operator-print-empty {
+  font-size: var(--operator-modal-body-size);
+}
+.operator-modal-backdrop .operator-signature-modal .operator-print-signature-inputs label > span {
+  font-size: var(--operator-modal-body-size);
+}
+.operator-modal-backdrop > :is([role="dialog"], [role="alertdialog"]) > :is(header, footer),
+.operator-modal-backdrop .operator-finish-summary,
+.operator-modal-backdrop .operator-finish-warning,
+.operator-modal-backdrop .operator-print-context,
+.operator-modal-backdrop .operator-schedule-alert-candidate,
+.operator-modal-backdrop .operator-print-signature-inputs {
+  flex-shrink: 0;
+}
+.operator-modal-backdrop > :is([role="dialog"], [role="alertdialog"]) input:not([type="radio"]):not([type="checkbox"]),
+.operator-modal-backdrop > :is([role="dialog"], [role="alertdialog"]) select {
+  min-height: 48px;
+}
+.operator-modal-backdrop .operator-schedule-alert-list strong {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.operator-modal-backdrop footer button:not(.modal-close-button) {
+  min-height: 48px;
+}
+.operator-modal-backdrop footer button .button-action-icon,
+.operator-modal-backdrop footer button > svg {
+  width: 22px;
+  height: 22px;
+}
+@media (max-width: 600px) {
+  .operator-modal-backdrop .operator-finish-summary,
+  .operator-modal-backdrop .operator-print-signature-inputs > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

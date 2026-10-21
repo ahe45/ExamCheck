@@ -49,6 +49,7 @@ export interface SettingRow extends RowDataPacket {
   useCandidatePhotos: boolean | number;
   enableBulkDraw: boolean | number;
   showAttendanceSelection?: boolean | number;
+  useAnswerSheet?: boolean | number;
 }
 
 export interface TimeRangeRow extends RowDataPacket {
@@ -586,7 +587,8 @@ export class PseudonymsRepository {
        SET range_start = ?, range_end = ?, display_width = ?, next_sequence = ?, assignment_method = ?,
            auto_draw_enabled = ?, auto_draw_delay_seconds = ?, print_preassigned_label = ?, label_template_id = ?,
            auto_assign_absentees_on_close = ?, delete_absentee_info_on_reopen = ?,
-           use_candidate_photos = ?, enable_bulk_draw = ?, show_attendance_selection = COALESCE(?, show_attendance_selection), active = TRUE, updated_by = ?, version = version + 1
+           use_candidate_photos = ?, enable_bulk_draw = ?, show_attendance_selection = COALESCE(?, show_attendance_selection),
+           use_answer_sheet = COALESCE(?, use_answer_sheet), active = TRUE, updated_by = ?, version = version + 1
        WHERE id = ? AND version = ?`,
       [
         input.rangeStart,
@@ -603,6 +605,7 @@ export class PseudonymsRepository {
         input.useCandidatePhotos,
         input.enableBulkDraw,
         input.showAttendanceSelection ?? null,
+        input.useAnswerSheet ?? null,
         actorUserId,
         settingId,
         expectedVersion,
@@ -622,8 +625,8 @@ export class PseudonymsRepository {
         (exam_name, admission_name, range_start, range_end, display_width, next_sequence, assignment_method,
          auto_draw_enabled, auto_draw_delay_seconds, print_preassigned_label, label_template_id,
          auto_assign_absentees_on_close, delete_absentee_info_on_reopen,
-         use_candidate_photos, enable_bulk_draw, show_attendance_selection, active, updated_by, version)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, TRUE), TRUE, ?, 1)`,
+         use_candidate_photos, enable_bulk_draw, show_attendance_selection, use_answer_sheet, active, updated_by, version)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, TRUE), COALESCE(?, FALSE), TRUE, ?, 1)`,
       [
         input.examName,
         input.admissionName,
@@ -641,6 +644,7 @@ export class PseudonymsRepository {
         input.useCandidatePhotos,
         input.enableBulkDraw,
         input.showAttendanceSelection ?? null,
+        input.useAnswerSheet ?? null,
         actorUserId,
       ],
     );
@@ -1076,7 +1080,8 @@ const settingSelectSql = `SELECT id, version, exam_name AS examName, admission_n
   label_template_id AS labelTemplateId,
   auto_assign_absentees_on_close AS autoAssignAbsenteesOnClose,
   delete_absentee_info_on_reopen AS deleteAbsenteeInfoOnReopen,
-  use_candidate_photos AS useCandidatePhotos, enable_bulk_draw AS enableBulkDraw, show_attendance_selection AS showAttendanceSelection
+  use_candidate_photos AS useCandidatePhotos, enable_bulk_draw AS enableBulkDraw, show_attendance_selection AS showAttendanceSelection,
+  use_answer_sheet AS useAnswerSheet
   FROM pseudonym_setting`;
 
 const ensureOperationSql = `INSERT IGNORE INTO pseudonym_operation

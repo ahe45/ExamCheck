@@ -5,6 +5,19 @@ import { candidateFields, candidateKey, type CandidateInput } from "./candidate-
 import { CandidatesRepository, type CandidateRecordRow } from "./candidates.repository.js";
 
 describe("CandidatesRepository", () => {
+  it("scopes attendance rows and uses successful label sends and closure of the matching schedule", async () => {
+    const repository = new CandidatesRepository();
+    const executor = createExecutor({ executeRows: [] });
+    await repository.attendance(executor.value, { sql: "cr.admission IN (?)", params: ["일반"] });
+    const [sql, params] = executor.execute.mock.calls[0]!;
+    expect(params).toEqual(["일반"]);
+    expect(sql).toContain("cr.admission IN (?)");
+    expect(sql).toContain("pj.status = 'SENT'");
+    expect(sql).toContain("po.exam_time = cr.start_time");
+    expect(sql).toContain("po.admission_name = cr.admission");
+    expect(sql).toContain("print_preassigned_label");
+  });
+
   it("aggregates all dashboard breakdowns inside the supplied admission predicate", async () => {
     const repository = new CandidatesRepository();
     const executor = createExecutor({
@@ -34,6 +47,9 @@ describe("CandidatesRepository", () => {
     expect(sql).toContain("cr.building_name");
     expect(sql).toContain("cr.period_name");
     expect(sql).toContain("cr.waiting_room");
+    for (const key of ["unit", "major", "group", "date", "room"]) {
+      expect(sql).toContain(`UNION ALL SELECT '${key}'`);
+    }
     expect(sql).toContain("GROUP BY dashboard_group.group_type, 2");
     expect(sql).toContain("cr.admission IN (?)");
     expect(sql).toContain("AND cr.admission = ?");
@@ -220,9 +236,17 @@ function candidate(overrides: Partial<CandidateInput> = {}): CandidateInput {
     name: "홍길동",
     birth: "2000-01-01",
     group: "",
+    answerSheet: "",
     opt1: "",
     opt2: "",
     opt3: "",
+    opt4: "",
+    opt5: "",
+    opt6: "",
+    opt7: "",
+    opt8: "",
+    opt9: "",
+    opt10: "",
     ...overrides,
   };
 }

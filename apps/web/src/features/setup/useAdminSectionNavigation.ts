@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getActiveDirtySection, shouldGuardAdminNavigation } from "../../shared/navigation/admin-navigation-guard";
-import { adminSectionPaths, type AdminSection } from "../../shared/navigation/admin-navigation";
+import { adminSectionPaths, type AdminSection, type TemplateKind } from "../../shared/navigation/admin-navigation";
 import type { BrowserNavigate } from "../../shared/navigation/use-browser-path";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
 import type { FormTemplateManagerHandle } from "../templates/FormTemplateManager";
 import type { SystemSettingsPageHandle } from "./SystemSettingsPage";
 
 type DirtySection = "templates" | "settings";
-type LeaveAction = AdminSection | "logout";
+type LeaveAction = { section: AdminSection; templateKind?: TemplateKind } | "logout";
 
 interface Options {
   section: AdminSection;
@@ -31,6 +31,7 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [templateResetKey, setTemplateResetKey] = useState(0);
+  const [templateKind, setTemplateKind] = useState<TemplateKind | undefined>();
 
   const updateSettingsDirty = useCallback((dirty: boolean) => {
     settingsDirtyRef.current = dirty;
@@ -57,12 +58,13 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
   }, [activeSection, settingsDirty, templateDirty]);
 
   const navigateToSection = useCallback(
-    (targetSection: AdminSection) => {
+    (targetSection: AdminSection, kind?: TemplateKind) => {
       if (!developerMode && targetSection === "developer") targetSection = "dashboard";
       onNavigate(adminSectionPaths[targetSection]);
       setActiveSection(targetSection);
       activeSectionRef.current = targetSection;
       if (targetSection === "templates") {
+        setTemplateKind(kind ?? "document");
         setTemplateResetKey((value) => value + 1);
       }
       if (targetSection === "dashboard") onDashboardOpen();
@@ -76,7 +78,7 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
     const dirtyState = { settings: settingsDirtyRef.current, templates: templateDirtyRef.current };
     if (shouldGuardAdminNavigation(currentSection, section, dirtyState)) {
       onNavigate(adminSectionPaths[currentSection], { replace: true });
-      setPendingLeaveAction(section);
+      setPendingLeaveAction({ section });
       setPendingDirtySection(getActiveDirtySection(currentSection, dirtyState));
       setLeaveConfirmOpen(true);
       return;
@@ -96,7 +98,7 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
   useEscapeKey(leaveConfirmOpen && !leaveSaving, cancelPendingLeave);
 
   const openSection = useCallback(
-    (targetSection: AdminSection) => {
+    (targetSection: AdminSection, kind?: TemplateKind) => {
       const currentSection = activeSectionRef.current;
       const dirtyState = { settings: settingsDirtyRef.current, templates: templateDirtyRef.current };
       const reopeningTemplateLibrary = currentSection === "templates" && targetSection === "templates";
@@ -104,12 +106,12 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
         shouldGuardAdminNavigation(currentSection, targetSection, dirtyState) ||
         (reopeningTemplateLibrary && dirtyState.templates)
       ) {
-        setPendingLeaveAction(targetSection);
+        setPendingLeaveAction({ section: targetSection, templateKind: kind });
         setPendingDirtySection(getActiveDirtySection(currentSection, dirtyState));
         setLeaveConfirmOpen(true);
         return;
       }
-      navigateToSection(targetSection);
+      navigateToSection(targetSection, kind);
     },
     [navigateToSection],
   );
@@ -138,7 +140,7 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
     settingsDirtyRef.current = false;
     templateDirtyRef.current = false;
     if (action === "logout") onLogout();
-    else if (action) navigateToSection(action);
+    else if (action) navigateToSection(action.section, action.templateKind);
   }, [navigateToSection, onLogout, pendingLeaveAction]);
 
   const saveBeforeLeaving = useCallback(async () => {
@@ -172,6 +174,7 @@ export function useAdminSectionNavigation({ section, developerMode, onNavigate, 
     settingsPageRef,
     templatePageRef,
     templateResetKey,
+    templateKind,
     updateSettingsDirty,
     updateTemplateDirty,
     openSection,

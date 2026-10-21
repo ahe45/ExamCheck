@@ -39,6 +39,7 @@ export const formTemplateDataTags = {
         { key: "candidate.temporaryNo", label: "가번호", type: "string", example: "01" },
         { key: "candidate.preassignedNo", label: "사전 배정 가번호", type: "string", example: "01" },
         { key: "candidate.groupName", label: "조", type: "string", example: "1조" },
+        { key: "candidate.answerSheet", label: "답안지", type: "string", example: "00123456" },
         { key: "candidate.absent", label: "결시 여부", type: "string", example: "응시" },
         { key: "candidate.photo", label: "수험생 사진", type: "image", example: "사진" },
       ],
@@ -57,7 +58,7 @@ export const formTemplateDataTags = {
       key: "option",
       label: "추가 정보",
       tags: [
-        ...Array.from({ length: 3 }, (_, index) => ({
+        ...Array.from({ length: 10 }, (_, index) => ({
           key: `candidate.opt${index + 1}`,
           label: `OPT${index + 1}`,
           type: "string",

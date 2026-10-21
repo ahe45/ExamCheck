@@ -17,7 +17,9 @@ describe("enhanceTemplatePageProperties", () => {
 
     expect(column).not.toBeNull();
     expect(column?.firstElementChild).toHaveClass("template-page-properties-panel");
-    expect(column?.children).toHaveLength(1);
+    expect(column?.children).toHaveLength(2);
+    expect(column?.lastElementChild).toBe(enhanced.actionsHost);
+    expect(enhanced.actionsHost).toHaveAttribute("aria-label", "양식 작업");
     expect(column?.querySelector(".template-editor-toolbar-footer")).toBeNull();
 
     enhanced.dispose();

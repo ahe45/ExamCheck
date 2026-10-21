@@ -1,8 +1,8 @@
-import { TemplateEditorMetadataBar } from "./TemplateEditorMetadataBar";
+import { createPortal } from "react-dom";
 import { BarcodeSourcePicker } from "./BarcodeSourcePicker";
 import { bindBarcodeSourceControl, type BarcodeSourceRequest } from "./barcode-source-control";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ListButtonIcon, PreviewButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
+import { PreviewButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
 import { saveFormTemplate, type FormTemplate } from "../../shared/api/form-templates";
 import type {
   DataTagCatalog,
@@ -34,7 +34,7 @@ import {
 } from "./template-manager-model";
 import { TemplateNotice, type TemplateNoticeValue } from "./TemplateNotice";
 import { syncTemplateEditorPreservingCanvasSelection } from "./template-editor-selection-sync";
-import { openTemplatePrintWindow, renderTemplateHtml } from "./template-renderer";
+import { getTemplatePageSettings, openTemplatePrintWindow, renderTemplateHtml } from "./template-renderer";
 import { formatProjectDataTagSampleValue } from "./editor/examlist-template-formatting";
 import { getDataTagFormatType } from "./data-tag-formatting";
 
@@ -65,7 +65,6 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       dataTags,
       initialInformationOpen,
       notice,
-      onClose,
       onDraftChange,
       onDirtyChange,
       onNoticeChange,
@@ -109,6 +108,7 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
     const [tagSettingsRevision, setTagSettingsRevision] = useState(0);
     const [actionBusy, setActionBusy] = useState<"preview" | "save" | null>(null);
     const [overflowMessage, setOverflowMessage] = useState("");
+    const [actionsHost, setActionsHost] = useState<HTMLElement | null>(null);
     const decoratedDataTags = useMemo(() => decorateCatalog(dataTags), [dataTags]);
 
     draftRef.current = draft;
@@ -223,6 +223,7 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       const commands = createTemplateEditorCommandDispatcher({ documentSurface, editor, transactions });
       const disposeCanvas = enhanceTemplateEditorCanvas(root);
       const pageProperties = enhanceTemplatePageProperties(root);
+      setActionsHost(pageProperties.actionsHost);
       const disposeDataBlock = enhanceTemplateDataBlock(root, editor, transactions);
       const disposeEditorControls = enhanceTemplateEditorControls(root, editor, transactions, commands);
       const disposeBarcodeSource = bindBarcodeSourceControl({
@@ -262,16 +263,6 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       onDraftChange(updateDraftMetadata(draftRef.current, key, value));
     }
 
-    function closeEditor() {
-      flushDraftRef.current();
-      if (dirty && !window.confirm("저장하지 않은 변경 내용이 있습니다. 양식 목록으로 이동할까요?")) {
-        return;
-      }
-      setShowInformation(false);
-      onNoticeChange(null);
-      onClose();
-    }
-
     function previewTemplate() {
       flushDraftRef.current();
       const editor = editorRef.current;
@@ -281,7 +272,11 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       onNoticeChange(null);
       try {
         const previewTags = updateTagExamples(decoratedDataTags, getTemplateSampleData(metadata.layout));
-        const html = renderTemplateHtml(serializeTemplateEditorHtml(editor.getHtml()), buildSampleValues(previewTags));
+        const html = renderTemplateHtml(
+          serializeTemplateEditorHtml(editor.getHtml()),
+          buildSampleValues(previewTags),
+          getTemplatePageSettings(editor.getValue({ sync: false })),
+        );
         openTemplatePrintWindow(`${metadata.name} 미리보기`, html);
       } catch (reason) {
         onNoticeChange({
@@ -327,36 +322,33 @@ export const TemplateEditorWorkspace = forwardRef<TemplateEditorWorkspaceHandle,
       saveInFlightRef.current ?? (dirty ? saveTemplateVersion() : Promise.resolve(true));
 
     return (
-      <section className="examlist-template-editor-view">
-        <TemplateEditorMetadataBar
-          name={draft.name}
-          description={draft.description}
-          onNameChange={(value) => updateMetadata("name", value)}
-          onDescriptionChange={(value) => updateMetadata("description", value)}
-        >
-          <button className="exam-outline-button template-editor-list-button" type="button" onClick={closeEditor}>
-            <ListButtonIcon />
-            <span>양식 목록</span>
-          </button>
-          <button
-            className="exam-ghost-button ghost-button template-editor-preview-button"
-            type="button"
-            disabled={actionBusy !== null}
-            onClick={previewTemplate}
-          >
-            <PreviewButtonIcon />
-            <span>{actionBusy === "preview" ? "준비 중" : "미리보기"}</span>
-          </button>
-          <button
-            className="exam-primary-button primary-button template-editor-save-button"
-            type="button"
-            disabled={!dirty || actionBusy !== null || Boolean(overflowMessage)}
-            onClick={() => void saveTemplateVersion()}
-          >
-            <SaveButtonIcon />
-            <span>{actionBusy === "save" ? "저장 중" : "저장"}</span>
-          </button>
-        </TemplateEditorMetadataBar>
+      <section className="examlist-template-editor-view document-template-editor-view">
+        {actionsHost &&
+          createPortal(
+            <>
+              <div className="template-editor-panel-actions">
+                <button
+                  className="exam-ghost-button ghost-button template-editor-preview-button"
+                  type="button"
+                  disabled={actionBusy !== null}
+                  onClick={previewTemplate}
+                >
+                  <PreviewButtonIcon />
+                  <span>{actionBusy === "preview" ? "준비 중" : "미리보기"}</span>
+                </button>
+                <button
+                  className="exam-primary-button primary-button template-editor-save-button"
+                  type="button"
+                  disabled={!dirty || actionBusy !== null || Boolean(overflowMessage)}
+                  onClick={() => void saveTemplateVersion()}
+                >
+                  <SaveButtonIcon />
+                  <span>{actionBusy === "save" ? "저장 중" : "저장"}</span>
+                </button>
+              </div>
+            </>,
+            actionsHost,
+          )}
         {overflowMessage && (
           <div className="template-editor-status-bar error">
             {overflowMessage} 문서 영역 안으로 내용을 조정해야 저장할 수 있습니다.

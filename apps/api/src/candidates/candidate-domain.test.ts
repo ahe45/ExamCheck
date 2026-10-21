@@ -27,10 +27,8 @@ describe("candidate domain", () => {
     expect(() => normalizeAndValidateCandidate(candidate({ time: "24:00" }), 8)).toThrow(
       "시험시간 형식은 hh:mm이어야 합니다. (8행)",
     );
-    expect(() => normalizeAndValidateCandidate(candidate({ waitingRoom: "" }), 9)).toThrow(
-      "대기실명 값을 입력하세요. (9행)",
-    );
-    expect(() => normalizeAndValidateCandidate(candidate({ room: "" }), 10)).not.toThrow();
+    expect(() => normalizeAndValidateCandidate(candidate({ room: "" }), 9)).toThrow("고사실명 값을 입력하세요. (9행)");
+    expect(() => normalizeAndValidateCandidate(candidate({ waitingRoom: "" }), 10)).not.toThrow();
   });
 
   it("rejects unknown workbook and photo policies with their existing messages", () => {
@@ -184,9 +182,17 @@ function candidate(overrides: Partial<CandidateInput> = {}): CandidateInput {
     name: "홍길동",
     birth: "2000-01-01",
     group: "",
+    answerSheet: "",
     opt1: "",
     opt2: "",
     opt3: "",
+    opt4: "",
+    opt5: "",
+    opt6: "",
+    opt7: "",
+    opt8: "",
+    opt9: "",
+    opt10: "",
     ...overrides,
   };
 }

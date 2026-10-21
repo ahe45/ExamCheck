@@ -23,6 +23,7 @@ export function useOperationSettings(token: string, examName: string, schedule: 
   const [configuredRanges, setConfiguredRanges] = useState<PseudonymTimeRange[]>([]);
   const [useCandidatePhotos, setUseCandidatePhotos] = useState(true);
   const [showAttendanceSelection, setShowAttendanceSelection] = useState(false);
+  const [useAnswerSheet, setUseAnswerSheet] = useState(false);
   const [autoDrawEnabled, setAutoDrawEnabled] = useState(false);
   const [autoDrawDelaySeconds, setAutoDrawDelaySeconds] = useState(3);
   const [printPreassignedLabel, setPrintPreassignedLabel] = useState(true);
@@ -37,6 +38,7 @@ export function useOperationSettings(token: string, examName: string, schedule: 
     setConfiguredRanges([]);
     setUseCandidatePhotos(true);
     setShowAttendanceSelection(false);
+    setUseAnswerSheet(false);
     setAutoDrawEnabled(false);
     setAutoDrawDelaySeconds(3);
     setPrintPreassignedLabel(true);
@@ -67,6 +69,12 @@ export function useOperationSettings(token: string, examName: string, schedule: 
         setConfiguredRanges(setting.ranges);
         setUseCandidatePhotos(setting.useCandidatePhotos);
         setShowAttendanceSelection(setting.showAttendanceSelection ?? true);
+        setUseAnswerSheet(
+          Boolean(
+            setting.useAnswerSheet &&
+            (setting.assignmentMethod === "SEQUENTIAL" || setting.assignmentMethod === "MATCHING"),
+          ),
+        );
         setAutoDrawEnabled(setting.autoDrawEnabled);
         setAutoDrawDelaySeconds(setting.autoDrawDelaySeconds);
         setPrintPreassignedLabel(setting.printPreassignedLabel);
@@ -90,6 +98,7 @@ export function useOperationSettings(token: string, examName: string, schedule: 
     configuredRanges,
     useCandidatePhotos,
     showAttendanceSelection,
+    useAnswerSheet,
     autoDrawEnabled,
     autoDrawDelaySeconds,
     printPreassignedLabel,

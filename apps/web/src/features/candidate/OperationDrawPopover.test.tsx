@@ -19,6 +19,23 @@ function props() {
   };
 }
 
+it("수험생 화면은 매칭 값과 추첨 결과를 반영하고 조작과 단축키를 제공하지 않는다", () => {
+  const input = props();
+  const { rerender } = render(<OperationDrawPopover {...input} readOnly matching manualNumber="0017" />);
+  expect(screen.getByText("0017")).toBeInTheDocument();
+  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  fireEvent.keyDown(document, { key: "Enter" });
+  fireEvent.keyDown(document, { key: "F9" });
+  expect(input.onAssign).not.toHaveBeenCalled();
+  expect(input.onClose).not.toHaveBeenCalled();
+  rerender(
+    <OperationDrawPopover {...input} readOnly assignment={{ pseudonymNumber: "1023" } as PseudonymAssignment} />,
+  );
+  expect(screen.getByText("1023")).toBeInTheDocument();
+  expect(screen.getByText("추첨 완료")).toBeInTheDocument();
+});
+
 it("F9 confirms only a completed draw, while F2 cannot dismiss it", () => {
   const input = props();
   const { rerender, unmount, container } = render(<OperationDrawPopover {...input} />);

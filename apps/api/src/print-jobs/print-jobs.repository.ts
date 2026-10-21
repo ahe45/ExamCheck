@@ -32,9 +32,17 @@ export interface PrintCandidateRecord {
   waitingRoom: string;
   seatNo: string;
   groupName: string;
+  answerSheet?: string;
   opt1: string;
   opt2: string;
   opt3: string;
+  opt4?: string;
+  opt5?: string;
+  opt6?: string;
+  opt7?: string;
+  opt8?: string;
+  opt9?: string;
+  opt10?: string;
   labelBarcode: string;
   preassignedNumber: string;
   pseudonymNumber: string;
@@ -196,7 +204,7 @@ export class PrintJobsRepository {
               cr.building_name AS buildingName, cr.room_name AS roomName,
               cr.waiting_room AS waitingRoom,
               COALESCE(cr.designated_sort, '') AS seatNo, cr.group_name AS groupName,
-              cr.opt1, cr.opt2, cr.opt3, cr.label_barcode AS labelBarcode,
+              cr.answer_sheet AS answerSheet, cr.opt1, cr.opt2, cr.opt3, cr.opt4, cr.opt5, cr.opt6, cr.opt7, cr.opt8, cr.opt9, cr.opt10, cr.label_barcode AS labelBarcode,
               cr.temporary_no AS preassignedNumber,
               COALESCE(pa.pseudonym_no, NULLIF(cr.temporary_no, '')) AS pseudonymNumber,
               COALESCE(pa.is_absentee, FALSE) AS absent,

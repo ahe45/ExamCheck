@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { ConflictException, Inject, Injectable } from "@nestjs/common";
+import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import type { Pool, PoolConnection } from "mysql2/promise";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { withScopedTransaction } from "../common/database/transaction.js";
@@ -11,10 +12,11 @@ import {
   buildCandidatePhotoImportPlan,
   hasCandidateOperationalChanges,
   matchCandidatePhotos,
+  normalizeAndValidateCandidate,
   type CandidatePhotoArchiveFiles,
   type CandidateUploadPolicy,
 } from "./candidate-domain.js";
-import type { CandidateInput } from "./candidate-fields.js";
+import { candidateFields, candidateKey, type CandidateInput } from "./candidate-fields.js";
 import { toCandidateHttpError } from "./candidate-http-errors.js";
 import {
   assertCandidatePreviewState,
@@ -36,6 +38,88 @@ export class CandidatesApplicationService {
   ) {
     this.examName = config.candidates.defaultExamName;
     this.previewSecret = config.auth.jwtSecret;
+  }
+
+  async updateCandidate(id: number, input: CandidateInput, expectedUpdatedAt: string, actorUserId: number) {
+    try {
+      const candidate = normalizeAndValidateCandidate(input, 1);
+      const observed = await this.repository.findById(this.pool, id);
+      if (!observed) throw new NotFoundException("수험생 정보를 찾을 수 없습니다.");
+      return await withScopedTransaction(this.pool, async (connection) => {
+        const uniqueness = await this.repository.loadExamineeNumberUniqueness(connection, {
+          forUpdate: false,
+          shared: true,
+        });
+        const numbers = [observed.examineeNo, candidate.examineeNo];
+        await this.repository.lockImportNumbers(connection, numbers);
+        await this.repository.lockImportAdmissions(connection, this.examName, [observed, candidate]);
+        await this.repository.lockImportOperations(connection, this.examName, [observed, candidate]);
+        const current = await this.repository.findById(connection, id, true);
+        if (!current) throw new NotFoundException("수험생 정보를 찾을 수 없습니다.");
+        if (new Date(current.updatedAt).getTime() !== new Date(expectedUpdatedAt).getTime())
+          throw new ConflictException(
+            "다른 작업에서 수험생 정보가 변경되었습니다. 창을 닫고 다시 열어 최신 정보를 확인해 주세요.",
+          );
+        const existing = await this.repository.loadExisting(connection, { forUpdate: true, examineeNos: numbers });
+        const duplicate = existing.get(candidateKey(candidate));
+        if (duplicate && duplicate.id !== id)
+          throw new ConflictException("동일한 수험번호·시험일정·건물의 수험생이 이미 등록되어 있습니다.");
+        assertCandidateNumberUniqueness(
+          [candidate],
+          new Map([...existing].filter(([, row]) => row.id !== id)),
+          uniqueness,
+        );
+        const operationalChange =
+          hasCandidateOperationalChanges(current, candidate) || candidateKey(current) !== candidateKey(candidate);
+        if (operationalChange) {
+          const protectedIds = await this.repository.listOperationallyProtectedCandidateIds(
+            connection,
+            [id],
+            this.examName,
+          );
+          if (protectedIds.size)
+            throw new ConflictException(
+              "가번호 배정 또는 마감 이력이 있는 수험생의 수험번호·시험일정·전형·모집단위·전공·고사장·가번호는 변경할 수 없습니다.",
+            );
+          const guards = await this.repository.listImportScopeGuards(connection, this.examName);
+          assertCandidateImportScopesAreMutable([current, candidate], guards);
+          await this.repository.deleteTimeRangesByIds(connection, affectedRangeIds([current, candidate], guards));
+        }
+        await this.repository.writeCandidateBatch(connection, [{ id, candidate }], this.examName);
+        await this.audit.record(connection, {
+          eventType: "CANDIDATE_UPDATED",
+          actorUserId,
+          details: {
+            candidateRecordId: id,
+            changedFieldCount: candidateFields.filter((field) => current[field.key] !== candidate[field.key]).length,
+          },
+        });
+        return this.repository.findById(connection, id);
+      });
+    } catch (error) {
+      throw toCandidateHttpError(error);
+    }
+  }
+
+  async saveCandidatePhoto(
+    id: number,
+    photo: { fileName: string; mimeType: string; content: Buffer },
+    actorUserId: number,
+  ) {
+    return withScopedTransaction(this.pool, async (connection) => {
+      if (!(await this.repository.findById(connection, id, true)))
+        throw new NotFoundException("수험생 정보를 찾을 수 없습니다.");
+      await this.repository.upsertCandidatePhoto(connection, id, {
+        ...photo,
+        contentHash: createHash("sha256").update(photo.content).digest("hex"),
+      });
+      await this.audit.record(connection, {
+        eventType: "CANDIDATE_PHOTO_UPDATED",
+        actorUserId,
+        details: { candidateRecordId: id },
+      });
+      return { saved: true };
+    });
   }
 
   async importCandidates(

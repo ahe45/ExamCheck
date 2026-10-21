@@ -33,6 +33,8 @@ export interface MutationAuditDetailsByEvent {
   ACCOUNT_DELETED: {
     userId: number;
   };
+  CANDIDATE_UPDATED: { candidateRecordId: number; changedFieldCount: number };
+  CANDIDATE_PHOTO_UPDATED: { candidateRecordId: number };
   CANDIDATE_WORKBOOK_IMPORTED: {
     totalRows: number;
     inserted: number;
@@ -118,6 +120,7 @@ export interface MutationAuditDetailsByEvent {
     useCandidatePhotos: boolean;
     enableBulkDraw: boolean;
     showAttendanceSelection: boolean;
+    useAnswerSheet: boolean;
   };
   PSEUDONYM_OPERATION_CLOSED: {
     operationId: number;
@@ -285,6 +288,8 @@ const EVENT_CONTRACTS = {
     passwordChanged: booleanValue,
   }),
   ACCOUNT_DELETED: fields({ userId: positiveInteger }),
+  CANDIDATE_UPDATED: fields({ candidateRecordId: positiveInteger, changedFieldCount: nonNegativeInteger }),
+  CANDIDATE_PHOTO_UPDATED: fields({ candidateRecordId: positiveInteger }),
   CANDIDATE_WORKBOOK_IMPORTED: fields(
     {
       totalRows: nonNegativeInteger,
@@ -379,6 +384,7 @@ const EVENT_CONTRACTS = {
     useCandidatePhotos: booleanValue,
     enableBulkDraw: booleanValue,
     showAttendanceSelection: booleanValue,
+    useAnswerSheet: booleanValue,
   }),
   PSEUDONYM_OPERATION_CLOSED: fields({
     operationId: positiveInteger,

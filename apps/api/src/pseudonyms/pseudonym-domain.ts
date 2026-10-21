@@ -66,6 +66,7 @@ export interface PseudonymSettingSnapshot {
   useCandidatePhotos: number | boolean;
   enableBulkDraw: number | boolean;
   showAttendanceSelection?: number | boolean;
+  useAnswerSheet?: number | boolean;
 }
 
 export interface RangeCursorSnapshot {
@@ -365,6 +366,7 @@ export function settingResponse(
     useCandidatePhotos: Boolean(setting.useCandidatePhotos),
     enableBulkDraw: Boolean(setting.enableBulkDraw),
     showAttendanceSelection: Boolean(setting.showAttendanceSelection ?? true),
+    useAnswerSheet: Boolean(setting.useAnswerSheet ?? false),
     ranges: ranges.map((range) => ({
       date: range.date,
       time: range.time,

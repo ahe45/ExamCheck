@@ -98,6 +98,7 @@ export class UpdatePseudonymSettingUseCase {
       );
       assertExpectedSettingVersion(input.expectedVersion, existingSetting?.version ?? 1, !existingSetting);
       input.showAttendanceSelection ??= Boolean(existingSetting?.showAttendanceSelection ?? true);
+      input.useAnswerSheet ??= Boolean(existingSetting?.useAnswerSheet ?? false);
 
       const scheduleCounts = await this.repository.listScheduleCounts(connection, input.examName, input.admissionName);
       assertScheduleRangeCapacities(
@@ -185,6 +186,7 @@ export class UpdatePseudonymSettingUseCase {
           useCandidatePhotos: input.useCandidatePhotos,
           enableBulkDraw: input.enableBulkDraw,
           showAttendanceSelection: input.showAttendanceSelection,
+          useAnswerSheet: input.useAnswerSheet,
         },
       });
       await connection.commit();

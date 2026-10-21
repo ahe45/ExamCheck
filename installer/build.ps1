@@ -1,4 +1,4 @@
-param([string]$CompilerPath, [switch]$SkipInstaller)
+﻿param([string]$CompilerPath, [switch]$SkipInstaller, [switch]$CreateArchive)
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $root = Split-Path -Parent $PSScriptRoot
@@ -74,7 +74,11 @@ Copy-Tree (Join-Path $root 'apps/api/src/database/migrations') (Join-Path $stage
 Copy-Tree (Join-Path $root 'vendor') (Join-Path $stage 'vendor')
 Copy-Tree (Join-Path $PSScriptRoot 'runtime') (Join-Path $stage 'runtime')
 if (Test-Path (Join-Path $root 'drivers')) { Copy-Tree (Join-Path $root 'drivers') (Join-Path $stage 'drivers') }
-Copy-Item (Join-Path $PSScriptRoot 'portable/ExamCheck.cmd') $stage
+Copy-Item (Join-Path $PSScriptRoot 'assets/app.ico') (Join-Path $stage 'runtime/app.ico')
+Copy-Item (Join-Path $PSScriptRoot 'assets/app.png') (Join-Path $stage 'runtime/app.png')
+$csharpCompiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+if (-not (Test-Path -LiteralPath $csharpCompiler)) { throw 'Windows .NET Framework C# compiler is required to build the GUI launcher.' }
+Invoke-Checked $csharpCompiler @('/nologo','/target:winexe','/optimize+','/codepage:65001','/reference:System.Windows.Forms.dll',("/win32icon:" + (Join-Path $PSScriptRoot 'assets/app.ico')),("/out:" + (Join-Path $stage '가번호 관리 시스템.exe')),(Join-Path $PSScriptRoot 'portable/ExamCheck.cs'))
 Copy-Item (Join-Path $PSScriptRoot 'USER-GUIDE.txt') $stage
 Copy-Item (Join-Path $PSScriptRoot 'runtime-lock.json') $stage
 Push-Location $stage
@@ -118,13 +122,15 @@ Get-ChildItem (Join-Path $stage 'runtime') -Filter '*.ps1' | ForEach-Object {
     $content = [IO.File]::ReadAllText($_.FullName)
     [IO.File]::WriteAllText($_.FullName, $content, (New-Object Text.UTF8Encoding($true)))
 }
-Write-Host 'Creating the offline portable package...'
-$zip = Join-Path $output "ExamCheck-$version-win-x64.zip"
-# ZipFile supports large MariaDB archives and avoids Compress-Archive's hidden-file omissions.
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-[IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
-Get-FileHash -LiteralPath $zip -Algorithm SHA256 | Format-List
+if ($CreateArchive) {
+    Write-Host 'Creating the offline portable package...'
+    $zip = Join-Path $output "가번호 관리 시스템_$version.zip"
+    # ZipFile supports large MariaDB archives and avoids Compress-Archive's hidden-file omissions.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
+    [IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
+    Get-FileHash -LiteralPath $zip -Algorithm SHA256 | Format-List
+}
 if (-not $SkipInstaller) {
     if (-not $CompilerPath) {
         $candidates = @((Join-Path $cache 'compiler/ISCC.exe'), "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")
@@ -133,7 +139,7 @@ if (-not $SkipInstaller) {
     if ($CompilerPath) {
         Invoke-Checked $CompilerPath @('/Qp', "/DAppVersion=$version", (Join-Path $PSScriptRoot 'ExamCheck.iss'))
     } else {
-        Write-Host 'Portable ZIP is ready. To also create Setup.exe, install Inno Setup on the build PC and rerun with -CompilerPath <ISCC.exe>.'
+        throw 'Install Inno Setup on the build PC and rerun with -CompilerPath <ISCC.exe>.'
     }
 }
 Write-Host "Output: $output"

@@ -51,6 +51,44 @@ beforeEach(() => {
 });
 
 describe("SystemSettingsPage optimistic save", () => {
+  it.each(["SEQUENTIAL", "MATCHING"] as const)(
+    "답안지 사용을 %s 설정에 저장하고 다시 불러온다",
+    async (assignmentMethod) => {
+      pseudonymApi.fetchPseudonymSetting.mockResolvedValue({ ...setting, assignmentMethod, useAnswerSheet: false });
+      pseudonymApi.updatePseudonymSetting.mockResolvedValue({
+        ...setting,
+        assignmentMethod,
+        version: 8,
+        useAnswerSheet: true,
+      });
+      const ref = createRef<SystemSettingsPageHandle>();
+      const onDirtyChange = vi.fn();
+      render(
+        <SystemSettingsPage
+          ref={ref}
+          token="admin-token"
+          admissionName={setting.admissionName}
+          embedded
+          onDirtyChange={onDirtyChange}
+        />,
+      );
+      const switches = await screen.findAllByRole("checkbox", { name: /답안지 사용/ });
+      const active = switches.find((control) => !(control as HTMLInputElement).disabled)!;
+      expect(active).not.toBeChecked();
+      fireEvent.click(active);
+      await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+      await act(async () => {
+        await ref.current!.save();
+      });
+      expect(pseudonymApi.updatePseudonymSetting).toHaveBeenCalledWith(
+        "admin-token",
+        expect.objectContaining({ assignmentMethod, useAnswerSheet: true }),
+      );
+      expect(active).toBeChecked();
+      await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    },
+  );
+
   it("응시·결시 선택 표시 설정을 저장하고 다시 불러온 값을 유지한다", async () => {
     pseudonymApi.updatePseudonymSetting.mockResolvedValue({ ...setting, version: 8, showAttendanceSelection: false });
     const ref = createRef<SystemSettingsPageHandle>();

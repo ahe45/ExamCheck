@@ -1,3 +1,4 @@
+import { applyAbsenceRowHighlight } from "./template-absence-highlight";
 import { normalizeCandidateBlockGridConfig } from "examlist-template-editor/core";
 import type { TemplateEditorValue } from "../../shared/templates/template-editor-contracts";
 import { serializeTemplateEditorHtml } from "./editor/template-editor-serialization";
@@ -20,7 +21,7 @@ export function getPrintableCandidateGrid(template: TemplateEditorValue) {
       "양식의 수험생 데이터 블록 수와 행·열 설정이 일치하지 않습니다. 양식 편집기에서 데이터 블록을 확인하고 저장해 주세요.",
     );
   }
-  return { html, config, capacity, blocks };
+  return { html, config, capacity, blocks, pageSettings: getTemplatePageSettings(template) };
 }
 
 // Sort keys belong to the editor; values belong to the application's tag projection.
@@ -78,6 +79,7 @@ export function renderCandidateGridPages(
         if (!grid.config.fillEmptyBlocks) slot.style.visibility = "hidden";
       }
     });
+    applyAbsenceRowHighlight(root, grid.pageSettings);
     pages.push(root.innerHTML);
   }
   return pages;

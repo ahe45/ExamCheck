@@ -1,3 +1,4 @@
+import { OperationCandidatePreview } from "./OperationCandidatePreview";
 import { ToastNotice } from "../../shared/components/ToastNotice";
 import type { FormEvent, RefObject } from "react";
 import type { Examinee } from "../../shared/api/examinees";
@@ -18,9 +19,15 @@ interface Props {
   selectedMode: AssignmentMode;
   assignment: PseudonymAssignment | null;
   showAttendanceSelection?: boolean;
+  useAnswerSheet?: boolean;
   registrationAbsent?: boolean;
   attendanceLocked?: boolean;
   attendanceDisabled?: boolean;
+  labelPrintingEnabled?: boolean;
+  labelCopies?: number | "";
+  labelCopiesValid?: boolean;
+  labelTemplateName?: string;
+  onLabelCopiesChange?(value: number | ""): void;
   onRegistrationAbsent?(value: boolean): void;
   onAttendanceLocked?(value: boolean): void;
   onSearch(event: FormEvent): void;
@@ -43,9 +50,15 @@ export function OperationControlPanel({
   selectedMode,
   assignment,
   showAttendanceSelection = false,
+  useAnswerSheet = false,
   registrationAbsent = false,
   attendanceLocked = false,
   attendanceDisabled = false,
+  labelPrintingEnabled = false,
+  labelCopies = 1,
+  labelCopiesValid = true,
+  labelTemplateName,
+  onLabelCopiesChange,
   onRegistrationAbsent,
   onAttendanceLocked,
   onSearch,
@@ -53,24 +66,27 @@ export function OperationControlPanel({
   onReset,
   onCloseNotice,
 }: Props) {
+  const lookupLabel = useAnswerSheet ? "답안지" : "수험번호";
   return (
     <aside className="operator-control-panel">
       <form className="operator-lookup" onSubmit={onSearch}>
-        <div className={`operator-lookup-field ${showAttendanceSelection ? "with-attendance" : ""}`}>
+        <div
+          className={`operator-lookup-field ${showAttendanceSelection ? "with-attendance" : ""} ${labelPrintingEnabled ? "with-label-copies" : ""}`}
+        >
           <div>
             <input
               ref={inputRef}
               id="operator-examinee-no"
-              aria-label="수험번호"
+              aria-label={lookupLabel}
               autoFocus
               value={input}
               readOnly={processing}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.repeat || event.nativeEvent.isComposing)) event.preventDefault();
               }}
-              onChange={(event) => onInput(event.target.value.replace(/\s/g, ""))}
-              placeholder={showAttendanceSelection ? "수험번호 입력" : "수험번호 입력 또는 스캔"}
-              title="수험번호 입력 또는 스캔"
+              onChange={(event) => onInput(useAnswerSheet ? event.target.value : event.target.value.replace(/\s/g, ""))}
+              placeholder={showAttendanceSelection ? `${lookupLabel} 입력` : `${lookupLabel} 입력 또는 스캔`}
+              title={`${lookupLabel} 입력 또는 스캔`}
             />
             <button
               type="button"
@@ -90,6 +106,23 @@ export function OperationControlPanel({
           >
             {searching ? <span className="operator-search-spinner" /> : <OperatorSearchIcon />}
           </button>
+          {labelPrintingEnabled && (
+            <label className="operator-lookup-copies" title={labelTemplateName}>
+              <span>출력</span>
+              <input
+                type="number"
+                aria-label="라벨 출력 매수"
+                min={1}
+                max={10}
+                step={1}
+                value={labelCopies}
+                disabled={processing}
+                aria-invalid={!labelCopiesValid}
+                onChange={(event) => onLabelCopiesChange?.(event.target.value === "" ? "" : Number(event.target.value))}
+              />
+              <span>매</span>
+            </label>
+          )}
           {showAttendanceSelection && (
             <fieldset
               className={`operator-attendance-selector ${registrationAbsent ? "absent" : ""}`}
@@ -125,54 +158,14 @@ export function OperationControlPanel({
         </div>
         {notice && <ToastNotice notice={notice} onClose={onCloseNotice} />}
       </form>
-      <section className="operator-candidate-preview" ref={previewRef}>
-        <dl>
-          <div>
-            <dt>수험번호</dt>
-            <dd>{candidate?.examineeNo || "-"}</dd>
-          </div>
-          <div>
-            <dt>성명</dt>
-            <dd>{candidate?.name || "-"}</dd>
-          </div>
-          <div>
-            <dt>생년월일</dt>
-            <dd>{candidate?.birthDate || "-"}</dd>
-          </div>
-          <div>
-            <dt>가번호</dt>
-            <dd>
-              {assignment?.pseudonymNumber ||
-                (selectedMode === "PREASSIGNED" ? candidate?.preassignedNumber : null) ||
-                "-"}
-            </dd>
-          </div>
-          <div>
-            <dt>지원전형</dt>
-            <dd>{candidate?.admissionName || "-"}</dd>
-          </div>
-          <div>
-            <dt>모집단위</dt>
-            <dd>{candidate?.unitName || "-"}</dd>
-          </div>
-          <div>
-            <dt>전공</dt>
-            <dd>{candidate?.majorName || "-"}</dd>
-          </div>
-        </dl>
-        <div className="operator-photo-row">
-          <div className="operator-photo-label">사진</div>
-          <div className="operator-photo-area">
-            {useCandidatePhotos && photoUrl ? (
-              <img src={photoUrl} alt={`${candidate?.name || "수험생"} 사진`} />
-            ) : (
-              <span className="empty-photo" role="img" aria-label="수험생 사진 없음">
-                <OperatorPersonIcon />
-              </span>
-            )}
-          </div>
-        </div>
-      </section>
+      <OperationCandidatePreview
+        previewRef={previewRef}
+        candidate={candidate}
+        assignment={assignment}
+        selectedMode={selectedMode}
+        useCandidatePhotos={useCandidatePhotos}
+        photoUrl={photoUrl}
+      />
     </aside>
   );
 }
@@ -182,15 +175,6 @@ function OperatorSearchIcon() {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="11" cy="11" r="6.5" />
       <path d="m16 16 4.2 4.2" />
-    </svg>
-  );
-}
-
-function OperatorPersonIcon() {
-  return (
-    <svg viewBox="0 0 96 96" aria-hidden="true">
-      <circle cx="48" cy="32" r="17" />
-      <path d="M18 82c1.8-20.2 13.8-31 30-31s28.2 10.8 30 31" />
     </svg>
   );
 }

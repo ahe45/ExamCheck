@@ -23,7 +23,17 @@ describe("candidate response contracts", () => {
       assignmentRate: 0,
       admissions: [],
       admissionCounts: { waiting: "1", progress: 0, complete: 0 },
-      breakdowns: { admission: [], building: [], period: [], waitingRoom: [] },
+      breakdowns: {
+        admission: [],
+        unit: [],
+        major: [],
+        group: [],
+        date: [],
+        room: [],
+        building: [],
+        period: [],
+        waitingRoom: [],
+      },
     });
 
     await expect(fetchCandidateDashboardSummary("session-token")).rejects.toMatchObject({

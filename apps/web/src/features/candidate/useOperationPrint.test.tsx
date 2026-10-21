@@ -63,51 +63,57 @@ const template: FormTemplate = {
 };
 
 describe("useOperationPrint", () => {
-  it("forwards the target through signature confirmation and resets it when reopened", async () => {
-    const signed = {
-      ...template,
-      layout: {
-        settings: {
-          documentHtml: '<span data-template-tag-value="signature.author"></span>',
-          signatureNames: { enabled: true },
+  it.each(["PRESENT", "ABSENT"] as const)(
+    "forwards %s through signature confirmation and resets it when reopened",
+    async (target) => {
+      const signed = {
+        ...template,
+        layout: {
+          settings: {
+            documentHtml: '<span data-template-tag-value="signature.author"></span>',
+            signatureNames: { enabled: true },
+          },
         },
-      },
-    };
-    mocks.fetchActiveFormTemplates.mockResolvedValue([signed]);
-    mocks.createOperationTemplatePages.mockResolvedValue(["<p>출력</p>"]);
-    const rows = [
-      { candidate: { absent: false, lastPrintedAt: "2026-10-30T01:00:00Z" }, assignment: { pseudonymNumber: "1" } },
-    ] as OperationRow[];
-    const { result } = renderHook(() =>
-      useOperationPrint({
-        token: "test",
-        systemProfile,
-        schedule,
-        scheduleKey: "schedule-1",
-        examName: "시험",
+      };
+      mocks.fetchActiveFormTemplates.mockResolvedValue([signed]);
+      mocks.createOperationTemplatePages.mockResolvedValue(["<p>출력</p>"]);
+      const rows = [
+        {
+          candidate: { absent: target === "ABSENT", lastPrintedAt: "2026-10-30T01:00:00Z" },
+          assignment: { pseudonymNumber: "1" },
+        },
+      ] as OperationRow[];
+      const { result } = renderHook(() =>
+        useOperationPrint({
+          token: "test",
+          systemProfile,
+          schedule,
+          scheduleKey: "schedule-1",
+          examName: "시험",
+          rows,
+          statusLoaded: true,
+          operationClosed: true,
+          labelPrintingEnabled: true,
+          isCurrentSchedule: () => true,
+          onNotice: vi.fn(),
+        }),
+      );
+      await act(async () => result.current.show());
+      expect(result.current.printTarget).toBe("ALL");
+      act(() => result.current.setPrintTarget(target));
+      await act(async () => result.current.generate());
+      expect(result.current.signatureOpen).toBe(true);
+      act(() => result.current.updateSignatureName("signature.author", "작성자"));
+      await act(async () => result.current.confirmSignatures());
+      expect(mocks.createOperationTemplatePages).toHaveBeenCalledWith(
+        signed,
         rows,
-        statusLoaded: true,
-        operationClosed: true,
-        labelPrintingEnabled: true,
-        isCurrentSchedule: () => true,
-        onNotice: vi.fn(),
-      }),
-    );
-    await act(async () => result.current.show());
-    expect(result.current.printTarget).toBe("ALL");
-    act(() => result.current.setPrintTarget("PRESENT"));
-    await act(async () => result.current.generate());
-    expect(result.current.signatureOpen).toBe(true);
-    act(() => result.current.updateSignatureName("signature.author", "작성자"));
-    await act(async () => result.current.confirmSignatures());
-    expect(mocks.createOperationTemplatePages).toHaveBeenCalledWith(
-      signed,
-      rows,
-      expect.objectContaining({ printTarget: "PRESENT", labelPrintingEnabled: true }),
-    );
-    await act(async () => result.current.show());
-    expect(result.current.printTarget).toBe("ALL");
-  });
+        expect.objectContaining({ printTarget: target, labelPrintingEnabled: true }),
+      );
+      await act(async () => result.current.show());
+      expect(result.current.printTarget).toBe("ALL");
+    },
+  );
 
   it("rejects present-only printing when preassigned candidates have not printed their labels", async () => {
     const onNotice = vi.fn();

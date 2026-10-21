@@ -82,6 +82,127 @@ describe("LabelTemplateManager", () => {
     expect(await screen.findByRole("heading", { name: "라벨 양식 편집" })).toBeVisible();
   }
 
+  it("상단 바 없이 우측 설정 아래의 고정 영역에 테스트 출력과 저장만 표시한다", async () => {
+    const { container } = render(<LabelTemplateManager token="token" />);
+    await openEditor();
+    expect(container.querySelector(".template-editor-context-bar")).toBeNull();
+    expect(screen.queryByRole("button", { name: "양식 목록" })).not.toBeInTheDocument();
+    const footer = screen.getByRole("contentinfo", { name: "양식 작업" });
+    expect(footer.parentElement).toHaveClass("label-template-properties-column");
+    expect(footer.closest(".label-template-properties")).toBeNull();
+    expect(within(footer).getByRole("button", { name: "테스트 출력" })).toBeVisible();
+    expect(within(footer).getByRole("button", { name: "저장" })).toBeDisabled();
+    expect(screen.getByLabelText("양식 제목").closest(".label-template-paper")).not.toBeNull();
+  });
+
+  it("비율 유지 핸들로 변경한 크기와 글자 크기를 저장하고 다시 편집한다", async () => {
+    const view = render(<LabelTemplateManager token="token" />);
+    const { container } = view;
+    await openEditor();
+    const canvas = screen.getByLabelText("라벨 용지");
+    vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 750,
+      bottom: 450,
+      width: 750,
+      height: 450,
+      toJSON: () => ({}),
+    });
+    const handle = screen.getByRole("button", { name: "오른쪽 아래 크기 조절" });
+    let captured = false;
+    handle.setPointerCapture = () => {
+      captured = true;
+    };
+    handle.hasPointerCapture = () => captured;
+    handle.releasePointerCapture = () => {
+      captured = false;
+    };
+    function pointer(type: string, x: number, y: number) {
+      const event = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y, shiftKey: true });
+      Object.defineProperty(event, "pointerId", { value: 1 });
+      fireEvent(handle, event);
+    }
+    pointer("pointerdown", 600, 200);
+    pointer("pointermove", 500, 190);
+    pointer("pointerup", 500, 190);
+    expect(container.querySelector('input[aria-label="높이(mm)"]')).toHaveValue(7.66);
+    expect(canvas.querySelectorAll(".label-resize-handle")).toHaveLength(8);
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+    await screen.findByText("기본 가번호 라벨 라벨 양식을 저장했습니다.");
+    const resized = apiMock.saveLabelTemplate.mock.calls[0]?.[1].layout.elements[0];
+    expect(resized.widthMm).toBe(57);
+    expect(resized.fontSizeMm).toBe(resized.heightMm);
+    expect(resized.widthMm / resized.heightMm).toBeCloseTo(67 / 9, 2);
+    window.sessionStorage.removeItem(LABEL_EDITOR_SESSION_KEY);
+    view.rerender(<LabelTemplateManager key="reopened" token="token" />);
+    await openEditor();
+    expect((container.querySelector(".label-canvas-element.selected") as HTMLElement).style.width).toBe("76%");
+    fireEvent.keyDown(screen.getByLabelText("라벨 용지"), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "오른쪽 아래 크기 조절" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { handleIndex: 0, shiftKey: false },
+    { handleIndex: 1, shiftKey: false },
+    { handleIndex: 0, shiftKey: true },
+    { handleIndex: 1, shiftKey: true },
+  ])(
+    "다중 선택의 $handleIndex 번째 핸들로 함께 크기를 조절한다 (비율 유지: $shiftKey)",
+    async ({ handleIndex, shiftKey }) => {
+      const elements = [
+        { id: "first", kind: "box", xMm: 10, yMm: 10, widthMm: 20, heightMm: 10 },
+        { id: "second", kind: "box", xMm: 40, yMm: 30, widthMm: 10, heightMm: 8 },
+        { id: "unselected", kind: "box", xMm: 10, yMm: 60, widthMm: 15, heightMm: 5 },
+      ];
+      apiMock.templates = [{ ...template, layout: { widthMm: 100, heightMm: 80, dpi: 203, elements } }];
+      render(<LabelTemplateManager token="token" />);
+      await openEditor();
+      const objects = screen.getAllByRole("button", { name: /^개체 \d:/ });
+      fireEvent.keyDown(objects[1]!, { key: "Enter", ctrlKey: true });
+      const canvas = screen.getByLabelText("라벨 용지");
+      expect(canvas.querySelectorAll(".label-resize-handle")).toHaveLength(16);
+      vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 1000,
+        bottom: 800,
+        width: 1000,
+        height: 800,
+        toJSON: () => ({}),
+      });
+      const handle = screen.getAllByRole("button", { name: "오른쪽 중앙 크기 조절" })[handleIndex]!;
+      let captured = false;
+      handle.setPointerCapture = () => {
+        captured = true;
+      };
+      handle.hasPointerCapture = () => captured;
+      handle.releasePointerCapture = () => {
+        captured = false;
+      };
+      function pointer(type: string, x: number) {
+        const event = new MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: 200, shiftKey });
+        Object.defineProperty(event, "pointerId", { value: 1 });
+        fireEvent(handle, event);
+      }
+      pointer("pointerdown", 500);
+      pointer("pointermove", 600);
+      pointer("pointermove", 700);
+      pointer("pointerup", 700);
+      expect(screen.getAllByRole("button", { name: /^개체 \d:/, pressed: true })).toHaveLength(2);
+      fireEvent.click(screen.getByRole("button", { name: "저장" }));
+      await waitFor(() => expect(apiMock.saveLabelTemplate).toHaveBeenCalledTimes(1));
+      const saved = apiMock.saveLabelTemplate.mock.calls[0]?.[1].layout.elements;
+      expect(saved[0]).toMatchObject({ widthMm: 40, heightMm: shiftKey ? 20 : 10, xMm: 10 });
+      expect(saved[1]).toMatchObject({ widthMm: 30, heightMm: shiftKey ? 24 : 8, xMm: 40 });
+      expect(saved[2]).toEqual(elements[2]);
+    },
+  );
+
   it("새로고침하면 라벨 편집 화면을 유지하고 저장된 내용만 다시 불러온다", async () => {
     const first = render(<LabelTemplateManager token="token" />);
     await openEditor();
@@ -328,7 +449,7 @@ describe("LabelTemplateManager", () => {
 
   it("양식의 기본 인쇄 매수를 편집하고 다시 열면 저장한 매수를 표시한다", async () => {
     apiMock.templates = [{ ...template, defaultCopies: 2 }];
-    render(<LabelTemplateManager token="token" />);
+    const view = render(<LabelTemplateManager token="token" />);
     await openEditor();
     const copies = screen.getByRole("spinbutton", { name: "기본 인쇄 매수" });
     expect(copies).toHaveValue(2);
@@ -338,7 +459,8 @@ describe("LabelTemplateManager", () => {
       expect(apiMock.saveLabelTemplate).toHaveBeenCalledWith("token", expect.objectContaining({ defaultCopies: 4 })),
     );
     await screen.findByText("기본 가번호 라벨 라벨 양식을 저장했습니다.");
-    fireEvent.click(screen.getByRole("button", { name: "양식 목록" }));
+    window.sessionStorage.removeItem(LABEL_EDITOR_SESSION_KEY);
+    view.rerender(<LabelTemplateManager key="reopened" token="token" />);
     await openEditor();
     expect(screen.getByRole("spinbutton", { name: "기본 인쇄 매수" })).toHaveValue(4);
   });
@@ -394,7 +516,8 @@ describe("LabelTemplateManager", () => {
   });
 
   it.each([90, 270])("개체의 %s° 회전을 저장·썸네일·재편집에 유지한다", async (rotation) => {
-    const { container } = render(<LabelTemplateManager token="token" />);
+    const view = render(<LabelTemplateManager token="token" />);
+    const { container } = view;
     await openEditor();
     fireEvent.click(
       screen.getByRole("button", { name: rotation === 90 ? "시계 방향 90도 회전" : "반시계 방향 90도 회전" }),
@@ -405,7 +528,9 @@ describe("LabelTemplateManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
     await screen.findByText("기본 가번호 라벨 라벨 양식을 저장했습니다.");
     expect(apiMock.saveLabelTemplate.mock.calls[0]?.[1].layout.elements[0].rotation).toBe(rotation);
-    fireEvent.click(screen.getByRole("button", { name: "양식 목록" }));
+    window.sessionStorage.removeItem(LABEL_EDITOR_SESSION_KEY);
+    view.rerender(<LabelTemplateManager key="reopened" token="token" />);
+    await screen.findByRole("heading", { name: "라벨 양식 관리" });
     expect((container.querySelector(".label-template-thumbnail-element") as HTMLElement).style.transform).toContain(
       `rotate(${rotation}deg)`,
     );

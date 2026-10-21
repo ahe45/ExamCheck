@@ -102,6 +102,7 @@ export const pseudonymSettingSchema = z.object({
   useCandidatePhotos: z.boolean(),
   enableBulkDraw: z.boolean(),
   showAttendanceSelection: z.boolean().optional(),
+  useAnswerSheet: z.boolean().optional(),
   ranges: z.array(pseudonymTimeRangeSchema),
   rangeStatistics: z
     .object({ count: nonnegativeIntegerSchema, start: nonnegativeIntegerSchema, end: nonnegativeIntegerSchema })

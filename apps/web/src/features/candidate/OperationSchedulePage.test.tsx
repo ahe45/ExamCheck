@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchOperationSchedules, type OperationSchedule } from "../../shared/api/examinees";
 import { OperationSchedulePage } from "./OperationSchedulePage";
 
@@ -19,8 +19,61 @@ const schedule: OperationSchedule = {
   labelPrintingEnabled: true,
 };
 
+function renderPage(onSelect = vi.fn()) {
+  render(
+    <OperationSchedulePage
+      token="token"
+      user={{ id: 7, loginId: "operator", role: "OPERATOR", admissionNames: ["면접"] }}
+      systemProfile={{
+        schoolName: "학교",
+        academicYear: 2026,
+        systemName: "가번호 관리",
+        examineeNoUniqueness: "SYSTEM",
+        pseudonymNoUniqueness: "ADMISSION",
+        logoFileName: null,
+        logoDataUrl: null,
+        updatedAt: "2026-09-01",
+      }}
+      onSelect={onSelect}
+      onLogout={vi.fn()}
+    />,
+  );
+}
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
 describe("OperationSchedulePage", () => {
+  it("오늘 날짜만 기본으로 펼치고 날짜 제목으로 각각 접거나 펼친다", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-29T16:00:00Z"));
+    vi.mocked(fetchOperationSchedules).mockResolvedValue([
+      { ...schedule, date: "2026-10-29" },
+      schedule,
+      { ...schedule, date: "2026-10-31" },
+    ]);
+    const onSelect = vi.fn();
+    renderPage(onSelect);
+    const today = await screen.findByRole("button", { name: /2026년 10월 30일/ });
+    const yesterday = screen.getByRole("button", { name: /2026년 10월 29일/ });
+    const tomorrow = screen.getByRole("button", { name: /2026년 10월 31일/ });
+    expect(today).toHaveAttribute("aria-expanded", "true");
+    expect(yesterday).toHaveAttribute("aria-expanded", "false");
+    expect(tomorrow).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+    fireEvent.click(tomorrow);
+    expect(tomorrow).toHaveAttribute("aria-expanded", "true");
+    expect(today).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByRole("progressbar")).toHaveLength(2);
+    fireEvent.click(today);
+    expect(today).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
   it("교시마다 출력 설정에 맞는 완료 인원과 진행률을 표시한다", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-21T03:00:00Z"));
     const schedules = [
       schedule,
       { ...schedule, time: "10:00", periodName: "2교시", printedCount: 0 },
@@ -30,24 +83,8 @@ describe("OperationSchedulePage", () => {
     ];
     vi.mocked(fetchOperationSchedules).mockResolvedValue(schedules);
     const onSelect = vi.fn();
-    render(
-      <OperationSchedulePage
-        token="token"
-        user={{ id: 7, loginId: "operator", role: "OPERATOR", admissionNames: ["면접"] }}
-        systemProfile={{
-          schoolName: "학교",
-          academicYear: 2026,
-          systemName: "가번호 관리",
-          examineeNoUniqueness: "SYSTEM",
-          pseudonymNoUniqueness: "ADMISSION",
-          logoFileName: null,
-          logoDataUrl: null,
-          updatedAt: "2026-09-01",
-        }}
-        onSelect={onSelect}
-        onLogout={vi.fn()}
-      />,
-    );
+    renderPage(onSelect);
+    fireEvent.click(await screen.findByRole("button", { name: /2026년 10월 30일/ }));
     await screen.findByRole("progressbar", { name: "1교시 출력 완료" });
     for (const [index, completed, label, width] of [
       [1, 3, "출력 완료", "30%"],

@@ -36,6 +36,7 @@ const transientClassNames = [
 ];
 
 const transientAttributes = [
+  "data-examcheck-absence-preview",
   "data-template-editor-runtime-active-surface",
   "data-template-editor-allow-overflow-sync",
   "data-candidate-block-modal-editor-surface",

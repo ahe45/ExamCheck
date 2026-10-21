@@ -5,6 +5,7 @@ import type { PseudonymAssignment } from "../../shared/api/pseudonyms";
 import { drawViewModel } from "./operation-view-model";
 
 interface Props {
+  readOnly?: boolean;
   position: { left: number; top: number };
   sequential?: boolean;
   matching?: boolean;
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function OperationDrawPopover({
+  readOnly = false,
   position,
   sequential = false,
   matching = false,
@@ -49,6 +51,7 @@ export function OperationDrawPopover({
   const drawButtonRef = useRef<HTMLButtonElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
+    if (readOnly) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || (event.key !== "Enter" && event.key !== "F9")) return;
       if (event.key === "Enter") {
@@ -68,7 +71,7 @@ export function OperationDrawPopover({
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [readOnly]);
   const view = drawViewModel({
     assignment,
     previewNumber,
@@ -100,10 +103,12 @@ export function OperationDrawPopover({
           <span>{matching ? "NUMBER MATCHING" : sequential ? "SEQUENTIAL ASSIGNMENT" : "RANDOM DRAW"}</span>
           <strong>{view.title}</strong>
         </div>
-        <ModalCloseButton
-          onClick={onClose}
-          aria-label={matching ? "매칭 화면 닫기" : sequential ? "순차부여 화면 닫기" : "추첨 화면 닫기"}
-        />
+        {!readOnly && (
+          <ModalCloseButton
+            onClick={onClose}
+            aria-label={matching ? "매칭 화면 닫기" : sequential ? "순차부여 화면 닫기" : "추첨 화면 닫기"}
+          />
+        )}
       </header>
       {showAttendanceSelection && (
         <div
@@ -114,7 +119,9 @@ export function OperationDrawPopover({
         </div>
       )}
       <div className="operator-draw-number">
-        {sequential || matching ? (
+        {readOnly && (sequential || matching) ? (
+          <span>{assignment?.pseudonymNumber || manualNumber || (previewLoading ? "조회 중…" : "—")}</span>
+        ) : sequential || matching ? (
           <input
             ref={numberInputRef}
             className="operator-assignment-number-input"
@@ -157,39 +164,40 @@ export function OperationDrawPopover({
           <p>지정 시간이 지나면 자동으로 가번호를 추첨합니다.</p>
         </div>
       )}
-      {view.complete ? (
-        <button
-          ref={confirmButtonRef}
-          type="button"
-          className="operator-draw-confirm"
-          onClick={onClose}
-          aria-keyshortcuts="F9"
-          title="확인 (F9)"
-        >
-          <ConfirmButtonIcon />
-          <span>확인</span>
-          <kbd className="operator-draw-shortcut" aria-hidden="true">
-            F9
-          </kbd>
-        </button>
-      ) : (
-        <button
-          ref={drawButtonRef}
-          autoFocus={!sequential && !matching}
-          type="button"
-          className="operator-draw-action"
-          onClick={onAssign}
-          disabled={view.actionDisabled}
-          aria-keyshortcuts="Enter"
-          title={`${view.actionLabel} (Enter)`}
-        >
-          <ConfirmButtonIcon />
-          <span>{view.actionLabel}</span>
-          <kbd className="operator-draw-shortcut" aria-hidden="true">
-            Enter
-          </kbd>
-        </button>
-      )}
+      {!readOnly &&
+        (view.complete ? (
+          <button
+            ref={confirmButtonRef}
+            type="button"
+            className="operator-draw-confirm"
+            onClick={onClose}
+            aria-keyshortcuts="F9"
+            title="확인 (F9)"
+          >
+            <ConfirmButtonIcon />
+            <span>확인</span>
+            <kbd className="operator-draw-shortcut" aria-hidden="true">
+              F9
+            </kbd>
+          </button>
+        ) : (
+          <button
+            ref={drawButtonRef}
+            autoFocus={!sequential && !matching}
+            type="button"
+            className="operator-draw-action"
+            onClick={onAssign}
+            disabled={view.actionDisabled}
+            aria-keyshortcuts="Enter"
+            title={`${view.actionLabel} (Enter)`}
+          >
+            <ConfirmButtonIcon />
+            <span>{view.actionLabel}</span>
+            <kbd className="operator-draw-shortcut" aria-hidden="true">
+              Enter
+            </kbd>
+          </button>
+        ))}
     </section>
   );
 }

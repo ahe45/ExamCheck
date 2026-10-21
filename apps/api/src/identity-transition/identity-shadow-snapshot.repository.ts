@@ -56,8 +56,16 @@ interface CandidateRow extends RowDataPacket {
   designatedSort: string;
   groupName: string;
   opt1: string;
+  answerSheet: string;
   opt2: string;
   opt3: string;
+  opt4: string;
+  opt5: string;
+  opt6: string;
+  opt7: string;
+  opt8: string;
+  opt9: string;
+  opt10: string;
   temporaryNo?: string;
   preassignedValue?: number | null;
   preassignedDisplayWidth?: number | null;
@@ -205,7 +213,7 @@ export class IdentityShadowSnapshotRepository {
               record.examinee_no AS examineeNo, record.name,
               DATE_FORMAT(record.birth_date, '%Y-%m-%d') AS birthDate,
               record.designated_sort AS designatedSort, record.group_name AS groupName,
-              record.opt1, record.opt2, record.opt3, record.temporary_no AS temporaryNo
+              record.answer_sheet AS answerSheet, record.opt1, record.opt2, record.opt3, record.opt4, record.opt5, record.opt6, record.opt7, record.opt8, record.opt9, record.opt10, record.temporary_no AS temporaryNo
        FROM candidate_record record ORDER BY record.id`,
     );
     const [target] = await executor.query<CandidateRow[]>(
@@ -222,7 +230,7 @@ export class IdentityShadowSnapshotRepository {
               candidate_identity.examinee_no_canonical AS examineeNo, candidate_identity.name,
               DATE_FORMAT(candidate_identity.birth_date, '%Y-%m-%d') AS birthDate,
               registration.designated_sort AS designatedSort, registration.group_name AS groupName,
-              registration.opt1, registration.opt2, registration.opt3,
+              registration.answer_sheet AS answerSheet, registration.opt1, registration.opt2, registration.opt3, registration.opt4, registration.opt5, registration.opt6, registration.opt7, registration.opt8, registration.opt9, registration.opt10,
               registration.preassigned_value AS preassignedValue,
               registration.preassigned_display_width AS preassignedDisplayWidth
        FROM candidate_registration registration
@@ -490,9 +498,17 @@ function mapCandidate(row: CandidateRow, legacy: boolean): ShadowProjectionRow {
     birthDate: row.birthDate,
     designatedSort: normalizeIdentityText(row.designatedSort),
     groupName: normalizeIdentityText(row.groupName),
+    answerSheet: normalizeIdentityText(row.answerSheet),
     opt1: normalizeIdentityText(row.opt1),
     opt2: normalizeIdentityText(row.opt2),
     opt3: normalizeIdentityText(row.opt3),
+    opt4: normalizeIdentityText(row.opt4 ?? ""),
+    opt5: normalizeIdentityText(row.opt5 ?? ""),
+    opt6: normalizeIdentityText(row.opt6 ?? ""),
+    opt7: normalizeIdentityText(row.opt7 ?? ""),
+    opt8: normalizeIdentityText(row.opt8 ?? ""),
+    opt9: normalizeIdentityText(row.opt9 ?? ""),
+    opt10: normalizeIdentityText(row.opt10 ?? ""),
     preassignedValue: legacy ? preassigned.value : nullableNumber(row.preassignedValue),
     preassignedDisplayWidth: legacy ? preassigned.displayWidth : nullableNumber(row.preassignedDisplayWidth),
     invalidPreassigned: legacy ? preassigned.invalid : false,

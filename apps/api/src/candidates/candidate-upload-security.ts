@@ -187,6 +187,12 @@ export function readValidatedPhotoEntry(entry: AdmZip.IZipEntry, extension: stri
     throw new BadRequestException("ZIP 내부 파일의 용량 정보가 올바르지 않습니다. 압축 파일을 다시 만들어 주세요.");
   }
 
+  return validateCandidatePhotoBuffer(content, extension);
+}
+
+export function validateCandidatePhotoBuffer(content: Buffer, extension: string) {
+  if (content.length > PHOTO_ARCHIVE_MAX_ENTRY_BYTES)
+    throw new BadRequestException("사진 파일은 20MB를 넘을 수 없습니다.");
   const normalizedExtension = extension.toLowerCase();
   if (normalizedExtension === "png" && hasPngSignature(content)) {
     const dimensions = readPngDimensions(content);

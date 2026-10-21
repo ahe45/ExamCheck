@@ -48,6 +48,34 @@ const systemProfile: DeveloperSettings = {
 };
 
 describe("buildOperationTemplatePages", () => {
+  it.each([false, true])(
+    "결시만 출력은 직접 결시와 마감 시 미처리 수험생을 구분한다 (마감: %s)",
+    async (operationClosed) => {
+      mocks.getTemplateDocumentHtml.mockReturnValue("<p>수험번호</p>");
+      mocks.renderTemplateHtml.mockImplementation((_layout: unknown, values: Record<string, unknown>) =>
+        String(values["candidate.examNo"]),
+      );
+      const rows = [operationRow(1), operationRow(2), operationRow(3)];
+      rows[0].candidate.absent = true;
+      rows[1].candidate.lastPrintedAt = "2026-10-30T01:00:00Z";
+      const context = {
+        token: "token",
+        systemProfile,
+        schedule,
+        examName: "시험",
+        operationClosed,
+        labelPrintingEnabled: true,
+        printTarget: "ABSENT" as const,
+      };
+      expect(await buildOperationTemplatePages(candidateTemplate(), rows, context)).toEqual(
+        operationClosed ? ["10001", "10003"] : ["10001"],
+      );
+      await expect(buildOperationTemplatePages(candidateTemplate(), [rows[1]], context)).rejects.toThrow(
+        "결시한 수험생이 없어 출력할 수 없습니다.",
+      );
+    },
+  );
+
   beforeEach(() => {
     mocks.getTemplateDocumentHtml.mockReturnValue('<img data-template-tag-value="candidate.photo">');
     mocks.renderTemplateHtml.mockImplementation((_layout: unknown, values: Record<string, unknown>) =>
@@ -67,6 +95,29 @@ describe("buildOperationTemplatePages", () => {
     await pages.getPage(0);
     expect(mocks.fetchExamineePhoto).toHaveBeenCalledTimes(1);
     expect(mocks.renderTemplateHtml).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes OPT4~10 and answer-sheet data to document-template rendering", async () => {
+    mocks.getTemplateDocumentHtml.mockReturnValue("{{candidate.opt10}}");
+    const row = operationRow(1);
+    row.candidate.opt4 = "OPTION-4";
+    row.candidate.opt10 = "OPTION-10";
+    row.candidate.answerSheet = "00123456";
+    await buildOperationTemplatePages(candidateTemplate(), [row], {
+      token: "token",
+      systemProfile,
+      schedule,
+      examName: "시험",
+      operationClosed: false,
+    });
+    expect(mocks.renderTemplateHtml).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        "candidate.opt4": "OPTION-4",
+        "candidate.opt10": "OPTION-10",
+        "candidate.answerSheet": "00123456",
+      }),
+    );
   });
 
   it("loads candidate photos with at most four requests and preserves page order", async () => {

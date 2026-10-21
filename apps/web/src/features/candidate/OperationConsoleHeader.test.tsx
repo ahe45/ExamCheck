@@ -29,7 +29,7 @@ const schedule: OperationSchedule = {
   labelPrintingEnabled: false,
 };
 
-function renderHeader(selectedMode: "PREASSIGNED" | "RANDOM") {
+function renderHeader(selectedMode: "PREASSIGNED" | "RANDOM", candidateDisplayOpen = false) {
   return render(
     <OperationConsoleHeader
       systemProfile={systemProfile}
@@ -43,6 +43,8 @@ function renderHeader(selectedMode: "PREASSIGNED" | "RANDOM") {
       settingsRef={{ current: null }}
       labelPrintingEnabled={selectedMode === "PREASSIGNED"}
       loginId="operator"
+      candidateDisplayOpen={candidateDisplayOpen}
+      onOpenCandidateDisplay={vi.fn()}
       onChangeSchedule={vi.fn()}
       onToggleSettings={vi.fn()}
       onOpenPrinter={vi.fn()}
@@ -53,10 +55,19 @@ function renderHeader(selectedMode: "PREASSIGNED" | "RANDOM") {
 }
 
 describe("OperationConsoleHeader", () => {
+  it("분리 창이 열린 동안 버튼을 비활성화하고 작동 상태를 표시한다", () => {
+    renderHeader("RANDOM", true);
+    expect(screen.getByRole("button", { name: "창 분리 중" })).toBeDisabled();
+  });
+  it("분리 창이 없으면 버튼을 활성화한다", () => {
+    renderHeader("RANDOM");
+    expect(screen.getByRole("button", { name: "창 분리" })).toBeEnabled();
+  });
   it("사전부여 방식에서는 사용하지 않는 가번호 범위 카드를 숨긴다", () => {
     const { container } = renderHeader("PREASSIGNED");
 
     expect(screen.queryByText("가번호 범위")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^창 분리/ })).not.toBeInTheDocument();
     expect(container.querySelector(".operator-header-summary")).toHaveClass("without-range");
   });
 

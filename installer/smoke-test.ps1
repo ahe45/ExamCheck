@@ -57,10 +57,11 @@ Initialize-ExamCheckDataPermissions -DataDirectory $data
 $release = Get-Content (Join-Path $stage 'release.json') -Raw | ConvertFrom-Json
 # Exercise the minimum numeric-only initial password through the production bootstrap.
 $password = '1234'
+$userPassword = '5678!User'
 $settings = @{
     format = 1; mariadb = $release.mariadb; webPort = Get-FreePort; apiPort = Get-FreePort
     dbPort = Get-FreePort; lan = $false; dbPassword = New-Secret; jwtSecret = New-Secret
-    initialPassword = $password; bootstrapped = $false
+    adminInitialPassword = $password; userInitialPassword = $userPassword; bootstrapped = $false
 }
 Write-Json (Join-Path $data 'settings.json') $settings
 try {
@@ -74,12 +75,23 @@ try {
     $user = Invoke-RestMethod -Uri "$base/api/v1/auth/me" -Headers @{Authorization="Bearer $($login.token)"}
     if ($user.loginId -ne 'admin') { throw 'Authenticated user mismatch.' }
     $operatorLoginId = -join ([char[]](0xAC00,0xBC88,0xD638))
-    foreach ($loginId in @($operatorLoginId,'dev')) {
-        $initialLogin = Invoke-RestMethod -Uri "$base/api/v1/auth/login" -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{loginId=$loginId; password=$password} | ConvertTo-Json)
-        if (-not $initialLogin.token) { throw "Four-character initial password login failed: $loginId" }
+    foreach ($account in @(
+        @{ LoginId = $operatorLoginId; Password = $userPassword },
+        @{ LoginId = 'dev'; Password = 'control1@' }
+    )) {
+        $initialLogin = Invoke-RestMethod -Uri "$base/api/v1/auth/login" -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{loginId=$account.LoginId; password=$account.Password} | ConvertTo-Json)
+        if (-not $initialLogin.token) { throw "Initial account login failed: $($account.LoginId)" }
+        $rejected = $false
+        try {
+            Invoke-RestMethod -Uri "$base/api/v1/auth/login" -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{loginId=$account.LoginId; password=$password} | ConvertTo-Json) | Out-Null
+        } catch {
+            if ([int]$_.Exception.Response.StatusCode -ne 401) { throw }
+            $rejected = $true
+        }
+        if (-not $rejected) { throw "Admin password was accepted for another account: $($account.LoginId)" }
     }
     $stored = Get-Content (Join-Path $data 'settings.json') -Raw | ConvertFrom-Json
-    if ($stored.initialPassword) { throw 'Initial password was retained after bootstrap.' }
+    if ($stored.initialPassword -or $stored.adminInitialPassword -or $stored.userInitialPassword) { throw 'Initial password was retained after bootstrap.' }
     Invoke-Db 'seed'
     Write-Json $commandPath @{action='backup'}
     $deadline = [DateTime]::UtcNow.AddSeconds(60)

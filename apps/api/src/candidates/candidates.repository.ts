@@ -6,6 +6,23 @@ import type { ExamineeNoUniqueness } from "../uniqueness/number-uniqueness.js";
 import type { CandidatePhotoReference, CandidateRecord } from "./candidate-domain.js";
 import { candidateFields, candidateKey, type CandidateInput } from "./candidate-fields.js";
 import { candidateColumn, candidateListSql, type CandidateListQuery } from "./candidate-list-query.js";
+import type { AttendanceState } from "./candidate-attendance.js";
+
+interface CandidateAttendanceRow extends RowDataPacket, AttendanceState {
+  id: number;
+  admission: string;
+  unit: string;
+  major: string;
+  group: string;
+  date: string;
+  time: string;
+  period: string;
+  building: string;
+  room: string;
+  waitingRoom: string;
+  examineeNo: string;
+  name: string;
+}
 
 export interface CandidateRecordRow extends RowDataPacket, CandidateRecord {
   assignedNumber: string | null;
@@ -16,7 +33,8 @@ export interface CandidateRecordRow extends RowDataPacket, CandidateRecord {
 
 export interface CandidatePhotoRow extends RowDataPacket, CandidatePhotoReference {}
 
-export type CandidateDashboardGroupType = "admission" | "building" | "period" | "waitingRoom";
+export type CandidateDashboardGroupType =
+  "admission" | "unit" | "major" | "group" | "date" | "period" | "building" | "room" | "waitingRoom";
 
 export interface CandidateDashboardBreakdownRow extends RowDataPacket {
   groupType: CandidateDashboardGroupType;
@@ -48,6 +66,32 @@ export interface CandidateImportScopeGuardRow extends RowDataPacket {
 
 @Injectable()
 export class CandidatesRepository {
+  async attendance(executor: SqlExecutor, access: AdmissionAccessPredicate) {
+    const preassigned = "COALESCE(s.assignment_method, d.assignment_method) = 'PREASSIGNED'";
+    const [rows] = await executor.execute<CandidateAttendanceRow[]>(
+      `SELECT cr.id, cr.admission, cr.unit_name AS unit, cr.major, cr.group_name AS \`group\`,
+        DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS date, cr.start_time AS time,
+        cr.period_name AS period, cr.building_name AS building, cr.room_name AS room,
+        cr.waiting_room AS waitingRoom, cr.examinee_no AS examineeNo, cr.name,
+        COALESCE(pa.is_absentee, FALSE) AS absent, COALESCE(po.closed, FALSE) AS closed,
+        CASE WHEN ${preassigned} AND COALESCE(s.print_preassigned_label, d.print_preassigned_label, TRUE)
+          THEN EXISTS (SELECT 1 FROM print_job pj WHERE pj.candidate_record_id = cr.id
+            AND pj.label_type = 'PSEUDONYM_LABEL' AND pj.status = 'SENT')
+          ELSE (pa.id IS NOT NULL OR (${preassigned} AND NULLIF(cr.temporary_no, '') IS NOT NULL))
+        END AS processed
+       FROM candidate_record cr
+       LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+       LEFT JOIN pseudonym_setting s ON s.exam_name = cr.exam_name AND s.admission_name = cr.admission AND s.active = TRUE
+       LEFT JOIN pseudonym_setting d ON d.exam_name = cr.exam_name AND d.admission_name = '' AND d.active = TRUE
+       LEFT JOIN pseudonym_operation po ON po.exam_name = cr.exam_name AND po.exam_date = cr.exam_date
+         AND po.exam_time = cr.start_time AND po.period_name = cr.period_name AND po.admission_name = cr.admission
+       WHERE cr.status = 'ACTIVE' AND ${access.sql}
+       ORDER BY cr.id`,
+      access.params,
+    );
+    return rows;
+  }
+
   async listPage(executor: SqlExecutor, query: CandidateListQuery) {
     const { where, parameters, order } = candidateListSql(query);
     const [counts] = await executor.execute<Array<RowDataPacket & { total: number }>>(
@@ -83,6 +127,22 @@ export class CandidatesRepository {
     return rows;
   }
 
+  async findById(executor: SqlExecutor, id: number, forUpdate = false) {
+    const [rows] = await executor.query<CandidateRecordRow[]>(
+      `${candidateSelectSql} WHERE cr.id = ?${forUpdate ? " FOR UPDATE" : ""}`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
+  async findPhotoById(executor: SqlExecutor, id: number) {
+    const [rows] = await executor.execute<Array<RowDataPacket & { content: Buffer; mimeType: string }>>(
+      "SELECT content, mime_type AS mimeType FROM candidate_photo WHERE candidate_record_id = ?",
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
   async listDashboardBreakdownCounts(
     executor: SqlExecutor,
     access: AdmissionAccessPredicate,
@@ -93,6 +153,28 @@ export class CandidatesRepository {
       `SELECT dashboard_group.group_type AS groupType,
               CASE dashboard_group.group_type
                 WHEN 'admission' THEN COALESCE(NULLIF(TRIM(cr.admission), ''), '미지정 전형')
+                WHEN 'unit' THEN CONCAT(
+                  COALESCE(NULLIF(TRIM(cr.admission), ''), '미지정 전형'), ' · ',
+                  COALESCE(NULLIF(TRIM(cr.unit_name), ''), '미지정 모집단위')
+                )
+                WHEN 'major' THEN CONCAT(
+                  COALESCE(NULLIF(TRIM(cr.admission), ''), '미지정 전형'), ' · ',
+                  COALESCE(NULLIF(TRIM(cr.unit_name), ''), '미지정 모집단위'), ' · ',
+                  COALESCE(NULLIF(TRIM(cr.major), ''), '미지정 전공')
+                )
+                WHEN 'group' THEN CONCAT(
+                  COALESCE(NULLIF(TRIM(cr.admission), ''), '미지정 전형'), ' · ',
+                  COALESCE(NULLIF(TRIM(cr.unit_name), ''), '미지정 모집단위'), ' · ',
+                  COALESCE(NULLIF(TRIM(cr.major), ''), '미지정 전공'), ' · ',
+                  COALESCE(NULLIF(TRIM(cr.period_name), ''), '미지정 교시'), ' · ',
+                  DATE_FORMAT(cr.exam_date, '%Y.%m.%d'), ' ', cr.start_time, ' · ',
+                  COALESCE(NULLIF(TRIM(cr.group_name), ''), '미지정 조')
+                )
+                WHEN 'date' THEN DATE_FORMAT(cr.exam_date, '%Y.%m.%d')
+                WHEN 'room' THEN CONCAT(
+                  COALESCE(NULLIF(TRIM(cr.building_name), ''), '미지정 건물'), ' · ',
+                  COALESCE(NULLIF(TRIM(cr.room_name), ''), '미지정 고사실')
+                )
                 WHEN 'building' THEN COALESCE(NULLIF(TRIM(cr.building_name), ''), '미지정 건물')
                 WHEN 'period' THEN CONCAT(
                   COALESCE(NULLIF(TRIM(cr.period_name), ''), '미지정 교시'),
@@ -109,6 +191,11 @@ export class CandidatesRepository {
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        CROSS JOIN (
          SELECT 'admission' AS group_type
+         UNION ALL SELECT 'unit'
+         UNION ALL SELECT 'major'
+         UNION ALL SELECT 'group'
+         UNION ALL SELECT 'date'
+         UNION ALL SELECT 'room'
          UNION ALL SELECT 'building'
          UNION ALL SELECT 'period'
          UNION ALL SELECT 'waitingRoom'

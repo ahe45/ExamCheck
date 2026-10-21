@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { adminSectionPaths, getAdminSection } from "./admin-navigation";
+import { adminSectionPaths, attendanceViews, getAdminSection, getAttendanceView } from "./admin-navigation";
 
 describe("admin navigation", () => {
+  it.each(attendanceViews)("restores the $label attendance route", ({ key }) => {
+    const section = `attendance-${key}` as const;
+    expect(getAdminSection(adminSectionPaths[section])).toBe(section);
+    expect(getAttendanceView(section)).toBe(key);
+  });
   it("관리자 메뉴 경로를 해당 메뉴로 복원한다", () => {
     expect(getAdminSection(adminSectionPaths.dashboard)).toBe("dashboard");
     expect(getAdminSection(adminSectionPaths.candidates)).toBe("candidates");

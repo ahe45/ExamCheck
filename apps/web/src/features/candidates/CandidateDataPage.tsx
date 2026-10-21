@@ -13,6 +13,7 @@ import { useClientDataGrid } from "../../shared/hooks/useClientDataGrid";
 import { candidateColumnValue } from "./candidate-data-model";
 import { messageOf } from "./candidate-data-model";
 import { CandidateUploadModal } from "./CandidateUploadModal";
+import { CandidateDetailModal } from "./CandidateDetailModal";
 
 interface Props {
   token: string;
@@ -25,6 +26,8 @@ export function CandidateDataPage({ token }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [editing, setEditing] = useState<CandidateRecord | null>(null);
+  const [optExpanded, setOptExpanded] = useState(false);
 
   const [total, setTotal] = useState(0);
   const [revision, setRevision] = useState(0);
@@ -46,6 +49,10 @@ export function CandidateDataPage({ token }: Props) {
   const onError = useCallback((reason: unknown) => setError(messageOf(reason, "조회하지 못했습니다.")), []);
   const server = useMemo(() => ({ total, loadValues, onError }), [total, loadValues, onError]);
   const grid = useClientDataGrid<CandidateRecord, CandidateFieldKey>({ rows, valueOf: candidateColumnValue, server });
+  const optCriteriaActive = Boolean(
+    grid.sort?.key.startsWith("opt") ||
+    Object.entries(grid.filters).some(([key, values]) => key.startsWith("opt") && values.length),
+  );
   const setPage = grid.setPage;
   const query = useMemo(
     () => ({ page: grid.page, pageSize: grid.pageSize, sort: grid.sort, filters: grid.filters }),
@@ -129,11 +136,37 @@ export function CandidateDataPage({ token }: Props) {
               <UploadButtonIcon />
               <span>데이터 업로드</span>
             </button>
+            <button
+              type="button"
+              className="exam-outline-button candidate-opt-toggle"
+              title={optCriteriaActive ? "OPT 컬럼에 정렬 또는 필터 조건이 적용되어 있습니다." : undefined}
+              aria-expanded={optExpanded}
+              aria-controls="candidate-data-table"
+              onClick={() => {
+                grid.closeFilter();
+                setOptExpanded((expanded) => !expanded);
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d={
+                    optExpanded
+                      ? "M3 12h6m-3-3 3 3-3 3M21 12h-6m3-3-3 3 3 3"
+                      : "M9 12H3m3-3-3 3 3 3M15 12h6m-3-3 3 3-3 3"
+                  }
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span>OPT {optExpanded ? "접기" : "펼치기"}</span>
+            </button>
           </div>
         </header>
         {notice && <ToastNotice notice={{ kind: "success", text: notice }} onClose={() => setNotice(null)} />}
         {error && !uploadOpen && <ToastNotice notice={{ kind: "error", text: error }} onClose={() => setError(null)} />}
-        <CandidateDataGrid loading={loading} grid={grid} />
+        <CandidateDataGrid loading={loading} grid={grid} onEdit={setEditing} showOptColumns={optExpanded} />
       </article>
 
       <CandidateUploadModal
@@ -142,6 +175,19 @@ export function CandidateDataPage({ token }: Props) {
         onClose={() => setUploadOpen(false)}
         onComplete={completeUpload}
       />
+      {editing && (
+        <CandidateDetailModal
+          key={editing.id}
+          token={token}
+          candidate={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            setNotice("수험생 정보를 저장했습니다.");
+            load();
+          }}
+        />
+      )}
     </section>
   );
 }

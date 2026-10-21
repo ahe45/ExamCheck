@@ -22,7 +22,7 @@ describe("candidate workbook headers", () => {
     const legacyHeaders = expectedHeaders.filter((header) => header !== "대기실명");
 
     expect(() => validateCandidateWorkbookHeaders(legacyHeaders)).toThrow(
-      "필요한 컬럼은 18개이지만 17개가 확인되었습니다",
+      `필요한 컬럼은 ${expectedHeaders.length}개이지만 ${expectedHeaders.length - 1}개가 확인되었습니다`,
     );
   });
 });

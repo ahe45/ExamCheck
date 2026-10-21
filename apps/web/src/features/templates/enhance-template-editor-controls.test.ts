@@ -75,7 +75,10 @@ describe("enhanceTemplateEditorControls", () => {
     expect(pageOptions.appState.templateEditor.selectedPageId).toBe("content-page");
     expect(pageOptions.appState.templateEditor.template).toEqual({ layout: { pages: [page] } });
     const signatureSection = root.querySelector(".examcheck-signature-name-field");
-    expect(root.querySelector(".examlist-candidate-block-grid-field")?.nextElementSibling).toBe(signatureSection);
+    const absenceSection = root.querySelector(".examcheck-absence-highlight-field");
+    expect(root.querySelector(".examlist-candidate-block-grid-field")?.nextElementSibling).toBe(absenceSection);
+    expect(absenceSection?.nextElementSibling).toBe(signatureSection);
+    expect(root.textContent).not.toContain("인식 기준값");
     expect(signatureSection?.nextElementSibling).toHaveClass("examlist-page-number-field");
     pageOptions.onDirty();
     await Promise.resolve();

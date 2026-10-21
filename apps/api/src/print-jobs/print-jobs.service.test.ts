@@ -58,6 +58,18 @@ const koreanLabelLayout = {
 };
 
 describe("PrintJobsService", () => {
+  it("OPT4~10과 답안지 태그를 실제 라벨 출력값으로 치환한다", async () => {
+    const repository = createRepositoryMock({
+      findActiveLabelTemplate: vi.fn().mockResolvedValue({
+        id: 3,
+        layout: null,
+        zplTemplate: "^XA^FD{{CANDIDATE_OPT4}}/{{CANDIDATE_OPT10}}/{{CANDIDATE_ANSWER_SHEET}}^FS^XZ",
+      }),
+    });
+    const result = await createService(createConnectionMock(), repository).create(input, operator);
+    expect(result.payload).toContain("OPTION-4/OPTION-10/00123456");
+    expect(result.payload).not.toContain("{{");
+  });
   it("대기실명 태그를 라벨 출력 데이터에 연결한다", async () => {
     const connection = createConnectionMock();
     const repository = createRepositoryMock({
@@ -274,6 +286,9 @@ function createRepositoryMock(overrides: Partial<Record<keyof PrintJobsRepositor
       opt1: "추가정보1",
       opt2: "추가정보2",
       opt3: "추가정보3",
+      opt4: "OPTION-4",
+      opt10: "OPTION-10",
+      answerSheet: "00123456",
       labelBarcode: "EX10001",
       preassignedNumber: "8201",
       pseudonymNumber: "8201",

@@ -7,6 +7,7 @@ import type { PrinterDiagnostic } from "../printer/printer.types";
 import { OperationPrinterStatus } from "./OperationPrinterStatus";
 import {
   operationRosterStats,
+  operationRowAttendance,
   operationRowValue,
   type OperationColumn,
   type OperationFieldKey,
@@ -34,10 +35,8 @@ interface RosterState {
   printerDiagnosticBusy: boolean;
   assignment: PseudonymAssignment | null;
   printing: boolean;
-  labelCopies: number | "";
   labelCopiesValid: boolean;
   labelAlreadyPrinted?: boolean;
-  labelTemplateName?: string;
 }
 
 interface RosterActions {
@@ -48,7 +47,6 @@ interface RosterActions {
   openPrint(): void;
   download(): void;
   printLabel(): void;
-  setLabelCopies(value: number | ""): void;
   select(examineeNo: string): void;
 }
 
@@ -74,6 +72,7 @@ export function OperationRosterPanel({
   actions,
 }: Props) {
   const stats = useMemo(() => operationRosterStats(allRows, context), [allRows, context]);
+  const absenceKnown = context.operationClosed || stats.absentCount > 0;
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState({ top: 0, height: 700, rowHeight: 48 });
   const virtual = rows.length > 100;
@@ -120,46 +119,17 @@ export function OperationRosterPanel({
   return (
     <section className="operator-roster-panel">
       <header className="operator-roster-heading">
-        <div className="operator-roster-stats">
-          <div>
-            <span>전체(명)</span>
-            <strong>{stats.totalCount}</strong>
-          </div>
-          <div>
-            <span>응시(명)</span>
-            <strong>{stats.presentCount}</strong>
-          </div>
-          <div>
-            <span>응시율(%)</span>
-            <strong>{stats.attendanceRateText}</strong>
-          </div>
-        </div>
         <div>
           {state.labelPrintingEnabled && (
             <>
-              <label className="operator-label-copies" title={state.labelTemplateName}>
-                <span>출력 매수</span>
-                <input
-                  type="number"
-                  aria-label="라벨 출력 매수"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={state.labelCopies}
-                  disabled={state.printing}
-                  aria-invalid={!state.labelCopiesValid}
-                  title="1~10매"
-                  onChange={(event) =>
-                    actions.setLabelCopies(event.target.value === "" ? "" : Number(event.target.value))
-                  }
+              <div className="operator-output-settings" role="group" aria-label="라벨 출력 설정">
+                <OperationPrinterStatus
+                  diagnostic={state.printerDiagnostic}
+                  busy={state.printerDiagnosticBusy}
+                  printing={state.printing}
+                  onRecheck={actions.recheckPrinter}
                 />
-              </label>
-              <OperationPrinterStatus
-                diagnostic={state.printerDiagnostic}
-                busy={state.printerDiagnosticBusy}
-                printing={state.printing}
-                onRecheck={actions.recheckPrinter}
-              />
+              </div>
               <button
                 className="operator-roster-label-button"
                 onClick={actions.printLabel}
@@ -200,7 +170,7 @@ export function OperationRosterPanel({
             title={state.operationClosed ? "인쇄 양식 선택" : "운영 마감 후 사용할 수 있습니다."}
           >
             <OperatorPrintIcon />
-            인쇄
+            양식 인쇄
           </button>
           <button
             className="operator-refresh-button"
@@ -211,6 +181,7 @@ export function OperationRosterPanel({
             title={state.rosterRefreshing ? "갱신 중…" : "가번호 등록 현황 새로고침"}
           >
             <RefreshButtonIcon />
+            <span>새로고침</span>
           </button>
           <button
             type="button"
@@ -222,6 +193,7 @@ export function OperationRosterPanel({
             title={state.labelPrintingEnabled ? "선택한 수험생의 라벨 출력이력 삭제" : "선택한 수험생의 가번호 삭제"}
           >
             <DeleteButtonIcon />
+            <span>삭제</span>
           </button>
           <button
             className="operator-download-button"
@@ -232,6 +204,7 @@ export function OperationRosterPanel({
             title={state.exportingExcel ? "생성 중…" : "현재 그리드 엑셀 다운로드"}
           >
             <OperatorDownloadIcon />
+            <span>다운로드</span>
           </button>
         </div>
       </header>
@@ -248,6 +221,22 @@ export function OperationRosterPanel({
           style={virtual ? { height: "auto" } : undefined}
           className={`candidate-data-table operator-roster-table ${rows.length ? "" : "is-empty"}`}
         >
+          <colgroup>
+            <col style={{ width: 76.5 }} />
+            {columns.map((column) => (
+              <col
+                key={column.key}
+                style={{
+                  width:
+                    column.key === "assignedAt" || column.key === "printedAt"
+                      ? 181.5
+                      : column.key === "attendance" || column.key === "status"
+                        ? 92
+                        : undefined,
+                }}
+              />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               <th className="candidate-row-number">순번</th>
@@ -280,7 +269,12 @@ export function OperationRosterPanel({
                   key={row.candidate.examineeNo}
                   data-roster-index={first + index}
                   aria-rowindex={first + index + 2}
-                  className={selectedExamineeNo === row.candidate.examineeNo ? "is-selected" : ""}
+                  className={[
+                    selectedExamineeNo === row.candidate.examineeNo ? "is-selected" : "",
+                    operationRowAttendance(row, context) === "결시" ? "is-absent" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                   tabIndex={0}
                   aria-label={`${row.candidate.examineeNo} ${row.candidate.name} 조회`}
                   onClick={() => actions.select(row.candidate.examineeNo)}
@@ -346,6 +340,28 @@ export function OperationRosterPanel({
           </tbody>
         </table>
       </div>
+      <footer className="operator-roster-stats" aria-label="응시 통계">
+        <div>
+          <span>전체(명)</span>
+          <strong>{stats.totalCount}</strong>
+        </div>
+        <div>
+          <span>응시(명)</span>
+          <strong>{stats.presentCount}</strong>
+        </div>
+        <div>
+          <span>응시율(%)</span>
+          <strong>{stats.attendanceRateText}</strong>
+        </div>
+        <div>
+          <span>결시(명)</span>
+          <strong>{absenceKnown ? stats.absentCount : "-"}</strong>
+        </div>
+        <div>
+          <span>결시율(%)</span>
+          <strong>{absenceKnown ? stats.absenceRateText : "-"}</strong>
+        </div>
+      </footer>
     </section>
   );
 }

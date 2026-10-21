@@ -2,7 +2,7 @@ import { IsDateString, IsString, Length, Matches } from "class-validator";
 
 export class ExamineeNumberParamDto {
   @IsString()
-  @Length(1, 50)
+  @Length(1, 500)
   examineeNo!: string;
 }
 

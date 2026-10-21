@@ -19,9 +19,17 @@ export type CandidateFieldKey =
   | "name"
   | "birth"
   | "group"
+  | "answerSheet"
   | "opt1"
   | "opt2"
-  | "opt3";
+  | "opt3"
+  | "opt4"
+  | "opt5"
+  | "opt6"
+  | "opt7"
+  | "opt8"
+  | "opt9"
+  | "opt10";
 
 export interface CandidateRecord extends Record<CandidateFieldKey, string> {
   id: number;
@@ -29,6 +37,57 @@ export interface CandidateRecord extends Record<CandidateFieldKey, string> {
   assignedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export function fetchCandidateDetail(token: string, id: number, signal?: AbortSignal) {
+  return apiFetch<CandidateRecord>(`/candidates/${id}`, { signal }, token);
+}
+
+export function updateCandidate(token: string, candidate: CandidateRecord, fields: Record<CandidateFieldKey, string>) {
+  return apiFetch<CandidateRecord>(
+    `/candidates/${candidate.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ fields, expectedUpdatedAt: candidate.updatedAt }),
+    },
+    token,
+  );
+}
+
+export async function fetchCandidatePhoto(token: string, id: number, signal?: AbortSignal) {
+  try {
+    return (await apiBlob(`/candidates/${id}/photo`, { signal }, token)).blob;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export function saveCandidatePhoto(token: string, id: number, file: File) {
+  const data = new FormData();
+  data.append("file", file);
+  return apiFetch<{ saved: boolean }>(`/candidates/${id}/photo`, { method: "PUT", body: data }, token);
+}
+
+export interface CandidateAttendanceRecord {
+  id: number;
+  admission: string;
+  unit: string;
+  major: string;
+  group: string;
+  date: string;
+  time: string;
+  period: string;
+  building: string;
+  room: string;
+  waitingRoom: string;
+  examineeNo: string;
+  name: string;
+  attendance: "응시" | "결시" | "대기";
+}
+
+export function fetchCandidateAttendance(token: string, signal?: AbortSignal) {
+  return apiFetch<CandidateAttendanceRecord[]>("/candidates/attendance", { signal }, token);
 }
 
 const nonnegativeIntegerSchema = z.number().int().nonnegative();
@@ -44,6 +103,11 @@ const candidateDashboardAdmissionSchema = z.object({
 });
 const candidateDashboardBreakdownsSchema = z.object({
   admission: z.array(candidateDashboardAdmissionSchema),
+  unit: z.array(candidateDashboardAdmissionSchema),
+  major: z.array(candidateDashboardAdmissionSchema),
+  group: z.array(candidateDashboardAdmissionSchema),
+  date: z.array(candidateDashboardAdmissionSchema),
+  room: z.array(candidateDashboardAdmissionSchema),
   building: z.array(candidateDashboardAdmissionSchema),
   period: z.array(candidateDashboardAdmissionSchema),
   waitingRoom: z.array(candidateDashboardAdmissionSchema),

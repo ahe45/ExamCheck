@@ -1,4 +1,4 @@
-param([switch]$Elevated)
+﻿param([switch]$Elevated)
 $ErrorActionPreference = 'Stop'
 try {
     $name = 'ExamCheck-Installed-Web-5173'
@@ -12,7 +12,8 @@ try {
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         if ($Elevated) { throw 'Administrator permission was not granted.' }
-        $child = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Elevated"
+        $launcher = Join-Path (Split-Path -Parent $PSScriptRoot) '가번호 관리 시스템.exe'
+        $child = Start-Process -FilePath $launcher -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList '--configure-firewall'
         exit $child.ExitCode
     }
     $parameters = @{

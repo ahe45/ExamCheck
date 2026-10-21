@@ -112,6 +112,34 @@ afterEach(() => {
 });
 
 describe("useOperationCandidateController", () => {
+  it("답안지로 조회한 뒤 실제 수험번호를 사용해 가번호를 부여한다", async () => {
+    const config = options({ useAnswerSheet: true });
+    config.services.lookupExaminee.mockResolvedValue({ status: "CURRENT", examinee: examinee("1162001") });
+    const { result } = renderHook(() => useOperationCandidateController(config));
+    await act(async () => {
+      await result.current.lookupExaminee("SHEET-001");
+    });
+    expect(config.services.lookupExaminee).toHaveBeenCalledWith(
+      "SHEET-001",
+      "token",
+      schedule,
+      expect.any(AbortSignal),
+    );
+    expect(result.current.candidate?.examineeNo).toBe("1162001");
+    await act(async () => {
+      await result.current.assign();
+    });
+    expect(config.services.assignPseudonym).toHaveBeenCalledWith(
+      "token",
+      "1162001",
+      "SEQUENTIAL",
+      expect.any(Object),
+      "1017",
+      "1017",
+      false,
+    );
+  });
+
   it("결시 저장 후 선택값만 응시로 복귀하고 저장된 결시 상태는 유지한다", async () => {
     const config = options({ showAttendanceSelection: true });
     config.services.assignPseudonym.mockResolvedValue({ ...assignment, absent: true });

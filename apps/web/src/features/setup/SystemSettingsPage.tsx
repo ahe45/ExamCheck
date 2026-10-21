@@ -1,4 +1,14 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState, type FormEvent } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { fetchCandidates, type CandidateRecord } from "../../shared/api/candidates";
 import { fetchLabelTemplates, type LabelTemplateSummary } from "../../shared/api/label-templates";
 import {
@@ -67,6 +77,8 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [useCandidatePhotos, setUseCandidatePhotos] = useState(true);
     const [enableBulkDraw, setEnableBulkDraw] = useState(false);
     const [showAttendanceSelection, setShowAttendanceSelection] = useState(true);
+    const viewRef = useRef<HTMLElement>(null);
+    const [useAnswerSheet, setUseAnswerSheet] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [bulkOpen, setBulkOpen] = useState(false);
@@ -76,6 +88,20 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
     const [requiresInitialSave, setRequiresInitialSave] = useState(false);
     const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+    useLayoutEffect(() => {
+      const view = viewRef.current;
+      if (!embedded || loading || !view) return;
+      // Keep the no-scrollbar content width; the scrollbar fits in the existing right padding.
+      const syncScrollbarWidth = () => {
+        view.style.setProperty("--settings-scrollbar-width", `${Math.max(0, view.offsetWidth - view.clientWidth)}px`);
+      };
+      syncScrollbarWidth();
+      if (typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(syncScrollbarWidth);
+      observer.observe(view);
+      return () => observer.disconnect();
+    }, [embedded, loading, assignmentMethod]);
 
     const applySetting = useCallback((setting: PseudonymSetting, rows: CandidateRecord[]) => {
       const nextRanges = buildScheduleRanges(rows, setting);
@@ -111,6 +137,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       setUseCandidatePhotos(setting.useCandidatePhotos);
       setEnableBulkDraw(setting.enableBulkDraw);
       setShowAttendanceSelection(setting.showAttendanceSelection ?? true);
+      setUseAnswerSheet(setting.useAnswerSheet ?? false);
       setSavedSnapshot(
         createSettingsSnapshot({
           assignmentMethod: setting.assignmentMethod,
@@ -124,6 +151,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           useCandidatePhotos: setting.useCandidatePhotos,
           enableBulkDraw: setting.enableBulkDraw,
           showAttendanceSelection: setting.showAttendanceSelection ?? true,
+          useAnswerSheet: setting.useAnswerSheet ?? false,
         }),
       );
     }, []);
@@ -170,6 +198,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           useCandidatePhotos,
           enableBulkDraw,
           showAttendanceSelection,
+          useAnswerSheet,
         }),
       [
         assignmentMethod,
@@ -183,6 +212,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
         useCandidatePhotos,
         enableBulkDraw,
         showAttendanceSelection,
+        useAnswerSheet,
       ],
     );
     const dirty = savedSnapshot !== null && (requiresInitialSave || savedSnapshot !== currentSnapshot);
@@ -222,6 +252,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
           useCandidatePhotos,
           enableBulkDraw,
           showAttendanceSelection,
+          useAnswerSheet,
           ranges: toSettingRanges(configuredRanges),
         });
         applySetting(setting, candidates);
@@ -296,12 +327,14 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       );
 
     return (
-      <section className={`admin-standard-view system-settings-view ${embedded ? "embedded" : ""}`}>
+      <section ref={viewRef} className={`admin-standard-view system-settings-view ${embedded ? "embedded" : ""}`}>
         <form onSubmit={submitSettings}>
           {notice && <ToastNotice notice={notice} onClose={() => setNotice(null)} />}
           <div className="system-settings-content">
             <div className="system-settings-top-grid">
               <AssignmentMethodSection
+                useAnswerSheet={useAnswerSheet}
+                onUseAnswerSheetChange={setUseAnswerSheet}
                 assignmentMethod={assignmentMethod}
                 onAssignmentMethodChange={(method) => {
                   setAssignmentMethod(method);

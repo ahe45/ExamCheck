@@ -15,17 +15,25 @@ export const candidateColumns: CandidateColumn[] = [
   ["unit", "모집단위명"],
   ["major", "전공명"],
   ["building", "고사건물명"],
-  ["waitingRoom", "대기실명"],
   ["room", "고사실명"],
+  ["waitingRoom", "대기실명"],
   ["examineeNo", "수험번호"],
   ["temporaryNo", "가번호"],
   ["name", "이름"],
   ["birth", "생년월일"],
   ["group", "조"],
-  ...Array.from({ length: 3 }, (_, index) => [`opt${index + 1}` as CandidateFieldKey, `OPT${index + 1}`]),
+  ["answerSheet", "답안지"],
+  ...Array.from({ length: 10 }, (_, index) => [`opt${index + 1}` as CandidateFieldKey, `OPT${index + 1}`]),
 ].map(([key, label]) => ({ key: key as CandidateFieldKey, label }));
 
-export const candidateWideColumnKeys = new Set<CandidateFieldKey>(["admission", "unit", "major"]);
+export const candidateWideColumnKeys = new Set<CandidateFieldKey>([
+  "admission",
+  "unit",
+  "major",
+  "building",
+  "room",
+  "waitingRoom",
+]);
 
 export const candidateUploadPolicies: Array<{
   value: CandidateUploadPolicy;

@@ -1,3 +1,4 @@
+import { applyAbsenceRowHighlight, isAbsentValue } from "./template-absence-highlight";
 import DOMPurify from "dompurify";
 import { fitTemplatePrintData } from "examlist-template-editor/dom";
 import { getTemplatePrintPresentation, templatePrintTokenFlowCss } from "./template-print-presentation";
@@ -41,7 +42,11 @@ export function getTemplateDocumentHtml(template: TemplateEditorValue): string {
   );
 }
 
-export function renderTemplateHtml(template: TemplateEditorValue, values: Record<string, unknown>): string {
+export function renderTemplateHtml(
+  template: TemplateEditorValue,
+  values: Record<string, unknown>,
+  pageSettings?: TemplateEditorPageSettings,
+): string {
   const source = sanitizeTemplateHtml(getTemplateDocumentHtml(template));
   const document = new DOMParser().parseFromString(`<div id="form-template-root">${source}</div>`, "text/html");
   const root = document.getElementById("form-template-root");
@@ -75,6 +80,9 @@ export function renderTemplateHtml(template: TemplateEditorValue, values: Record
     image.alt = `${value || sourceKey} ${objectType === "qrcode" ? "QR코드" : "Code128 바코드"}`;
     image.removeAttribute("data-render-pending");
   });
+  applyAbsenceRowHighlight(root, pageSettings ?? getTemplatePageSettings(template), () =>
+    isAbsentValue(resolveTemplateDataTagValue("candidate.absent", values)),
+  );
   appendPrintRecognitionMarks(root, template);
   return sanitizeTemplateHtml(root.innerHTML);
 }

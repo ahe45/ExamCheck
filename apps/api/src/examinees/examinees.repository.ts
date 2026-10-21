@@ -1,5 +1,5 @@
-import { Inject, Injectable } from "@nestjs/common";
-import type { Pool } from "mysql2/promise";
+import { ConflictException, Inject, Injectable } from "@nestjs/common";
+import type { Pool, RowDataPacket } from "mysql2/promise";
 import type { AdmissionAccessPredicate } from "../authorization/admission-policy.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import type {
@@ -55,17 +55,38 @@ export class ExamineesRepository {
     return rows;
   }
 
-  async findCurrent(examineeNo: string, scope: OperationScheduleScope, admissionName: string) {
+  async usesAnswerSheet(scope: OperationScheduleScope, admissionName: string) {
+    const [rows] = await this.pool.execute<Array<{ enabled: number } & RowDataPacket>>(
+      `SELECT (COALESCE(admission_setting.assignment_method, default_setting.assignment_method) IN ('SEQUENTIAL', 'MATCHING')
+        AND COALESCE(admission_setting.use_answer_sheet, default_setting.use_answer_sheet, FALSE)) AS enabled
+       FROM candidate_record cr ${settingJoinSql}
+       WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.admission = ?
+         AND cr.status = 'ACTIVE' LIMIT 1`,
+      [scope.date, scope.time, scope.periodName, admissionName],
+    );
+    return Boolean(Number(rows[0]?.enabled ?? 0));
+  }
+
+  async findCurrent(examineeNo: string, scope: OperationScheduleScope, admissionName: string, useAnswerSheet = false) {
     const [rows] = await this.pool.execute<ExamineeRow[]>(
       `${examineeSelectSql}
-       WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE' LIMIT 1`,
+       WHERE cr.${useAnswerSheet ? "answer_sheet" : "examinee_no"} = ? AND cr.exam_date = ? AND cr.start_time = ?
+         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE' LIMIT ${useAnswerSheet ? 2 : 1}`,
       [examineeNo, scope.date, scope.time, scope.periodName, admissionName],
     );
+    if (useAnswerSheet && rows.length > 1) {
+      throw new ConflictException(
+        "같은 전형·교시에 동일한 답안지 값이 여러 수험생에게 등록되어 있습니다. 수험생 데이터를 확인해 주세요.",
+      );
+    }
     return rows[0] ?? null;
   }
 
-  async listOtherSchedules(examineeNo: string, access: AdmissionAccessPredicate): Promise<ExamineeScheduleRow[]> {
+  async listOtherSchedules(
+    examineeNo: string,
+    access: AdmissionAccessPredicate,
+    useAnswerSheet = false,
+  ): Promise<ExamineeScheduleRow[]> {
     const [rows] = await this.pool.execute<ExamineeScheduleRow[]>(
       `SELECT cr.examinee_no AS examineeNo, cr.name,
               DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate,
@@ -73,7 +94,7 @@ export class ExamineesRepository {
               cr.period_name AS periodName, cr.admission AS admissionName,
               cr.building_name AS buildingName, cr.room_name AS roomName
        FROM candidate_record cr
-       WHERE cr.examinee_no = ? AND cr.status = 'ACTIVE' AND ${access.sql}
+       WHERE cr.${useAnswerSheet ? "answer_sheet" : "examinee_no"} = ? AND cr.status = 'ACTIVE' AND ${access.sql}
        ORDER BY cr.exam_date, cr.start_time, cr.period_name, cr.admission`,
       [examineeNo, ...access.params],
     );
@@ -128,8 +149,8 @@ const examineeSelectSql = `SELECT cr.id, cr.examinee_no AS examineeNo, cr.name,
   cr.unit_name AS unitName, cr.unit_code AS unitCode,
   cr.major AS majorName, cr.major_code AS majorCode,
   cr.building_name AS buildingName, cr.building_code AS buildingCode,
-  cr.room_code AS roomCode, cr.group_name AS groupName,
- cr.opt1, cr.opt2, cr.opt3
+  cr.room_code AS roomCode, cr.group_name AS groupName, cr.answer_sheet AS answerSheet,
+ cr.opt1, cr.opt2, cr.opt3, cr.opt4, cr.opt5, cr.opt6, cr.opt7, cr.opt8, cr.opt9, cr.opt10
  FROM candidate_record cr
  LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
  ${settingJoinSql}`;

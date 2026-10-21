@@ -67,9 +67,13 @@ describe("AdminDashboard", () => {
     expect(screen.getByRole("heading", { name: "운영 현황" })).toBeInTheDocument();
     expect(screen.queryByText(/등록 전형 총/)).not.toBeInTheDocument();
     const breakdownGroup = screen.getByRole("group", { name: "운영 현황 기준" });
-    expect(breakdownGroup).toHaveTextContent("전형교시건물대기실");
+    expect(breakdownGroup).toHaveTextContent("전형모집단위전공조날짜교시건물고사실대기실");
+    expect(breakdownGroup.querySelectorAll("button")).toHaveLength(9);
+    expect(breakdownGroup).not.toHaveTextContent("수험생");
     expect(breakdownGroup).not.toHaveTextContent("기준");
-    expect(document.querySelector(".dashboard-breakdown-control")).toHaveTextContent("분류 기준전형교시건물대기실");
+    expect(document.querySelector(".dashboard-breakdown-control")).toHaveTextContent(
+      "분류 기준전형모집단위전공조날짜교시건물고사실대기실",
+    );
     fireEvent.click(screen.getByRole("button", { name: "건물" }));
     expect(screen.getByRole("heading", { name: "본관" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "별관" })).toBeInTheDocument();
@@ -77,6 +81,11 @@ describe("AdminDashboard", () => {
     expect(screen.getByRole("heading", { name: "1교시 · 2026.09.01 09:00" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "대기실" }));
     expect(screen.getByRole("heading", { name: "본관 · 101호 대기실" })).toBeInTheDocument();
+    for (const label of ["모집단위", "전공", "조", "날짜", "고사실"]) {
+      fireEvent.click(screen.getByRole("button", { name: label }));
+      expect(document.querySelectorAll(".admission-status-card").length).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
+    }
     expect(document.querySelector(".admission-donut")).toHaveStyle({ "--assigned-angle": "240.12deg" });
     const refreshButton = screen.getByRole("button", { name: "새로고침" });
     expect(refreshButton).toHaveClass("exam-outline-button");

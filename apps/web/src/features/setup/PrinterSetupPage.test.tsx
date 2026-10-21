@@ -46,11 +46,11 @@ describe("PrinterSetupPage", () => {
   it("검색된 실제 프린터와 서버 워크스테이션을 선택해 저장한다", async () => {
     const onDiagnose = vi.fn().mockResolvedValue(undefined);
     const onSelectPrinter = vi.fn();
+    const onClose = vi.fn();
     render(
       <PrinterSetupPage
         mode="browser-print"
         token="operator-token"
-        user={{ id: 1, loginId: "operator", role: "OPERATOR", admissionNames: [] }}
         service={{ testPrint: vi.fn() } as unknown as PrinterService}
         diagnostic={{ status: "READY", printer: printers[0], message: "출력 준비 완료" }}
         printers={printers}
@@ -58,8 +58,7 @@ describe("PrinterSetupPage", () => {
         busy={false}
         onDiagnose={onDiagnose}
         onSelectPrinter={onSelectPrinter}
-        onBack={vi.fn()}
-        onLogout={vi.fn()}
+        onClose={onClose}
       />,
       { wrapper: queryWrapper() },
     );
@@ -67,6 +66,9 @@ describe("PrinterSetupPage", () => {
     await waitFor(() => expect(fetchWorkstations).toHaveBeenCalledWith("operator-token"));
     await screen.findByRole("option", { name: "개발용 워크스테이션 · WS-DEV-001" });
     expect(onDiagnose).toHaveBeenCalledOnce();
+    expect(screen.getByRole("dialog", { name: "프린터 설정" })).toHaveAttribute("aria-modal", "true");
+    expect(screen.queryByRole("button", { name: "가번호 부여 화면으로" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "프린터 환경 확인" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "실제 출력 장치 설정" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("라벨 프린터"), { target: { value: "GT800-2" } });
@@ -75,6 +77,10 @@ describe("PrinterSetupPage", () => {
     expect(onSelectPrinter).toHaveBeenCalledWith("GT800-2");
     expect(getWorkstationCode()).toBe("WS-DEV-001");
     expect(screen.getByText("이 PC의 출력 워크스테이션과 프린터 설정을 저장했습니다.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "프린터 설정 닫기" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
 

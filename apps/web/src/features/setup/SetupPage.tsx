@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import type { AuthUser } from "../../shared/api/auth";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import type { AdminSection } from "../../shared/navigation/admin-navigation";
+import { getAttendanceView } from "../../shared/navigation/admin-navigation";
 import type { BrowserNavigate } from "../../shared/navigation/use-browser-path";
 import type { PrinterService } from "../printer/PrinterService";
 import type { PrinterDiagnostic } from "../printer/printer.types";
@@ -26,6 +27,7 @@ const SystemSettingsOverviewPage = lazy(() =>
 const FormTemplateManager = lazy(() =>
   import("../templates/FormTemplateManager").then((module) => ({ default: module.FormTemplateManager })),
 );
+const AttendanceStatusPage = lazy(() => import("../attendance/AttendanceStatusPage"));
 
 interface Props {
   token: string;
@@ -59,11 +61,13 @@ export function SetupPage({
     onDashboardOpen: dashboard.refresh,
   });
   const { activeSection } = navigation;
+  const attendanceView = getAttendanceView(activeSection);
 
   return (
     <div className={`exam-admin-app active-${activeSection}`}>
       <AdminHeader
         activeSection={activeSection}
+        templateKind={navigation.templateKind}
         user={user}
         systemProfile={systemProfile}
         onOpenSection={navigation.openSection}
@@ -72,7 +76,7 @@ export function SetupPage({
 
       <div className="exam-admin-workspace">
         <main
-          className={`exam-admin-content ${activeSection === "templates" ? "template-admin-main" : ""} ${activeSection === "candidates" ? "candidate-admin-main" : ""} ${activeSection === "accounts" ? "account-admin-main" : ""} ${activeSection === "developer" ? "developer-admin-main" : ""}`}
+          className={`exam-admin-content ${activeSection === "templates" ? "template-admin-main" : ""} ${activeSection === "candidates" || attendanceView ? "candidate-admin-main" : ""} ${activeSection === "accounts" ? "account-admin-main" : ""} ${activeSection === "developer" ? "developer-admin-main" : ""}`}
         >
           {activeSection === "dashboard" && (
             <AdminDashboard
@@ -86,6 +90,7 @@ export function SetupPage({
           )}
 
           <Suspense fallback={<AdminSectionLoading />}>
+            {attendanceView && <AttendanceStatusPage key={attendanceView} token={token} view={attendanceView} />}
             {activeSection === "settings" && (
               <SystemSettingsOverviewPage
                 ref={navigation.settingsPageRef}
@@ -99,6 +104,7 @@ export function SetupPage({
                 ref={navigation.templatePageRef}
                 token={token}
                 resetKey={navigation.templateResetKey}
+                kind={navigation.templateKind}
                 printerService={printerService}
                 printerDiagnostic={printerDiagnostic}
                 onDirtyChange={navigation.updateTemplateDirty}

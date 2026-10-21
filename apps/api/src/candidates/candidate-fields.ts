@@ -12,7 +12,7 @@ interface CandidateFieldDefinitionShape {
 const optional = true;
 const operationallyProtected = true;
 
-// 수험생 업로드·내보내기에서 사용하는 열 + OPT1~OPT3.
+// 수험생 업로드·내보내기에서 사용하는 열 + OPT1~OPT10.
 const candidateFieldDefinitions = [
   { key: "designatedSort", dbColumn: "designated_sort", label: "지정정렬", sample: "1", width: 12, optional },
   { key: "date", dbColumn: "exam_date", label: "시험날짜", sample: "2026-10-30", width: 16, format: "date" },
@@ -52,19 +52,19 @@ const candidateFieldDefinitions = [
     operationallyProtected,
   },
   {
-    key: "waitingRoom",
-    dbColumn: "waiting_room",
-    label: "대기실명",
-    sample: "101호 대기실",
-    width: 18,
-    operationallyProtected,
-  },
-  {
     key: "room",
     dbColumn: "room_name",
     label: "고사실명",
-    sample: "",
+    sample: "101호",
     width: 16,
+    operationallyProtected,
+  },
+  {
+    key: "waitingRoom",
+    dbColumn: "waiting_room",
+    label: "대기실명",
+    sample: "",
+    width: 18,
     optional,
     operationallyProtected,
   },
@@ -88,9 +88,17 @@ const candidateFieldDefinitions = [
     format: "date",
   },
   { key: "group", dbColumn: "group_name", label: "조", sample: "1조", width: 12, optional },
+  { key: "answerSheet", dbColumn: "answer_sheet", label: "답안지", sample: "", width: 14, optional },
   { key: "opt1", dbColumn: "opt1", label: "OPT1", sample: "", width: 14, optional },
   { key: "opt2", dbColumn: "opt2", label: "OPT2", sample: "", width: 14, optional },
   { key: "opt3", dbColumn: "opt3", label: "OPT3", sample: "", width: 14, optional },
+  { key: "opt4", dbColumn: "opt4", label: "OPT4", sample: "", width: 14, optional },
+  { key: "opt5", dbColumn: "opt5", label: "OPT5", sample: "", width: 14, optional },
+  { key: "opt6", dbColumn: "opt6", label: "OPT6", sample: "", width: 14, optional },
+  { key: "opt7", dbColumn: "opt7", label: "OPT7", sample: "", width: 14, optional },
+  { key: "opt8", dbColumn: "opt8", label: "OPT8", sample: "", width: 14, optional },
+  { key: "opt9", dbColumn: "opt9", label: "OPT9", sample: "", width: 14, optional },
+  { key: "opt10", dbColumn: "opt10", label: "OPT10", sample: "", width: 14, optional },
 ] as const satisfies readonly CandidateFieldDefinitionShape[];
 
 export type CandidateFieldKey = (typeof candidateFieldDefinitions)[number]["key"];

@@ -1,8 +1,8 @@
-param([string]$SetupPath)
+﻿param([string]$SetupPath)
 $ErrorActionPreference = 'Stop'
 $version = (Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) 'package.json') -Raw | ConvertFrom-Json).version
 if (-not $SetupPath) {
-    $SetupPath = Join-Path $PSScriptRoot "output\ExamCheck-$version-Setup.exe"
+    $SetupPath = Join-Path $PSScriptRoot "output\가번호 관리 시스템_$version.exe"
 }
 $key = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{BD33D457-7884-4E6F-9F49-4E54C94C712A}_is1'
 foreach ($hive in @('HKCU','HKLM')) {
@@ -27,7 +27,9 @@ try {
     }
     $uninstallInfo = Get-ItemProperty -LiteralPath "HKCU:\$key"
     if ($uninstallInfo.DisplayVersion -ne $version) { throw 'Windows installed-app version does not match the project.' }
-    foreach ($file in @('server.mjs','api.mjs','launcher.ps1','firewall.ps1','data-permissions.ps1')) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'test-launcher.ps1') -ExecutablePath (Join-Path $destination '가번호 관리 시스템.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Installed GUI launcher console regression test failed.' }
+    foreach ($file in @('server.mjs','initial-accounts.mjs','api.mjs','launcher.ps1','firewall.ps1','data-permissions.ps1')) {
         # PowerShell scripts gain a BOM when packaged, so compare decoded text.
         $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "runtime/$file"))
         $installed = [IO.File]::ReadAllText((Join-Path $destination "runtime/$file"))

@@ -9,6 +9,9 @@ import { candidateFields, type CandidateInput } from "../src/candidates/candidat
 import { CandidatesApplicationService } from "../src/candidates/candidates.application.js";
 import { CandidatesRepository } from "../src/candidates/candidates.repository.js";
 import { CandidatesService } from "../src/candidates/candidates.service.js";
+import { ExamineesService } from "../src/examinees/examinees.service.js";
+import { UpdatePseudonymSettingUseCase } from "../src/pseudonyms/pseudonyms.application.js";
+import { PseudonymsRepository } from "../src/pseudonyms/pseudonyms.repository.js";
 import { resolveAppConfig } from "../src/config/app-config.js";
 import { createMariaDbIntegrationHarness, type MariaDbIntegrationHarness } from "../test-support/mariadb-harness.js";
 
@@ -108,8 +111,16 @@ describe("candidate import MariaDB integration", () => {
       birth: "2001-12-31",
       group: "검증 1조",
       opt1: "선택값 1",
+      answerSheet: "A형",
       opt2: "선택값 2",
       opt3: "선택값 3",
+      opt4: "선택값 4",
+      opt5: "선택값 5",
+      opt6: "선택값 6",
+      opt7: "선택값 7",
+      opt8: "선택값 8",
+      opt9: "선택값 9",
+      opt10: "선택값 10",
     });
 
     const insertedWorkbook = await workbookBuffer(inserted);
@@ -136,8 +147,11 @@ describe("candidate import MariaDB integration", () => {
       birth: "2002-11-30",
       group: "검증 2조",
       opt1: "수정 선택값 1",
+      answerSheet: "B형",
       opt2: "수정 선택값 2",
       opt3: "수정 선택값 3",
+      opt4: "수정 선택값 4",
+      opt10: "수정 선택값 10",
     };
     const updatedWorkbook = await workbookBuffer(updated);
     const updatedPreview = await service.preview(updatedWorkbook, "updated.xlsx", actorUserId);
@@ -304,6 +318,171 @@ describe("candidate import MariaDB integration", () => {
   });
 });
 
+describe("answer-sheet lookup MariaDB integration", () => {
+  it.each(["SEQUENTIAL", "MATCHING", "DRAW", "PREASSIGNED"] as const)(
+    "saves and applies answer-sheet lookup only for supported methods: %s",
+    async (assignmentMethod) => {
+      const admissionName = `답안지-${assignmentMethod}`;
+      const input = candidate(`ANSWER-${assignmentMethod}`, {
+        admission: admissionName,
+        answerSheet: `SHEET-${assignmentMethod}`,
+      });
+      await createApplication(new AuditRepository()).importCandidates(
+        [input],
+        "insert-update",
+        sha256Fixture("a"),
+        actorUserId,
+      );
+      const user = { id: actorUserId, loginId: "system", role: "ADMIN" as const, admissionNames: [] };
+      const settings = new UpdatePseudonymSettingUseCase(harness.pool, new PseudonymsRepository());
+      const settingInput = {
+        expectedVersion: 0,
+        examName: "IT 수험생 업로드 시험",
+        admissionName,
+        rangeStart: 1001,
+        rangeEnd: 1999,
+        assignmentMethod,
+        autoDrawEnabled: false,
+        autoDrawDelaySeconds: 3,
+        printPreassignedLabel: false,
+        autoAssignAbsenteesOnClose: false,
+        deleteAbsenteeInfoOnReopen: false,
+        useCandidatePhotos: false,
+        enableBulkDraw: false,
+        useAnswerSheet: true,
+        ranges: [
+          {
+            date: input.date,
+            time: input.time,
+            period: input.period,
+            admission: input.admission,
+            unit: input.unit,
+            major: input.major,
+            building: input.building,
+            room: input.room,
+            rangeStart: 1001,
+            rangeEnd: 1001,
+          },
+        ],
+      };
+      const saved = await settings.execute(settingInput, user);
+      expect(saved.useAnswerSheet).toBe(true);
+      const service = new ExamineesService(
+        harness.pool,
+        resolveAppConfig({ DEFAULT_EXAM_NAME: settingInput.examName }),
+      );
+      const scope = { date: input.date, time: input.time, periodName: input.period, admissionName };
+      const supported = assignmentMethod === "SEQUENTIAL" || assignmentMethod === "MATCHING";
+      await expect(
+        service.lookupByNumber(supported ? input.answerSheet : input.examineeNo, scope, user),
+      ).resolves.toMatchObject({
+        status: "CURRENT",
+        examinee: { examineeNo: input.examineeNo, answerSheet: input.answerSheet },
+      });
+      await expect(
+        service.lookupByNumber(supported ? input.examineeNo : input.answerSheet, scope, user),
+      ).resolves.toMatchObject({ status: "NOT_FOUND" });
+      const disabled = await settings.execute(
+        { ...settingInput, expectedVersion: saved.version, useAnswerSheet: false },
+        user,
+      );
+      expect(disabled.useAnswerSheet).toBe(false);
+      await expect(service.lookupByNumber(input.examineeNo, scope, user)).resolves.toMatchObject({ status: "CURRENT" });
+      if (supported) {
+        await settings.execute({ ...settingInput, expectedVersion: disabled.version }, user);
+        await createApplication(new AuditRepository()).importCandidates(
+          [{ ...input, examineeNo: `${input.examineeNo}-DUP` }],
+          "insert-update",
+          sha256Fixture("b"),
+          actorUserId,
+        );
+        await expect(service.lookupByNumber(input.answerSheet, scope, user)).rejects.toThrow("동일한 답안지 값");
+        await expect(
+          service.lookupByNumber(input.answerSheet, scope, {
+            ...user,
+            role: "OPERATOR",
+            admissionNames: ["다른 전형"],
+          }),
+        ).rejects.toThrow();
+      }
+    },
+  );
+});
+
+describe("candidate row editing MariaDB integration", () => {
+  it("updates a stable record id, rejects stale/duplicate edits, and protects closed operations", async () => {
+    const application = createApplication(new AuditRepository());
+    const input = candidate("EDIT-001", { admission: "개별 수정 전형", date: "2040-09-01" });
+    await application.importCandidates([input], "insert-update", sha256Fixture("a"), actorUserId);
+    const repository = new CandidatesRepository();
+    const original = (await repository.list(harness.pool)).find((row) => row.examineeNo === input.examineeNo)!;
+    const changes = { ...input, examineeNo: "EDIT-002", time: "10:00", answerSheet: "00123456", name: "수정 이름" };
+    const saved = await application.updateCandidate(
+      original.id,
+      changes,
+      original.updatedAt.toISOString(),
+      actorUserId,
+    );
+    expect(saved).toMatchObject({
+      id: original.id,
+      examineeNo: "EDIT-002",
+      time: "10:00",
+      answerSheet: "00123456",
+      name: "수정 이름",
+    });
+    expect(await candidateCount("EDIT-001")).toBe(0);
+    expect(await candidateCount("EDIT-002")).toBe(1);
+    await expect(
+      application.updateCandidate(
+        original.id,
+        { ...changes, name: "덮어쓰기" },
+        "2000-01-01T00:00:00.000Z",
+        actorUserId,
+      ),
+    ).rejects.toThrow("다른 작업");
+    await expect(
+      application.updateCandidate(original.id, { ...changes, room: "" }, saved!.updatedAt.toISOString(), actorUserId),
+    ).rejects.toThrow("고사실명");
+    const other = { ...changes, examineeNo: "EDIT-OTHER" };
+    await application.importCandidates([other], "insert-update", sha256Fixture("b"), actorUserId);
+    await expect(
+      application.updateCandidate(original.id, other, saved!.updatedAt.toISOString(), actorUserId),
+    ).rejects.toThrow("이미 등록");
+    await harness.pool.execute(
+      `INSERT INTO pseudonym_operation (exam_name, exam_date, exam_time, period_name, admission_name, closed, closed_by, closed_at)
+      VALUES ('IT 수험생 업로드 시험', ?, ?, ?, ?, TRUE, ?, NOW(3))`,
+      [changes.date, changes.time, changes.period, changes.admission, actorUserId],
+    );
+    await expect(
+      application.updateCandidate(
+        original.id,
+        { ...changes, room: "다른 고사실" },
+        saved!.updatedAt.toISOString(),
+        actorUserId,
+      ),
+    ).rejects.toThrow("마감 이력");
+    const allowed = await application.updateCandidate(
+      original.id,
+      { ...changes, opt1: "수정 값" },
+      saved!.updatedAt.toISOString(),
+      actorUserId,
+    );
+    expect(allowed?.opt1).toBe("수정 값");
+    const failingAudit = {
+      record: vi.fn().mockRejectedValue(new Error("audit failed")),
+    } as unknown as MutationAuditRepository;
+    await expect(
+      createApplication(failingAudit).updateCandidate(
+        original.id,
+        { ...changes, opt1: "롤백 값" },
+        allowed!.updatedAt.toISOString(),
+        actorUserId,
+      ),
+    ).rejects.toThrow("audit failed");
+    expect((await repository.findById(harness.pool, original.id))?.opt1).toBe("수정 값");
+  });
+});
+
 function createApplication(audit: MutationAuditRepository, repository = new CandidatesRepository()) {
   return new CandidatesApplicationService(
     harness.pool,
@@ -360,9 +539,17 @@ function candidate(examineeNo: string, overrides: Partial<CandidateInput> = {}):
     name: "통합검증 수험생",
     birth: "2000-01-01",
     group: "1조",
+    answerSheet: "",
     opt1: "",
     opt2: "",
     opt3: "",
+    opt4: "",
+    opt5: "",
+    opt6: "",
+    opt7: "",
+    opt8: "",
+    opt9: "",
+    opt10: "",
     ...overrides,
   };
 }

@@ -7,6 +7,66 @@ import type { Examinee } from "../../shared/api/examinees";
 import { OperationControlPanel } from "./OperationControlPanel";
 
 describe("OperationControlPanel", () => {
+  it("라벨 출력 시 검색 버튼 우측에 출력 n매 입력을 표시하고 변경값을 전달한다", () => {
+    const onLabelCopiesChange = vi.fn();
+    const props = {
+      previewRef: createRef<HTMLElement>(),
+      input: "10001",
+      searching: false,
+      notice: null,
+      candidate: null,
+      useCandidatePhotos: false,
+      photoUrl: null,
+      selectedMode: "PREASSIGNED" as const,
+      assignment: null,
+      onSearch: vi.fn(),
+      onInput: vi.fn(),
+      onReset: vi.fn(),
+      onCloseNotice: vi.fn(),
+      labelCopies: 3,
+      labelCopiesValid: true,
+      onLabelCopiesChange,
+    };
+    const view = render(<OperationControlPanel {...props} labelPrintingEnabled />);
+    const copies = screen.getByRole("spinbutton", { name: "라벨 출력 매수" });
+    expect(copies).toHaveValue(3);
+    expect(copies.parentElement).toHaveTextContent("출력매");
+    expect(copies.parentElement?.previousElementSibling).toBe(screen.getByRole("button", { name: "수험자 검색" }));
+    fireEvent.change(copies, { target: { value: "4" } });
+    expect(onLabelCopiesChange).toHaveBeenCalledWith(4);
+    fireEvent.change(copies, { target: { value: "" } });
+    expect(onLabelCopiesChange).toHaveBeenCalledWith("");
+    view.rerender(<OperationControlPanel {...props} labelPrintingEnabled processing />);
+    expect(copies).toBeDisabled();
+    view.rerender(<OperationControlPanel {...props} labelPrintingEnabled={false} />);
+    expect(screen.queryByRole("spinbutton", { name: "라벨 출력 매수" })).not.toBeInTheDocument();
+  });
+  it("답안지 사용 시 조회창 안내를 바꾸고 답안지 값의 내부 공백을 유지한다", () => {
+    const onInput = vi.fn();
+    render(
+      <OperationControlPanel
+        previewRef={createRef<HTMLElement>()}
+        input=""
+        searching={false}
+        notice={null}
+        candidate={null}
+        useCandidatePhotos={false}
+        useAnswerSheet
+        photoUrl={null}
+        selectedMode="MANUAL"
+        assignment={null}
+        onSearch={vi.fn()}
+        onInput={onInput}
+        onReset={vi.fn()}
+        onCloseNotice={vi.fn()}
+      />,
+    );
+    const input = screen.getByRole("textbox", { name: "답안지" });
+    expect(input).toHaveAttribute("placeholder", "답안지 입력 또는 스캔");
+    fireEvent.change(input, { target: { value: "A 001" } });
+    expect(onInput).toHaveBeenCalledWith("A 001");
+  });
+
   it("응시·결시 선택과 고정을 표시하고 설정이 꺼지면 숨긴다", () => {
     const props = {
       previewRef: createRef<HTMLElement>(),

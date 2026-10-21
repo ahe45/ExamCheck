@@ -18,6 +18,8 @@ interface Props {
   settingsRef: RefObject<HTMLDivElement | null>;
   labelPrintingEnabled: boolean;
   loginId: string;
+  candidateDisplayOpen?: boolean;
+  onOpenCandidateDisplay(): void;
   onChangeSchedule(): void;
   onToggleSettings(): void;
   onOpenPrinter(): void;
@@ -39,6 +41,8 @@ export function OperationConsoleHeader({
   settingsRef,
   labelPrintingEnabled,
   loginId,
+  candidateDisplayOpen = false,
+  onOpenCandidateDisplay,
   onChangeSchedule,
   onToggleSettings,
   onOpenPrinter,
@@ -110,6 +114,20 @@ export function OperationConsoleHeader({
         )}
       </section>
       <div className="operator-console-actions">
+        {selectedMode !== "PREASSIGNED" && (
+          <button
+            className="operator-change-schedule-button operator-display-window-button"
+            onClick={onOpenCandidateDisplay}
+            disabled={candidateDisplayOpen}
+            title={candidateDisplayOpen ? "수험생 안내 창이 열려 있습니다." : "수험생 안내 창 열기"}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="13" height="11" rx="2" />
+              <path d="M8 18h13V8h-2M7 18h6M10 14v4" />
+            </svg>
+            {candidateDisplayOpen ? "창 분리 중" : "창 분리"}
+          </button>
+        )}
         <button className="operator-change-schedule-button" onClick={onChangeSchedule}>
           <OperatorScheduleIcon />
           교시 변경

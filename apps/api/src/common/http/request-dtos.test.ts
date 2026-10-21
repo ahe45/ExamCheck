@@ -44,7 +44,8 @@ describe("HTTP request DTO validation", () => {
         admissionName: "",
       }),
     ).not.toHaveLength(0);
-    expect(errors(ExamineeNumberParamDto, { examineeNo: "1".repeat(51) })).not.toHaveLength(0);
+    expect(errors(ExamineeNumberParamDto, { examineeNo: "1".repeat(500) })).toHaveLength(0);
+    expect(errors(ExamineeNumberParamDto, { examineeNo: "1".repeat(501) })).not.toHaveLength(0);
     expect(
       errors(OperationScheduleQueryDto, {
         date: "2026-02-31",

@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AuthUser } from "../../shared/api/auth";
 import { downloadDriver } from "../../shared/api/drivers";
 import { fetchWorkstations } from "../../shared/api/workstations";
 import { getWorkstationCode, saveWorkstationCode } from "../../shared/config/workstation";
-import { AppHeader } from "../../shared/components/AppHeader";
+import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
+import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
+import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
 import { ToastNotice, type ToastNoticeValue } from "../../shared/components/ToastNotice";
-import {
-  BackButtonIcon,
-  DownloadButtonIcon,
-  RefreshButtonIcon,
-  TestButtonIcon,
-} from "../../shared/components/ActionIcons";
+import { DownloadButtonIcon, RefreshButtonIcon, TestButtonIcon } from "../../shared/components/ActionIcons";
 import { GT800_WINDOWS_DRIVER } from "../printer/driver-download";
 import type { PrinterService } from "../printer/PrinterService";
 import type { PrinterDevice, PrinterDiagnostic, PrinterMode } from "../printer/printer.types";
@@ -20,7 +16,6 @@ import { buildInstallationReport, type InstallationCheck } from "./installation-
 interface Props {
   mode: PrinterMode;
   token: string;
-  user: AuthUser;
   service: PrinterService;
   diagnostic: PrinterDiagnostic;
   printers: PrinterDevice[];
@@ -28,14 +23,12 @@ interface Props {
   busy: boolean;
   onDiagnose(): Promise<void>;
   onSelectPrinter(printerId: string): void;
-  onBack(): void;
-  onLogout(): void;
+  onClose(): void;
 }
 
 export function PrinterSetupPage({
   mode,
   token,
-  user,
   service,
   diagnostic,
   printers,
@@ -43,9 +36,10 @@ export function PrinterSetupPage({
   busy,
   onDiagnose,
   onSelectPrinter,
-  onBack,
-  onLogout,
+  onClose,
 }: Props) {
+  const dialogRef = useDialogFocus<HTMLElement>();
+  useEscapeKey(true, onClose);
   const [printing, setPrinting] = useState(false);
   const [notice, setNotice] = useState<ToastNoticeValue | null>(null);
   const [draftPrinterId, setDraftPrinterId] = useState(selectedPrinterId ?? "");
@@ -94,124 +88,133 @@ export function PrinterSetupPage({
   }
 
   return (
-    <main className="operator-printer-page">
-      <AppHeader
-        user={user}
-        title="프린터 설정"
-        subtitle="라벨 출력에 필요한 프로그램 설치와 프린터 연결 상태를 확인합니다."
-        onLogout={onLogout}
-      />
-      <div className="operator-printer-toolbar">
-        <button className="secondary" onClick={onBack}>
-          <BackButtonIcon />
-          <span>가번호 부여 화면으로</span>
-        </button>
-        <button className="primary" onClick={onDiagnose} disabled={busy}>
-          <RefreshButtonIcon />
-          <span>{busy ? "확인 중…" : "프린터 환경 확인"}</span>
-        </button>
-      </div>
-      {mode === "mock" && (
-        <div className="mode-banner">
-          <strong>Mock Printer 모드</strong>
-          <span>현재 화면은 개발용 시뮬레이션이며 이 PC의 실제 설치 상태를 검사하지 않습니다.</span>
-        </div>
-      )}
-      <section className="card printer-device-settings">
+    <div
+      className="operator-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="operator-printer-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="operator-printer-title"
+      >
         <header>
           <div>
-            <p className="section-label">OUTPUT DEVICE</p>
-            <h2>실제 출력 장치 설정</h2>
-            <p>서버에 등록된 워크스테이션과 이 PC에 연결된 Zebra 프린터를 지정합니다.</p>
+            <p>PRINTER SETTINGS</p>
+            <h2 id="operator-printer-title">프린터 설정</h2>
           </div>
-          <span className={`printer-device-state ${report.ready && workstationRegistered ? "ready" : "pending"}`}>
-            {report.ready && workstationRegistered ? "출력 가능" : "설정 필요"}
-          </span>
+          <ModalCloseButton onClick={onClose} aria-label="프린터 설정 닫기" />
         </header>
-        <div className="printer-device-fields">
-          <div className="printer-device-field">
-            <label htmlFor="printer-workstation-select">출력 워크스테이션</label>
-            <select
-              id="printer-workstation-select"
-              aria-describedby="printer-workstation-help"
-              value={draftWorkstationCode}
-              onChange={(event) => setDraftWorkstationCode(event.target.value)}
-              disabled={workstations.isLoading}
-            >
-              {!workstationRegistered && draftWorkstationCode && (
-                <option value={draftWorkstationCode}>{draftWorkstationCode} · 서버 미등록</option>
-              )}
-              {enabledWorkstations.map((workstation) => (
-                <option value={workstation.code} key={workstation.id}>
-                  {workstation.name} · {workstation.code}
-                </option>
+        <div className="operator-printer-page">
+          {mode === "mock" && (
+            <div className="mode-banner">
+              <strong>Mock Printer 모드</strong>
+              <span>현재 화면은 개발용 시뮬레이션이며 이 PC의 실제 설치 상태를 검사하지 않습니다.</span>
+            </div>
+          )}
+          <section className="card printer-device-settings">
+            <header>
+              <div>
+                <p className="section-label">OUTPUT DEVICE</p>
+                <h2>실제 출력 장치 설정</h2>
+                <p>서버에 등록된 워크스테이션과 이 PC에 연결된 Zebra 프린터를 지정합니다.</p>
+              </div>
+              <span className={`printer-device-state ${report.ready && workstationRegistered ? "ready" : "pending"}`}>
+                {report.ready && workstationRegistered ? "출력 가능" : "설정 필요"}
+              </span>
+            </header>
+            <div className="printer-device-fields">
+              <div className="printer-device-field">
+                <label htmlFor="printer-workstation-select">출력 워크스테이션</label>
+                <select
+                  id="printer-workstation-select"
+                  aria-describedby="printer-workstation-help"
+                  value={draftWorkstationCode}
+                  onChange={(event) => setDraftWorkstationCode(event.target.value)}
+                  disabled={workstations.isLoading}
+                >
+                  {!workstationRegistered && draftWorkstationCode && (
+                    <option value={draftWorkstationCode}>{draftWorkstationCode} · 서버 미등록</option>
+                  )}
+                  {enabledWorkstations.map((workstation) => (
+                    <option value={workstation.code} key={workstation.id}>
+                      {workstation.name} · {workstation.code}
+                    </option>
+                  ))}
+                </select>
+                <small id="printer-workstation-help">
+                  {workstations.isError
+                    ? "워크스테이션 목록을 불러오지 못했습니다."
+                    : workstationRegistered
+                      ? "출력 작업이 이 워크스테이션으로 기록됩니다."
+                      : "시스템 관리자에게 워크스테이션 등록을 요청해 주세요."}
+                </small>
+              </div>
+              <div className="printer-device-field">
+                <label htmlFor="printer-device-select">라벨 프린터</label>
+                <select
+                  id="printer-device-select"
+                  aria-describedby="printer-device-help"
+                  value={draftPrinterId}
+                  onChange={(event) => setDraftPrinterId(event.target.value)}
+                  disabled={busy || printers.length === 0}
+                >
+                  {printers.length === 0 && <option value="">검색된 프린터 없음</option>}
+                  {printers.length > 0 && !draftPrinterId && <option value="">프린터를 선택해 주세요</option>}
+                  {printers.map((printer) => (
+                    <option value={printer.id} key={printer.id}>
+                      {printer.name} · {printerConnectionLabel(printer.connection)}
+                    </option>
+                  ))}
+                </select>
+                <small id="printer-device-help">
+                  {busy ? "연결된 프린터를 검색하고 있습니다." : diagnostic.message}
+                </small>
+              </div>
+            </div>
+            <footer>
+              <button className="secondary" onClick={onDiagnose} disabled={busy}>
+                <RefreshButtonIcon />
+                <span>{busy ? "검색 중…" : "장치 다시 검색"}</span>
+              </button>
+              <button className="primary" onClick={saveSettings} disabled={!canSaveSettings}>
+                설정 저장
+              </button>
+            </footer>
+          </section>
+          <section className="setup-layout">
+            <div className="setup-list">
+              {report.checks.map((item) => (
+                <InstallationCard key={item.id} item={item} token={token} />
               ))}
-            </select>
-            <small id="printer-workstation-help">
-              {workstations.isError
-                ? "워크스테이션 목록을 불러오지 못했습니다."
-                : workstationRegistered
-                  ? "출력 작업이 이 워크스테이션으로 기록됩니다."
-                  : "시스템 관리자에게 워크스테이션 등록을 요청해 주세요."}
-            </small>
-          </div>
-          <div className="printer-device-field">
-            <label htmlFor="printer-device-select">라벨 프린터</label>
-            <select
-              id="printer-device-select"
-              aria-describedby="printer-device-help"
-              value={draftPrinterId}
-              onChange={(event) => setDraftPrinterId(event.target.value)}
-              disabled={busy || printers.length === 0}
-            >
-              {printers.length === 0 && <option value="">검색된 프린터 없음</option>}
-              {printers.length > 0 && !draftPrinterId && <option value="">프린터를 선택해 주세요</option>}
-              {printers.map((printer) => (
-                <option value={printer.id} key={printer.id}>
-                  {printer.name} · {printerConnectionLabel(printer.connection)}
-                </option>
-              ))}
-            </select>
-            <small id="printer-device-help">{busy ? "연결된 프린터를 검색하고 있습니다." : diagnostic.message}</small>
-          </div>
+            </div>
+            <aside className="card setup-summary">
+              <p className="section-label">READINESS</p>
+              <h2>{report.ready ? "출력 준비 완료" : "설치 상태 확인"}</h2>
+              <div className={`readiness-mark ${report.ready ? "complete" : "incomplete"}`} aria-hidden="true">
+                {report.ready ? "✓" : "!"}
+              </div>
+              <p>{report.summary}</p>
+              <div className="setup-actions">
+                <button className="secondary" onClick={onDiagnose} disabled={busy}>
+                  <RefreshButtonIcon />
+                  <span>{busy ? "확인 중…" : "설치 상태 다시 확인"}</span>
+                </button>
+                <button className="primary" onClick={testPrint} disabled={!report.ready || printing}>
+                  <TestButtonIcon />
+                  <span>{printing ? "전송 중…" : "테스트 라벨 출력"}</span>
+                </button>
+              </div>
+              {notice && <ToastNotice notice={notice} onClose={() => setNotice(null)} />}
+            </aside>
+          </section>
         </div>
-        <footer>
-          <button className="secondary" onClick={onDiagnose} disabled={busy}>
-            <RefreshButtonIcon />
-            <span>{busy ? "검색 중…" : "장치 다시 검색"}</span>
-          </button>
-          <button className="primary" onClick={saveSettings} disabled={!canSaveSettings}>
-            설정 저장
-          </button>
-        </footer>
       </section>
-      <section className="setup-layout">
-        <div className="setup-list">
-          {report.checks.map((item) => (
-            <InstallationCard key={item.id} item={item} token={token} />
-          ))}
-        </div>
-        <aside className="card setup-summary">
-          <p className="section-label">READINESS</p>
-          <h2>{report.ready ? "출력 준비 완료" : "설치 상태 확인"}</h2>
-          <div className={`readiness-mark ${report.ready ? "complete" : "incomplete"}`} aria-hidden="true">
-            {report.ready ? "✓" : "!"}
-          </div>
-          <p>{report.summary}</p>
-          <div className="setup-actions">
-            <button className="secondary" onClick={onDiagnose} disabled={busy}>
-              <RefreshButtonIcon />
-              <span>{busy ? "확인 중…" : "설치 상태 다시 확인"}</span>
-            </button>
-            <button className="primary" onClick={testPrint} disabled={!report.ready || printing}>
-              <TestButtonIcon />
-              <span>{printing ? "전송 중…" : "테스트 라벨 출력"}</span>
-            </button>
-          </div>
-          {notice && <ToastNotice notice={notice} onClose={() => setNotice(null)} />}
-        </aside>
-      </section>
-    </main>
+    </div>
   );
 }
 

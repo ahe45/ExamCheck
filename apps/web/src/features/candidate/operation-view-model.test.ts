@@ -72,8 +72,14 @@ describe("operation view model", () => {
     for (const operationClosed of [false, true]) {
       const context = { operationClosed, labelPrintingEnabled: false };
       expect(operationRowValue(rows[0], "attendance", context)).toBe("결시");
-      expect(operationRosterStats(rows, context)).toMatchObject({ assignedCount: 2, presentCount: 1 });
+      expect(operationRosterStats(rows, context)).toMatchObject({
+        assignedCount: 2,
+        presentCount: 1,
+        absentCount: 1,
+        absenceRateText: "50.0",
+      });
       expect(selectOperationPrintRows(rows, "PRESENT", context)).toEqual([rows[1]]);
+      expect(selectOperationPrintRows(rows, "ABSENT", context)).toEqual([rows[0]]);
       expect(selectOperationPrintRows(rows, "ALL", context)).toEqual(rows);
     }
   });
@@ -106,8 +112,16 @@ describe("operation view model", () => {
       assignedCount: 1,
       presentCount: 1,
       attendanceRateText: "33.3",
+      absentCount: 2,
+      absenceRateText: "66.7",
     });
     expect(stats.attendanceRate).toBeCloseTo(100 / 3);
+    expect(operationRosterStats(rows, openRegistration).absentCount).toBe(1);
+    expect(operationRosterStats([], openRegistration)).toMatchObject({
+      absentCount: 0,
+      absenceRate: 0,
+      absenceRateText: "0.0",
+    });
     expect(
       toRosterExportQuery(
         { status: ["진행"], name: ["이예민", "이예민"] },

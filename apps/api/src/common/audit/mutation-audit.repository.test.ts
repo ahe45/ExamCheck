@@ -7,6 +7,8 @@ import { MutationAuditRepository, type MutationAuditRecord } from "./mutation-au
 const checksum = "a".repeat(64);
 
 const validRecords: MutationAuditRecord[] = [
+  { eventType: "CANDIDATE_UPDATED", actorUserId: 1, details: { candidateRecordId: 1, changedFieldCount: 2 } },
+  { eventType: "CANDIDATE_PHOTO_UPDATED", actorUserId: 1, details: { candidateRecordId: 1 } },
   {
     eventType: "ACCOUNT_CREATED",
     actorUserId: 1,
@@ -91,6 +93,7 @@ const validRecords: MutationAuditRecord[] = [
       useCandidatePhotos: false,
       enableBulkDraw: false,
       showAttendanceSelection: true,
+      useAnswerSheet: false,
     },
   },
   {

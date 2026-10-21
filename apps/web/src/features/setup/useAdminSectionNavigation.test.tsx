@@ -6,6 +6,34 @@ import type { AdminSection } from "../../shared/navigation/admin-navigation";
 import { useAdminSectionNavigation } from "./useAdminSectionNavigation";
 
 describe("useAdminSectionNavigation", () => {
+  it("preserves the requested template kind through cancel and save confirmation", async () => {
+    const { result } = renderHook(() =>
+      useAdminSectionNavigation({
+        section: "templates",
+        developerMode: false,
+        onNavigate: vi.fn(),
+        onLogout: vi.fn(),
+        onDashboardOpen: vi.fn(),
+      }),
+    );
+    act(() => result.current.openSection("templates", "document"));
+    act(() => result.current.updateTemplateDirty(true));
+    act(() => result.current.openSection("templates", "label"));
+    expect(result.current.leaveConfirmation.open).toBe(true);
+    expect(result.current.templateKind).toBe("document");
+    act(() => result.current.leaveConfirmation.cancel());
+    expect(result.current.templateKind).toBe("document");
+    const save = vi.fn().mockResolvedValue(true);
+    result.current.templatePageRef.current = { save };
+    act(() => result.current.openSection("templates", "label"));
+    await act(async () => {
+      await result.current.leaveConfirmation.save();
+    });
+    expect(save).toHaveBeenCalledOnce();
+    expect(result.current.templateKind).toBe("label");
+    expect(result.current.templateResetKey).toBe(2);
+  });
+
   it("guards dirty settings and preserves cancel, discard, and save actions", async () => {
     const onNavigate = vi.fn();
     const onLogout = vi.fn();

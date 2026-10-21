@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, Length } from "class-validator";
+import { IsDateString, IsIn, IsObject, IsOptional, IsString, Length } from "class-validator";
 import type { CandidateUploadPolicy } from "./candidate-domain.js";
 
 export class CandidateDashboardQueryDto {
@@ -25,4 +25,12 @@ export class CandidateFilterQueryDto {
   @IsString()
   @Length(1, 40)
   field!: string;
+}
+
+export class CandidateUpdateDto {
+  @IsObject()
+  fields!: Record<string, unknown>;
+
+  @IsDateString()
+  expectedUpdatedAt!: string;
 }

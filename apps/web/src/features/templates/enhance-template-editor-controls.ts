@@ -8,7 +8,7 @@ import { bindObjectAlignmentControls } from "examlist-template-editor/examlist/t
 import { bindObjectPointerControls } from "examlist-template-editor/examlist/template-editor/object-pointer-controls";
 import { bindObjectSizeControls } from "examlist-template-editor/examlist/template-editor/object-size-controls";
 import { bindPageNumberControls } from "examlist-template-editor/examlist/template-editor/page-number-controls";
-import { bindRecognitionMarksControls } from "examlist-template-editor/examlist/template-editor/recognition-marks-controls";
+import { bindAbsenceHighlightControls } from "./absence-highlight-controls";
 import { showToast } from "examlist-template-editor/examlist/app/toast";
 import { bindSignatureNameControls } from "./signature-name-controls";
 import { bindDataTagFormatControls } from "./data-tag-format-controls";
@@ -67,7 +67,7 @@ export function enhanceTemplateEditorControls(
     const currentPage = getSelectedPage(editor);
     if (currentPage && currentPage.id === selectedPage.id) {
       currentPage.settings ||= {};
-      for (const key of ["pageNumber", "recognitionMarks"]) {
+      for (const key of ["pageNumber", "absenceHighlight"]) {
         if (selectedPage.settings?.[key] !== undefined) {
           currentPage.settings[key] = structuredClone(selectedPage.settings[key]);
         }
@@ -120,7 +120,6 @@ export function enhanceTemplateEditorControls(
     bindObjectSizeControls({ editor: runtime, onDirty: markDirty, selectedPage, surfaceElement, toolbarHost }),
     bindObjectAlignmentControls({ editor: runtime, surfaceElement, toolbarHost }),
     bindPageNumberControls({ appState, onDirty: markDirty, pagePropertiesHost, selectedPage, surfaceElement }),
-    bindRecognitionMarksControls({ appState, onDirty: markDirty, pagePropertiesHost, selectedPage, surfaceElement }),
     bindSignatureNameControls({
       pagePropertiesHost,
       selectedPage,
@@ -130,10 +129,23 @@ export function enhanceTemplateEditorControls(
     }),
   ];
 
+  pagePropertiesHost.querySelector(".examlist-recognition-marks-field")?.remove();
+  disposers.push(
+    bindAbsenceHighlightControls({
+      pagePropertiesHost,
+      selectedPage,
+      surfaceElement,
+      getCurrentPage: () => getSelectedPage(editor),
+      onDirty: markDirty,
+    }),
+  );
+
   const dataBlockSection = pagePropertiesHost.querySelector(".examlist-candidate-block-grid-field");
   const pageNumberSection = pagePropertiesHost.querySelector(".examlist-page-number-field");
   const signatureSection = pagePropertiesHost.querySelector(".examcheck-signature-name-field");
-  if (dataBlockSection && signatureSection) dataBlockSection.after(signatureSection);
+  const absenceSection = pagePropertiesHost.querySelector(".examcheck-absence-highlight-field");
+  if (dataBlockSection && absenceSection) dataBlockSection.after(absenceSection);
+  if (absenceSection && signatureSection) absenceSection.after(signatureSection);
   if (signatureSection && pageNumberSection) signatureSection.after(pageNumberSection);
 
   return () => {

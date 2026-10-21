@@ -62,7 +62,9 @@ export function useOperationPrint(options: Options) {
     labelPrintingEnabled: options.labelPrintingEnabled ?? options.schedule.labelPrintingEnabled,
   };
   const presentCount = selectOperationPrintRows(options.rows, "PRESENT", attendanceContext).length;
-  const targetCount = printTarget === "PRESENT" ? presentCount : options.rows.length;
+  const absentCount = selectOperationPrintRows(options.rows, "ABSENT", attendanceContext).length;
+  const targetCount =
+    printTarget === "PRESENT" ? presentCount : printTarget === "ABSENT" ? absentCount : options.rows.length;
 
   useEffect(() => {
     generationControllerRef.current?.abort(new DOMException("교시가 변경되어 PDF 생성을 취소했습니다.", "AbortError"));
@@ -128,8 +130,14 @@ export function useOperationPrint(options: Options) {
   async function generate() {
     const template = selectedTemplate?.code === selectedTemplateCode ? selectedTemplate : null;
     if (!template || generating || generationControllerRef.current) return;
-    if (printTarget === "PRESENT" && !targetCount) {
-      options.onNotice({ kind: "error", text: "응시한 수험생이 없어 출력할 수 없습니다." });
+    if (printTarget !== "ALL" && !targetCount) {
+      options.onNotice({
+        kind: "error",
+        text:
+          printTarget === "ABSENT"
+            ? "결시한 수험생이 없어 출력할 수 없습니다."
+            : "응시한 수험생이 없어 출력할 수 없습니다.",
+      });
       return;
     }
     if (getRequiredTemplateSignatureFields(template.layout).length) {
@@ -290,6 +298,7 @@ export function useOperationPrint(options: Options) {
     },
     totalCount: options.rows.length,
     presentCount,
+    absentCount,
     targetCount,
     loading,
     generating,

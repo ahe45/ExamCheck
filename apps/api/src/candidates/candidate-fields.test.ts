@@ -12,16 +12,24 @@ describe("candidate field definitions", () => {
       ["unit", "unit_name", "모집단위명"],
       ["major", "major", "전공명"],
       ["building", "building_name", "고사건물명"],
-      ["waitingRoom", "waiting_room", "대기실명"],
       ["room", "room_name", "고사실명"],
+      ["waitingRoom", "waiting_room", "대기실명"],
       ["examineeNo", "examinee_no", "수험번호"],
       ["temporaryNo", "temporary_no", "가번호"],
       ["name", "name", "이름"],
       ["birth", "birth_date", "생년월일"],
       ["group", "group_name", "조"],
+      ["answerSheet", "answer_sheet", "답안지"],
       ["opt1", "opt1", "OPT1"],
       ["opt2", "opt2", "OPT2"],
       ["opt3", "opt3", "OPT3"],
+      ["opt4", "opt4", "OPT4"],
+      ["opt5", "opt5", "OPT5"],
+      ["opt6", "opt6", "OPT6"],
+      ["opt7", "opt7", "OPT7"],
+      ["opt8", "opt8", "OPT8"],
+      ["opt9", "opt9", "OPT9"],
+      ["opt10", "opt10", "OPT10"],
     ]);
     expect(candidateFieldKeys).toEqual(candidateFields.map((field) => field.key));
     expect(new Set(candidateFieldKeys).size).toBe(candidateFields.length);
@@ -34,15 +42,15 @@ describe("candidate field definitions", () => {
       "unit",
       "major",
       "building",
-      "waitingRoom",
       "room",
+      "waitingRoom",
       "temporaryNo",
     ]);
   });
 
-  it("requires the waiting room and keeps the exam room optional", () => {
-    expect(candidateFields.find((field) => field.key === "waitingRoom")?.optional).not.toBe(true);
-    expect(candidateFields.find((field) => field.key === "room")?.optional).toBe(true);
+  it("requires the exam room and keeps the waiting room optional", () => {
+    expect(candidateFields.find((field) => field.key === "room")?.optional).not.toBe(true);
+    expect(candidateFields.find((field) => field.key === "waitingRoom")?.optional).toBe(true);
   });
 
   it("identifies an uploaded candidate row by number, date, start time, period, and building", () => {
@@ -78,8 +86,16 @@ function candidate(): CandidateInput {
     name: "홍길동",
     birth: "2000-01-01",
     group: "",
+    answerSheet: "",
     opt1: "",
     opt2: "",
     opt3: "",
+    opt4: "",
+    opt5: "",
+    opt6: "",
+    opt7: "",
+    opt8: "",
+    opt9: "",
+    opt10: "",
   };
 }

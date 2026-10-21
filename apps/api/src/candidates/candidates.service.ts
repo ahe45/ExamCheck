@@ -5,7 +5,7 @@ import { createWriteStream, createReadStream } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BadRequestException, Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import ExcelJS from "exceljs";
 import type { Pool } from "mysql2/promise";
@@ -25,7 +25,8 @@ import {
   type CandidatePhotoArchiveFiles,
   type CandidateUploadPolicy,
 } from "./candidate-domain.js";
-import { candidateFieldKeys, candidateFields } from "./candidate-fields.js";
+import { candidateFieldKeys, candidateFields, type CandidateInput } from "./candidate-fields.js";
+import type { CandidateUpdateDto } from "./candidates.dto.js";
 import { toCandidateHttpError } from "./candidate-http-errors.js";
 import {
   candidatePhotoStateChecksum,
@@ -37,6 +38,7 @@ import { openValidatedPhotoArchive, readValidatedPhotoEntry } from "./candidate-
 import { CandidatesApplicationService } from "./candidates.application.js";
 import { CandidatesRepository } from "./candidates.repository.js";
 import { parseCandidateListQuery } from "./candidate-list-query.js";
+import { candidateAttendance } from "./candidate-attendance.js";
 
 export { assertCandidateNumberUniqueness, validateCandidateWorkbookHeaders } from "./candidate-domain.js";
 export type { CandidateRecordRow } from "./candidates.repository.js";
@@ -58,6 +60,42 @@ export class CandidatesService {
     return this.repository.list(this.pool);
   }
 
+  async detail(id: number) {
+    const row = await this.repository.findById(this.pool, id);
+    if (!row) throw new NotFoundException("수험생 정보를 찾을 수 없습니다.");
+    return row;
+  }
+
+  update(id: number, input: CandidateUpdateDto, actorUserId: number) {
+    for (const field of candidateFields) {
+      if (typeof input.fields[field.key] !== "string")
+        throw new BadRequestException(`${field.label} 값을 확인해 주세요.`);
+    }
+    const fields = Object.fromEntries(
+      candidateFields.map((field) => [field.key, input.fields[field.key]]),
+    ) as CandidateInput;
+    return this.application.updateCandidate(id, fields, input.expectedUpdatedAt, actorUserId);
+  }
+
+  async photo(id: number) {
+    const photo = await this.repository.findPhotoById(this.pool, id);
+    if (!photo) throw new NotFoundException("등록된 사진이 없습니다.");
+    return photo;
+  }
+
+  savePhoto(id: number, photo: { fileName: string; mimeType: string; content: Buffer }, actorUserId: number) {
+    return this.application.saveCandidatePhoto(id, photo, actorUserId);
+  }
+
+  async attendance(user: AuthenticatedUser) {
+    const access = buildAdmissionAccessPredicate(user, ADMISSION_SQL_COLUMNS.candidateRecord);
+    const rows = await this.repository.attendance(this.pool, access);
+    return rows.map(({ absent, processed, closed, ...row }) => ({
+      ...row,
+      attendance: candidateAttendance({ absent, processed, closed }),
+    }));
+  }
+
   listPage(raw?: string) {
     return this.repository.listPage(this.pool, parseCandidateListQuery(raw));
   }
@@ -75,6 +113,11 @@ export class CandidatesService {
     const rows = await this.repository.listDashboardBreakdownCounts(this.pool, access, admissionName);
     const breakdowns = {
       admission: toDashboardStatistics(rows.filter((row) => row.groupType === "admission")),
+      unit: toDashboardStatistics(rows.filter((row) => row.groupType === "unit")),
+      major: toDashboardStatistics(rows.filter((row) => row.groupType === "major")),
+      group: toDashboardStatistics(rows.filter((row) => row.groupType === "group")),
+      date: toDashboardStatistics(rows.filter((row) => row.groupType === "date")),
+      room: toDashboardStatistics(rows.filter((row) => row.groupType === "room")),
       building: toDashboardStatistics(rows.filter((row) => row.groupType === "building")),
       period: toDashboardStatistics(rows.filter((row) => row.groupType === "period")),
       waitingRoom: toDashboardStatistics(rows.filter((row) => row.groupType === "waitingRoom")),
@@ -222,6 +265,12 @@ export class CandidatesService {
         bottom: { style: "thin", color: { argb: "FFB7B7B7" } },
         right: { style: "thin", color: { argb: "FFB7B7B7" } },
       };
+      if (field.key === "room" || field.key === "waitingRoom") {
+        cell.note = field.optional
+          ? "선택 입력입니다. 대기실이 없으면 비워 두세요."
+          : "필수 입력입니다. 고사실명을 입력하세요.";
+      }
+      if (field.key === "answerSheet") cell.note = "선택 입력입니다. 답안지 정보가 없으면 비워 두세요.";
       if (field.format === "date") cell.note = "yyyy-mm-dd 형식으로 입력하세요. 예: 2026-03-28";
       if (field.format === "time") {
         cell.note = field.optional

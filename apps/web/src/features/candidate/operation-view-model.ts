@@ -132,10 +132,14 @@ export function operationScope(schedule: OperationSchedule, examName: string): P
 export function operationRosterStats(rows: OperationRow[], context: OperationGridContext) {
   const assignedCount = rows.filter((row) => operationRowProcessed(row, context)).length;
   const presentCount = rows.filter((row) => operationRowAttendance(row, context) === "응시").length;
+  const absentCount = rows.filter((row) => operationRowAttendance(row, context) === "결시").length;
   return {
     totalCount: rows.length,
     assignedCount,
     presentCount,
+    absentCount,
+    absenceRate: rows.length ? (absentCount / rows.length) * 100 : 0,
+    absenceRateText: rows.length ? ((absentCount / rows.length) * 100).toFixed(1) : "0.0",
     attendanceRate: rows.length ? (presentCount / rows.length) * 100 : 0,
     attendanceRateText: rows.length ? ((presentCount / rows.length) * 100).toFixed(1) : "0.0",
   };

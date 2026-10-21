@@ -1,5 +1,5 @@
 import { ToastNotice } from "../../shared/components/ToastNotice";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import type { AuthUser } from "../../shared/api/auth";
 import { fetchOperationSchedules, type OperationSchedule } from "../../shared/api/examinees";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
@@ -21,6 +21,14 @@ export function OperationSchedulePage({
   const [schedules, setSchedules] = useState<OperationSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedDates, setExpandedDates] = useState<Record<string, boolean>>({});
+  const accordionId = useId();
+  const today = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
   const dates = useMemo(() => [...new Set(schedules.map((item) => item.date))], [schedules]);
 
   const load = useCallback(async () => {
@@ -87,16 +95,32 @@ export function OperationSchedulePage({
         ) : (
           dates.map((date) => {
             const dateSchedules = schedules.filter((item) => item.date === date);
+            const expanded = expandedDates[date] ?? date === today;
             return (
               <section className="operation-schedule-section operation-date-section" key={date}>
                 <header>
-                  <div>
-                    <small>시험 날짜</small>
-                    <h2>{formatDate(date)}</h2>
-                  </div>
-                  <span>{dateSchedules.length}개 교시</span>
+                  <h2>
+                    <button
+                      type="button"
+                      className="operation-date-accordion-toggle"
+                      aria-expanded={expanded}
+                      aria-controls={accordionId + date}
+                      onClick={() => setExpandedDates((current) => ({ ...current, [date]: !expanded }))}
+                    >
+                      <span className="operation-date-accordion-title">
+                        <small>시험 날짜</small>
+                        <span>{formatDate(date)}</span>
+                      </span>
+                      <span className="operation-date-accordion-meta">
+                        <span>{dateSchedules.length}개 교시</span>
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="m6 9 6 6 6-6" />
+                        </svg>
+                      </span>
+                    </button>
+                  </h2>
                 </header>
-                <div className="operation-schedule-grid">
+                <div className="operation-schedule-grid" id={accordionId + date} hidden={!expanded}>
                   {dateSchedules.map((schedule) => {
                     const completedCount = schedule.labelPrintingEnabled
                       ? schedule.printedCount
