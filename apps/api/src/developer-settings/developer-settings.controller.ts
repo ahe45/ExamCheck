@@ -3,9 +3,11 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Inject,
   Post,
   Put,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -22,6 +24,7 @@ import {
   UpdateHistoryResetPasswordDto,
 } from "./developer-settings.dto.js";
 import { DeveloperSettingsService } from "./developer-settings.service.js";
+import { DatabaseBackupService } from "./database-backup.service.js";
 
 interface LogoFile {
   buffer: Buffer;
@@ -34,7 +37,29 @@ interface LogoFile {
 @UseGuards(AuthGuard, RolesGuard)
 @RequirePermissions("developer.manage")
 export class DeveloperSettingsController {
-  constructor(@Inject(DeveloperSettingsService) private readonly settingsService: DeveloperSettingsService) {}
+  constructor(
+    @Inject(DeveloperSettingsService) private readonly settingsService: DeveloperSettingsService,
+    @Inject(DatabaseBackupService) private readonly backupService: DatabaseBackupService,
+  ) {}
+
+  @Get("backup")
+  @Header("Cache-Control", "no-store")
+  async backup() {
+    return new StreamableFile(await this.backupService.backup(), {
+      type: "application/gzip",
+      disposition: `attachment; filename="examcheck-backup-${new Date().toISOString().replaceAll(":", "-")}.json.gz"`,
+    });
+  }
+
+  @Post("restore")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 100 * 1024 * 1024, files: 1 } }))
+  restore(
+    @UploadedFile() file: LogoFile | undefined,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.backupService.restore(file?.buffer, body.password, body.confirmation, user.id);
+  }
 
   @Get()
   get(@CurrentUser() user: AuthenticatedUser) {

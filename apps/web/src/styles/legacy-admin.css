@@ -689,11 +689,11 @@
   align-self: stretch;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-columns: 160px;
   align-items: stretch;
   justify-content: center;
-  width: min(800px, 59vw);
-  min-width: 750px;
+  width: max-content;
+  flex-shrink: 0;
   margin: -9px auto;
 }
 .exam-admin-topnav button {

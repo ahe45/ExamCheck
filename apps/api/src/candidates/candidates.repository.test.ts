@@ -46,6 +46,12 @@ describe("CandidatesRepository", () => {
     expect(sql).toContain("COUNT(DISTINCT cr.id)");
     expect(sql).toContain("MIN(CONCAT(");
     expect(sql).toContain(")) AS schedule");
+    expect(sql).toContain("NOT COALESCE(pa.is_absentee, FALSE)");
+    expect(sql).toContain("COALESCE(s.assignment_method, d.assignment_method) = 'PREASSIGNED'");
+    expect(sql).toContain("COALESCE(s.print_preassigned_label, d.print_preassigned_label, TRUE)");
+    expect(sql).toContain("pj.label_type = 'PSEUDONYM_LABEL' AND pj.status = 'SENT'");
+    expect(sql).toContain("NULLIF(cr.temporary_no, '') IS NOT NULL");
+    expect(sql).toContain("cr.status = 'ACTIVE'");
     expect(sql).toContain("cr.building_name");
     expect(sql).toContain("cr.period_name");
     expect(sql).toContain("cr.waiting_room");

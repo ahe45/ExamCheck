@@ -134,7 +134,7 @@
 .account-table-wrap th:nth-child(3) {
   width: 110px;
 }
-.account-table-wrap th:nth-child(5) {
+.account-table-wrap th:last-child {
   width: 160px;
   text-align: center;
 }
@@ -473,4 +473,29 @@
   background: #c9473d;
   font-size: 10px;
   font-weight: 800;
+}
+
+.account-table-wrap table {
+  min-width: 980px;
+}
+.account-table-wrap th:nth-child(4) {
+  width: 180px;
+}
+.account-table-wrap th:nth-child(5) {
+  width: 110px;
+}
+.account-presence-badge {
+  display: inline-block;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+}
+.account-presence-badge.online {
+  color: #176b5f;
+  background: #e7f6f1;
+}
+.account-presence-badge.offline {
+  color: #64738a;
+  background: #f0f3f8;
 }

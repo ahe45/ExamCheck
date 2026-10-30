@@ -129,6 +129,7 @@ function createPool(user: TestUser | null) {
     execute: vi.fn(async (sql: string) => {
       if (sql.includes("FROM app_user")) return [user ? [user] : [], []];
       if (sql.includes("FROM user_admission_assignment")) return [[], []];
+      if (sql.startsWith("UPDATE app_user SET last_access_at")) return [{ affectedRows: 1 }, []];
       throw new Error(`Unexpected SQL in test: ${sql}`);
     }),
   };

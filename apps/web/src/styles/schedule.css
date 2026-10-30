@@ -416,8 +416,7 @@
 
 @media (max-width: 1180px) {
   .exam-admin-topnav {
-    width: 750px;
-    min-width: 750px;
+    grid-auto-columns: 150px;
   }
   .exam-admin-topnav button {
     padding-inline: 8px;
@@ -429,9 +428,6 @@
 }
 
 @media (max-width: 1180px) {
-  .exam-admin-topnav {
-    width: 750px;
-  }
   .admission-dashboard-overview {
     grid-template-columns: minmax(245px, 0.72fr) minmax(0, 1.4fr);
   }

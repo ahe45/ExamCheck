@@ -288,6 +288,8 @@ function createFixture() {
 
 function accountView(id: number): ManagedAccountView {
   return {
+    lastAccessAt: null,
+    isOnline: 0,
     id,
     loginId: `operator-${id}`,
     role: "USER",

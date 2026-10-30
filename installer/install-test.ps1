@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $version = (Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) 'package.json') -Raw | ConvertFrom-Json).version
 if (-not $SetupPath) {
-    $SetupPath = Join-Path $PSScriptRoot "output\가번호 관리 시스템_$version.exe"
+    $SetupPath = Join-Path $PSScriptRoot "output\가번호 관리 시스템_v$version.exe"
 }
 $key = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{BD33D457-7884-4E6F-9F49-4E54C94C712A}_is1'
 foreach ($hive in @('HKCU','HKLM')) {
@@ -20,6 +20,8 @@ if ($setup.ExitCode -ne 0) { throw "Installation failed ($($setup.ExitCode)); se
 try {
     $installedRelease = Get-Content (Join-Path $destination 'release.json') -Raw | ConvertFrom-Json
     if ($installedRelease.version -ne $version) { throw 'Installed release version does not match the project.' }
+    $launcherVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $destination '가번호 관리 시스템.exe'))
+    if ($launcherVersion.FileVersion -ne "$version.0" -or $launcherVersion.ProductVersion -ne $version) { throw 'Launcher version does not match the release.' }
     foreach ($manifest in @('package.json','apps/api/package.json','apps/web/package.json')) {
         if ((Get-Content (Join-Path $destination $manifest) -Raw | ConvertFrom-Json).version -ne $version) {
             throw "Installed package version does not match the project: $manifest"

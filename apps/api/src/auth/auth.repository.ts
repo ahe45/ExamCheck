@@ -37,6 +37,10 @@ export class AuthRepository {
     return rows.map((row) => row.admissionName);
   }
 
+  async recordAccess(userId: number): Promise<void> {
+    await this.pool.execute("UPDATE app_user SET last_access_at = NOW(3) WHERE id = ?", [userId]);
+  }
+
   private async findUser(column: "id" | "login_id", value: number | string): Promise<AuthUserRow | null> {
     const [rows] = await this.pool.execute<AuthUserRow[]>(
       `SELECT id, login_id AS loginId, role,

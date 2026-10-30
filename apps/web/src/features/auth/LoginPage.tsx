@@ -4,6 +4,7 @@ import type { Session } from "../../shared/api/auth";
 import { login } from "../../shared/api/auth";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import { LoginButtonIcon } from "../../shared/components/ActionIcons";
+import { version } from "../../../package.json";
 
 export function LoginPage({
   systemProfile,
@@ -76,6 +77,9 @@ export function LoginPage({
             <LoginButtonIcon />
             <span>{busy ? "로그인 중…" : "로그인"}</span>
           </button>
+          <p className="login-version" aria-label="프로그램 버전">
+            v{version}
+          </p>
         </form>
       </section>
     </main>

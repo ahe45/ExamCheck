@@ -10,6 +10,8 @@ interface AccountRow extends RowDataPacket {
   role: UserRole;
   createdAt: Date;
   updatedAt: Date | null;
+  lastAccessAt: Date | null;
+  isOnline: number;
 }
 
 interface AdmissionRow extends RowDataPacket {
@@ -39,6 +41,8 @@ export interface ManagedAccountView {
   role: "ADMIN" | "USER";
   createdAt: Date;
   updatedAt: Date | null;
+  lastAccessAt: Date | null;
+  isOnline: number;
   admissionNames: string[];
 }
 
@@ -54,7 +58,9 @@ export class AccountsRepository {
   async list(executor: SqlExecutor): Promise<ManagedAccountView[]> {
     const [accounts] = await executor.query<AccountRow[]>(
       `SELECT id, login_id AS loginId, role,
-              created_at AS createdAt, created_at AS updatedAt
+              created_at AS createdAt, created_at AS updatedAt,
+              last_access_at AS lastAccessAt,
+              COALESCE(last_access_at > DATE_SUB(NOW(3), INTERVAL 2 MINUTE), FALSE) AS isOnline
        FROM app_user
        WHERE enabled = TRUE AND login_id <> 'system' AND role <> 'DEVELOPER'
        ORDER BY CASE role WHEN 'ADMIN' THEN 0 ELSE 1 END, login_id, id`,

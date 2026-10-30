@@ -1,6 +1,6 @@
 import type { Account, AccountInput, AccountRole } from "../../shared/api/accounts";
 
-export type AccountColumnKey = "loginId" | "role" | "access";
+export type AccountColumnKey = "loginId" | "role" | "lastAccessAt" | "isOnline" | "access";
 
 export interface AccountColumn {
   key: AccountColumnKey;
@@ -15,6 +15,8 @@ export interface AccountForm extends AccountInput {
 export const accountColumns: AccountColumn[] = [
   { key: "loginId", label: "아이디" },
   { key: "role", label: "권한" },
+  { key: "lastAccessAt", label: "마지막 접속 시간" },
+  { key: "isOnline", label: "접속 상태" },
   { key: "access", label: "배정 전형" },
 ];
 
@@ -62,10 +64,28 @@ export function accountInputFrom(form: AccountForm): AccountInput {
 }
 
 export function accountColumnValue(account: Account, key: AccountColumnKey) {
+  if (key === "lastAccessAt") return formatAccountAccessTime(account.lastAccessAt);
+  if (key === "isOnline") return account.isOnline ? "접속 중" : "미접속";
   if (key === "role") return account.role === "ADMIN" ? "관리자" : "사용자";
   if (key === "access")
     return account.role === "ADMIN" || !account.admissionNames.length
       ? "전체 전형·교시"
       : account.admissionNames.join(", ");
   return account[key];
+}
+
+export function formatAccountAccessTime(value: string | null | undefined): string {
+  if (!value) return "접속 기록 없음";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "접속 기록 없음";
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
 }

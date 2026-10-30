@@ -68,24 +68,16 @@ export interface CandidateImportScopeGuardRow extends RowDataPacket {
 @Injectable()
 export class CandidatesRepository {
   async attendance(executor: SqlExecutor, access: AdmissionAccessPredicate) {
-    const preassigned = "COALESCE(s.assignment_method, d.assignment_method) = 'PREASSIGNED'";
     const [rows] = await executor.execute<CandidateAttendanceRow[]>(
       `SELECT cr.id, cr.admission, cr.unit_name AS unit, cr.major, cr.group_name AS \`group\`,
         DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS date, cr.start_time AS time,
         cr.period_name AS period, cr.building_name AS building, cr.room_name AS room,
         cr.waiting_room AS waitingRoom, cr.examinee_no AS examineeNo, cr.name,
         COALESCE(pa.is_absentee, FALSE) AS absent, COALESCE(po.closed, FALSE) AS closed,
-        CASE WHEN ${preassigned} AND COALESCE(s.print_preassigned_label, d.print_preassigned_label, TRUE)
-          THEN EXISTS (SELECT 1 FROM print_job pj WHERE pj.candidate_record_id = cr.id
-            AND pj.label_type = 'PSEUDONYM_LABEL' AND pj.status = 'SENT')
-          ELSE (pa.id IS NOT NULL OR (${preassigned} AND NULLIF(cr.temporary_no, '') IS NOT NULL))
-        END AS processed
+        ${attendanceProcessedSql} AS processed
        FROM candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
-       LEFT JOIN pseudonym_setting s ON s.exam_name = cr.exam_name AND s.admission_name = cr.admission AND s.active = TRUE
-       LEFT JOIN pseudonym_setting d ON d.exam_name = cr.exam_name AND d.admission_name = '' AND d.active = TRUE
-       LEFT JOIN pseudonym_operation po ON po.exam_name = cr.exam_name AND po.exam_date = cr.exam_date
-         AND po.exam_time = cr.start_time AND po.period_name = cr.period_name AND po.admission_name = cr.admission
+       ${attendanceJoinsSql}
        WHERE cr.status = 'ACTIVE' AND ${access.sql}
        ORDER BY cr.id`,
       access.params,
@@ -191,9 +183,11 @@ export class CandidatesRepository {
                 COALESCE(NULLIF(TRIM(cr.start_time), ''), '99:99')
               )) AS schedule,
               COUNT(DISTINCT cr.id) AS total,
-              COUNT(DISTINCT CASE WHEN pa.id IS NOT NULL THEN cr.id END) AS assigned
+              COUNT(DISTINCT CASE WHEN NOT COALESCE(pa.is_absentee, FALSE)
+                AND (${attendanceProcessedSql}) THEN cr.id END) AS assigned
        FROM candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+       ${attendanceJoinsSql}
        CROSS JOIN (
          SELECT 'admission' AS group_type
          UNION ALL SELECT 'unit'
@@ -205,7 +199,7 @@ export class CandidatesRepository {
          UNION ALL SELECT 'period'
          UNION ALL SELECT 'waitingRoom'
        ) dashboard_group
-       WHERE ${access.sql}${admissionFilter}
+       WHERE cr.status = 'ACTIVE' AND ${access.sql}${admissionFilter}
        GROUP BY dashboard_group.group_type, 2
        ORDER BY dashboard_group.group_type, 2`,
       [...access.params, ...(admissionName ? [admissionName] : [])],
@@ -450,3 +444,14 @@ const updateSql = `UPDATE candidate_record
 function candidateValues(candidate: CandidateInput): string[] {
   return candidateFields.map((field) => candidate[field.key]);
 }
+
+const preassigned = "COALESCE(s.assignment_method, d.assignment_method) = 'PREASSIGNED'";
+const attendanceProcessedSql = `CASE WHEN ${preassigned} AND COALESCE(s.print_preassigned_label, d.print_preassigned_label, TRUE)
+          THEN EXISTS (SELECT 1 FROM print_job pj WHERE pj.candidate_record_id = cr.id
+            AND pj.label_type = 'PSEUDONYM_LABEL' AND pj.status = 'SENT')
+          ELSE (pa.id IS NOT NULL OR (${preassigned} AND NULLIF(cr.temporary_no, '') IS NOT NULL))
+        END`;
+const attendanceJoinsSql = `LEFT JOIN pseudonym_setting s ON s.exam_name = cr.exam_name AND s.admission_name = cr.admission AND s.active = TRUE
+       LEFT JOIN pseudonym_setting d ON d.exam_name = cr.exam_name AND d.admission_name = '' AND d.active = TRUE
+       LEFT JOIN pseudonym_operation po ON po.exam_name = cr.exam_name AND po.exam_date = cr.exam_date
+         AND po.exam_time = cr.start_time AND po.period_name = cr.period_name AND po.admission_name = cr.admission`;

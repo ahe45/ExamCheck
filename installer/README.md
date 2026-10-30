@@ -12,14 +12,19 @@ Windows 10/11 **x64**를 대상으로 합니다. ARM64는 별도 검증 대상�
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/build.ps1
 ```
 
+설치 파일을 빌드할 때마다 패치 버전이 자동 증가합니다(예: `0.1.8` → `0.1.9` → `0.1.10`).
+루트·웹·API의 package.json과 package-lock.json을 함께 갱신하며, 서로 버전이 다르면 빌드를 중단합니다.
+로그인 화면, 실행 파일 속성, 설치 프로그램과 파일명에는 같은 버전을 사용합니다.
+빌드 실패 후 다시 빌드하는 경우에도 새 버전을 사용하므로 이전 설치 파일을 덮어쓰지 않습니다.
+
 첫 빌드에는 인터넷이 필요합니다. 공식 배포 ZIP을 `cache`에 내려받고
 `runtime-lock.json`에 기록한 SHA-256을 확인합니다. 빌드마다 검증된 ZIP을 다시 풉니다.
 웹/API를 빌드하고 원본 npm lock으로 production 의존성만 설치합니다.
 개발용 `.env`, 실제 DB, 로그, Git 정보는 패키지에 복사하지 않습니다.
 웹 API 주소는 `/api/v1`, 프린터 모드는 `browser-print`로 고정하여 빌드합니다.
 
-- `output/가번호 관리 시스템_0.1.8.zip`: `-CreateArchive`를 지정한 경우에만 생성
-- `output/가번호 관리 시스템_0.1.8.exe`: 기본 생성되는 Windows 설치 파일
+- `output/가번호 관리 시스템_v0.1.9.zip`: `-CreateArchive`를 지정한 경우에만 생성
+- `output/가번호 관리 시스템_v0.1.9.exe`: 기본 생성되는 Windows 설치 파일
 - `stage/`: 압축 전 배포 폴더, 그대로 다른 PC로 복사 가능
 
 Inno Setup은 **설치 파일을 만드는 개발 PC에만** 필요합니다.

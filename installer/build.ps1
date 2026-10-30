@@ -43,6 +43,8 @@ function Get-Runtime {
     return $extracted
 }
 
+Invoke-Checked 'node.exe' @((Join-Path $PSScriptRoot 'release-version.mjs'))
+$version = (Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
 New-Item -ItemType Directory -Path $output,$cache -Force | Out-Null
 if (Test-Path -LiteralPath $stage) {
     if ([IO.Path]::GetFullPath($stage) -ne ([IO.Path]::GetFullPath($PSScriptRoot) + '\stage')) { throw 'Unsafe stage path.' }
@@ -78,7 +80,10 @@ Copy-Item (Join-Path $PSScriptRoot 'assets/app.ico') (Join-Path $stage 'runtime/
 Copy-Item (Join-Path $PSScriptRoot 'assets/app.png') (Join-Path $stage 'runtime/app.png')
 $csharpCompiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 if (-not (Test-Path -LiteralPath $csharpCompiler)) { throw 'Windows .NET Framework C# compiler is required to build the GUI launcher.' }
-Invoke-Checked $csharpCompiler @('/nologo','/target:winexe','/optimize+','/codepage:65001','/reference:System.Windows.Forms.dll',("/win32icon:" + (Join-Path $PSScriptRoot 'assets/app.ico')),("/out:" + (Join-Path $stage '가번호 관리 시스템.exe')),(Join-Path $PSScriptRoot 'portable/ExamCheck.cs'))
+$launcherVersionSource = Join-Path $stage 'launcher-version.cs'
+[IO.File]::WriteAllText($launcherVersionSource, ('[assembly: System.Reflection.AssemblyVersion("' + $version + '.0")][assembly: System.Reflection.AssemblyFileVersion("' + $version + '.0")][assembly: System.Reflection.AssemblyInformationalVersion("' + $version + '")]'))
+Invoke-Checked $csharpCompiler @('/nologo','/target:winexe','/optimize+','/codepage:65001','/reference:System.Windows.Forms.dll',("/win32icon:" + (Join-Path $PSScriptRoot 'assets/app.ico')),("/out:" + (Join-Path $stage '가번호 관리 시스템.exe')),(Join-Path $PSScriptRoot 'portable/ExamCheck.cs'),$launcherVersionSource)
+Remove-Item -LiteralPath $launcherVersionSource
 Copy-Item (Join-Path $PSScriptRoot 'USER-GUIDE.txt') $stage
 Copy-Item (Join-Path $PSScriptRoot 'runtime-lock.json') $stage
 Push-Location $stage
@@ -124,7 +129,7 @@ Get-ChildItem (Join-Path $stage 'runtime') -Filter '*.ps1' | ForEach-Object {
 }
 if ($CreateArchive) {
     Write-Host 'Creating the offline portable package...'
-    $zip = Join-Path $output "가번호 관리 시스템_$version.zip"
+    $zip = Join-Path $output "가번호 관리 시스템_v$version.zip"
     # ZipFile supports large MariaDB archives and avoids Compress-Archive's hidden-file omissions.
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }

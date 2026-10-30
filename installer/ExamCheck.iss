@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.8"
+  #error AppVersion must be supplied by installer/build.ps1
 #endif
 [Setup]
 AppId={{BD33D457-7884-4E6F-9F49-4E54C94C712A}
@@ -12,7 +12,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=output
-OutputBaseFilename=가번호 관리 시스템_{#AppVersion}
+OutputBaseFilename=가번호 관리 시스템_v{#AppVersion}
 SetupIconFile=assets\app.ico
 Compression=lzma2
 SolidCompression=yes

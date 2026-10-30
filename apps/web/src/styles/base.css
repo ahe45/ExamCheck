@@ -530,6 +530,14 @@ button:disabled {
 .login-card h2 {
   margin-bottom: 5px;
 }
+.login-card .login-version {
+  margin: 4px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid #e4e9f1;
+  color: #7b899c;
+  font-size: 13px;
+  text-align: center;
+}
 .login-card label {
   display: grid;
   gap: 8px;

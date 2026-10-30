@@ -3,7 +3,12 @@ import { relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const sourceRoot = resolve(process.cwd(), "src");
-const infrastructureServiceExceptions = new Set(["auth/auth-audit.service.ts", "health/health.service.ts"]);
+const infrastructureServiceExceptions = new Set([
+  "auth/auth-audit.service.ts",
+  "health/health.service.ts",
+  // Whole-database snapshots and restores operate on schema metadata rather than business entities.
+  "developer-settings/database-backup.service.ts",
+]);
 
 describe("API repository boundaries", () => {
   it("keeps direct SQL out of business services", async () => {

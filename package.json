@@ -1,6 +1,6 @@
 {
   "name": "examcheck",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "가번호 관리 시스템 - Zebra GT800 웹 라벨 출력",
   "private": true,
   "workspaces": [

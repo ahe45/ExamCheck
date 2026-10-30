@@ -1,3 +1,4 @@
+import { DatabaseBackupSection } from "./DatabaseBackupSection";
 import type { FormEvent } from "react";
 import type { AuthUser } from "../../shared/api/auth";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
@@ -78,6 +79,7 @@ function DeveloperSettingsContent({ token, user, onProfileChange }: Props) {
           </footer>
         </form>
         <HistoryResetPasswordSection token={token} />
+        <DatabaseBackupSection token={token} />
       </div>
 
       {controller.passwordModalOpen && (

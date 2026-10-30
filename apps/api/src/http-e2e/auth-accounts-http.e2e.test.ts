@@ -18,6 +18,7 @@ import { APP_CONFIG, resolveAppConfig } from "../config/app-config.js";
 import { CONTENT_SECURITY_POLICY_REPORT_ONLY, HTTP_SECURITY_HEADERS } from "../config/http-security.js";
 import { DeveloperSettingsController } from "../developer-settings/developer-settings.controller.js";
 import { DeveloperSettingsService } from "../developer-settings/developer-settings.service.js";
+import { DatabaseBackupService } from "../developer-settings/database-backup.service.js";
 
 /**
  * Minimal transport/guard harness, not a full AppModule bootstrap test.
@@ -108,6 +109,7 @@ const developerSettingsServiceStub = {
     { provide: AuthService, useValue: authServiceStub },
     { provide: AccountsService, useValue: accountsServiceStub },
     { provide: DeveloperSettingsService, useValue: developerSettingsServiceStub },
+    { provide: DatabaseBackupService, useValue: {} },
   ],
 })
 class AuthAccountsHttpE2eModule {}
@@ -117,7 +119,7 @@ describe("AuthController and AccountsController HTTP boundaries", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    app = await NestFactory.create(AuthAccountsHttpE2eModule, { logger: false });
+    app = await NestFactory.create(AuthAccountsHttpE2eModule, { logger: false, abortOnError: false });
     configureApplication(app, {
       frontendOrigins: [TEST_FRONTEND_ORIGIN, TEST_SECOND_FRONTEND_ORIGIN],
       requestLogWriter: () => undefined,

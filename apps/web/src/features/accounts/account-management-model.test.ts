@@ -20,6 +20,14 @@ const account: Account = {
 };
 
 describe("account management model", () => {
+  it("접속 기록과 상태를 그리드에 표시한다", () => {
+    expect(accountColumnValue(account, "lastAccessAt")).toBe("접속 기록 없음");
+    expect(accountColumnValue({ ...account, lastAccessAt: "2026-10-30T00:01:02Z" }, "lastAccessAt")).toBe(
+      "2026-10-30 09:01:02",
+    );
+    expect(accountColumnValue({ ...account, isOnline: 1 }, "isOnline")).toBe("접속 중");
+    expect(accountColumnValue({ ...account, isOnline: 0 }, "isOnline")).toBe("미접속");
+  });
   it("신규 및 수정 폼을 계정 API 모델과 분리해 생성한다", () => {
     expect(emptyAccountForm()).toEqual({
       loginId: "",

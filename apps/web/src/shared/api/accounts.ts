@@ -9,6 +9,8 @@ export interface Account {
   admissionNames: string[];
   createdAt: string;
   updatedAt: string | null;
+  lastAccessAt?: string | null;
+  isOnline?: number | boolean;
 }
 
 export interface AccountInput {

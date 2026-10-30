@@ -46,6 +46,15 @@ export function AccountManagementPage({ token, currentUserId }: Props) {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void fetchAccounts(token)
+        .then(setAccounts)
+        .catch(() => {});
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [token]);
+
   function openCreate() {
     setEditing(null);
     setNotice(null);

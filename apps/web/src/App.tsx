@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { LoginPage } from "./features/auth/LoginPage";
+import { apiFetch } from "./shared/api/client";
 import { useAppSession } from "./features/app-shell/useAppSession";
 import { usePrinterRuntime } from "./features/app-shell/usePrinterRuntime";
 import { useSystemProfile } from "./features/app-shell/useSystemProfile";
@@ -28,6 +29,16 @@ export function App() {
   });
   const { systemProfile, setSystemProfile } = useSystemProfile();
   const { session, operationSchedule, restoring } = appSession;
+  const sessionToken = session?.token;
+  useEffect(() => {
+    if (!sessionToken) return;
+    const heartbeat = () => {
+      void apiFetch("/auth/heartbeat", { method: "POST" }, sessionToken).catch(() => {});
+    };
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 30_000);
+    return () => window.clearInterval(timer);
+  }, [sessionToken]);
   const resolvedRoute = useMemo(
     () => resolveAppRoute(pathname, { user: session?.user ?? null, operationSchedule }),
     [operationSchedule, pathname, session?.user],

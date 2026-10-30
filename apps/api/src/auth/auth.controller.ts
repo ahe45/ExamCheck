@@ -19,4 +19,11 @@ export class AuthController {
   me(@CurrentUser() user: AuthenticatedUser) {
     return user;
   }
+
+  @Post("heartbeat")
+  @UseGuards(AuthGuard)
+  async heartbeat(@CurrentUser() user: AuthenticatedUser) {
+    await this.authService.recordAccess(user.id);
+    return { ok: true };
+  }
 }

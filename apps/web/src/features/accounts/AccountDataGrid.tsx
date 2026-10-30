@@ -59,6 +59,12 @@ export function AccountDataGrid({ accounts, currentUserId, loading, onEdit, onDe
                           {account.role === "ADMIN" ? "관리자" : "사용자"}
                         </span>
                       </td>
+                      <td>{accountColumnValue(account, "lastAccessAt")}</td>
+                      <td title="최근 2분 이내 접속 확인 기준">
+                        <span className={`account-presence-badge ${account.isOnline ? "online" : "offline"}`}>
+                          {accountColumnValue(account, "isOnline")}
+                        </span>
+                      </td>
                       <td>
                         {account.role === "ADMIN" || !account.admissionNames.length ? (
                           <span className="account-all-access">전체 전형·교시</span>
@@ -90,7 +96,7 @@ export function AccountDataGrid({ accounts, currentUserId, loading, onEdit, onDe
                   ))
                 ) : (
                   <tr>
-                    <td className="candidate-grid-empty-cell" colSpan={5}>
+                    <td className="candidate-grid-empty-cell" colSpan={7}>
                       등록된 계정이 없습니다.
                     </td>
                   </tr>

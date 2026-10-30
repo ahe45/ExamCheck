@@ -34,7 +34,7 @@ export function AdminDashboard({
       <header className="admin-view-heading">
         <div>
           <h2>전형 운영 대시보드</h2>
-          <p>전형별 수험생 등록 현황과 가번호 부여 진행률을 빠르게 확인합니다.</p>
+          <p>전형별 수험생 등록 현황과 응시율을 빠르게 확인합니다.</p>
         </div>
         <div className="admin-view-actions">
           <span className="admin-dashboard-updated">
@@ -97,7 +97,7 @@ function AssignmentRatioPanel({ statistics }: { statistics: DashboardStatistics 
   return (
     <article className="admission-ratio-panel">
       <header>
-        <h3>수험생 가번호 부여 현황</h3>
+        <h3>수험생 응시 현황</h3>
         <p>전체 등록 수험생 기준</p>
       </header>
       <div className="admission-ratio-body">
@@ -114,12 +114,12 @@ function AssignmentRatioPanel({ statistics }: { statistics: DashboardStatistics 
         <div className="admission-ratio-legend">
           <p>
             <span className="summary-dot waiting" />
-            가번호 부여 대기<strong>{statistics.unassignedCandidates.toLocaleString()}명</strong>
+            미응시<strong>{statistics.unassignedCandidates.toLocaleString()}명</strong>
             <b>{(100 - statistics.assignmentRate).toFixed(1)}%</b>
           </p>
           <p>
             <span className="summary-dot complete" />
-            가번호 부여 완료<strong>{statistics.assignedCandidates.toLocaleString()}명</strong>
+            응시<strong>{statistics.assignedCandidates.toLocaleString()}명</strong>
             <b>{statistics.assignmentRate.toFixed(1)}%</b>
           </p>
         </div>
@@ -132,21 +132,21 @@ function AssignmentProgressPanel({ statistics }: { statistics: DashboardStatisti
   return (
     <article className="admission-progress-panel">
       <header>
-        <h3>전체 가번호 부여 진행 현황</h3>
+        <h3>전체 응시 현황</h3>
         <p>
           <strong>{statistics.totalCandidates.toLocaleString()}명</strong> 전체 대상자
         </p>
       </header>
       <div className="admission-progress-list">
         <DashboardProgressRow
-          label="부여 대기"
+          label="미응시"
           description="전체 대상자 대비"
           value={statistics.unassignedCandidates}
           rate={100 - statistics.assignmentRate}
           tone="waiting"
         />
         <DashboardProgressRow
-          label="부여 완료"
+          label="응시"
           description="전체 대상자 대비"
           value={statistics.assignedCandidates}
           rate={statistics.assignmentRate}
@@ -179,7 +179,7 @@ function AdmissionStatusSection({
       <header>
         <div>
           <h3>운영 현황</h3>
-          <p>{selectedLabel}별 수험생과 가번호 부여 현황을 표시합니다.</p>
+          <p>{selectedLabel}별 수험생과 응시 현황을 표시합니다.</p>
         </div>
         <div className="dashboard-breakdown-control">
           <span className="dashboard-breakdown-label">분류 기준</span>
@@ -263,15 +263,15 @@ function AdmissionStatusCard({
           <dd>{statistic.total.toLocaleString()}명</dd>
         </div>
         <div>
-          <dt>부여 완료</dt>
+          <dt>응시</dt>
           <dd>{statistic.assigned.toLocaleString()}명</dd>
         </div>
         <div>
-          <dt>부여 대기</dt>
+          <dt>미응시</dt>
           <dd>{statistic.unassigned.toLocaleString()}명</dd>
         </div>
       </dl>
-      <DashboardCardProgress label="부여율" rate={statistic.assignmentRate} tone="complete" />
+      <DashboardCardProgress label="응시율" rate={statistic.assignmentRate} tone="complete" />
       <DashboardCardProgress label="대기율" rate={100 - statistic.assignmentRate} tone="waiting" />
     </article>
   );

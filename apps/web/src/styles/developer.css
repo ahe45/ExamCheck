@@ -578,3 +578,18 @@
   min-height: 42px;
   padding: 10px 18px;
 }
+
+.database-backup-card > form {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #e5e9f0;
+}
+.database-backup-card h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.database-backup-card input[type="file"] {
+  max-width: 100%;
+  height: auto;
+  min-height: 42px;
+}

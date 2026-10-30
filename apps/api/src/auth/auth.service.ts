@@ -78,6 +78,7 @@ export class AuthService {
       throw new UnauthorizedException("아이디 또는 비밀번호가 올바르지 않습니다.");
     }
     const publicUser = await this.toAuthenticatedUser(user);
+    await this.recordAccess(user.id);
     this.loginAttemptLimiter.reset(identity.key);
     await this.recordAuditSafely({
       eventType: "AUTH_LOGIN_SUCCEEDED",
@@ -100,6 +101,10 @@ export class AuthService {
 
   async findEnabledUserById(id: number): Promise<AuthenticatedUser | null> {
     return (await this.findEnabledSessionUserById(id))?.user ?? null;
+  }
+
+  async recordAccess(userId: number): Promise<void> {
+    await this.repository.recordAccess(userId);
   }
 
   async findEnabledSessionUserById(id: number): Promise<AuthenticatedSessionUser | null> {
