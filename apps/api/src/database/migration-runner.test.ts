@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   calculateMigrationChecksum,
   DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS,
   decideMigrationAction,
+  loadMigrationFiles,
   MIGRATION_ADVISORY_LOCK_NAME,
   runMigrations,
   type MigrationConnection,
@@ -10,6 +14,37 @@ import {
 } from "./migration-runner.js";
 
 describe("migration runner", () => {
+  it.each(["\n", "\r\n"])("verifies LF and CRLF history after checkout with %j line endings", async (newline) => {
+    const directory = await mkdtemp(join(tmpdir(), "examcheck-migration-checksum-"));
+    try {
+      const lf = "-- 한글 주석\nSELECT 1;\n";
+      const crlf = lf.replace(/\n/g, "\r\n");
+      await writeFile(join(directory, "001_initial.sql"), lf.replace(/\n/g, newline));
+      const [migration] = await loadMigrationFiles(directory);
+      expect(migration!.checksum).toBe(calculateMigrationChecksum(lf));
+      for (const original of [lf, crlf]) {
+        expect(
+          decideMigrationAction(
+            migration!.version,
+            { checksum: calculateMigrationChecksum(original) },
+            migration!.checksum,
+            migration!.compatibleChecksums,
+          ),
+        ).toBe("VERIFY");
+      }
+      expect(() =>
+        decideMigrationAction(
+          migration!.version,
+          { checksum: calculateMigrationChecksum(lf.replace("SELECT 1", "SELECT 2")) },
+          migration!.checksum,
+          migration!.compatibleChecksums,
+        ),
+      ).toThrow("Migration checksum mismatch");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("calculates a deterministic SHA-256 checksum from exact file contents", () => {
     expect(calculateMigrationChecksum("SELECT 1;\n")).toBe(
       "b4e0497804e46e0a0b0b8c31975b062152d551bac49c3c2e80932567b4085dcd",

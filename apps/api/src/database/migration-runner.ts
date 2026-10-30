@@ -7,6 +7,7 @@ export interface MigrationFile {
   version: string;
   sql: string;
   checksum: string;
+  compatibleChecksums?: readonly string[];
 }
 
 export type MigrationAction = "APPLY" | "BACKFILL_CHECKSUM" | "VERIFY";
@@ -62,10 +63,16 @@ export async function loadMigrationFiles(directory: string): Promise<MigrationFi
   return Promise.all(
     versions.map(async (version) => {
       const contents = await readFile(resolve(directory, version));
+      const sql = contents.toString("utf8");
+      const normalized = sql.replace(/\r\n/g, "\n");
       return {
         version,
-        sql: contents.toString("utf8"),
-        checksum: calculateMigrationChecksum(contents),
+        sql,
+        checksum: calculateMigrationChecksum(normalized),
+        compatibleChecksums: [
+          calculateMigrationChecksum(contents),
+          calculateMigrationChecksum(normalized.replace(/\n/g, "\r\n")),
+        ],
       };
     }),
   );
@@ -79,10 +86,11 @@ export function decideMigrationAction(
   version: string,
   recorded: { checksum: string | null } | undefined,
   currentChecksum: string,
+  compatibleChecksums: readonly string[] = [],
 ): MigrationAction {
   if (!recorded) return "APPLY";
   if (recorded.checksum === null) return "BACKFILL_CHECKSUM";
-  if (recorded.checksum === currentChecksum) return "VERIFY";
+  if (recorded.checksum === currentChecksum || compatibleChecksums.includes(recorded.checksum)) return "VERIFY";
   throw new Error(
     `Migration checksum mismatch: ${version}. ` +
       `Recorded ${recorded.checksum}, current ${currentChecksum}. ` +
@@ -146,7 +154,12 @@ async function runMigrationsWithLock(
   for (const migration of migrations) {
     plan.push({
       migration,
-      action: decideMigrationAction(migration.version, appliedByVersion.get(migration.version), migration.checksum),
+      action: decideMigrationAction(
+        migration.version,
+        appliedByVersion.get(migration.version),
+        migration.checksum,
+        migration.compatibleChecksums,
+      ),
     });
   }
 

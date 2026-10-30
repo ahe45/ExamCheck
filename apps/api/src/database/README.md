@@ -54,6 +54,7 @@ npm run db:transition:identity -- <record-evidence|request|attach-evidence|appro
 `schema_migration.checksum`은 기존 데이터베이스와 호환되도록 nullable 컬럼으로 확장된다.
 
 - 체크섬이 이미 기록된 적용 파일은 현재 SHA-256 값과 비교하며, 값이 다르면 후속 변경 전에 실행을 중단한다.
+- 새 체크섬은 LF 줄바꿈으로 계산한다. 기존 LF·CRLF 체크섬은 같은 SQL의 줄바꿈 변형에 한해 검증을 통과하며, 저장된 이력을 덮어쓰거나 SQL을 재실행하지 않는다.
 - `schema_migration`에 적용 이력이 있지만 migrations 디렉터리에서 원본 파일을 찾을 수 없는 경우에도 실행을 중단한다.
 - 체크섬 도입 전에 적용되어 값이 `NULL`인 이력은 최초 실행 시 **현재 파일 내용을 신뢰 기준선으로 삼아 1회 기록**한다.
 - 따라서 최초 기준선 기록은 과거에 파일이 수정되지 않았음을 증명하지 못한다. 기준선이 기록된 이후의 변경부터 확실하게 감지한다.
