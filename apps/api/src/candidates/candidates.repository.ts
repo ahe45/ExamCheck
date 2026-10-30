@@ -41,6 +41,7 @@ export interface CandidateDashboardBreakdownRow extends RowDataPacket {
   name: string;
   total: number;
   assigned: number;
+  schedule?: string | null;
 }
 
 interface ExamineeNumberPolicyRow extends RowDataPacket {
@@ -185,6 +186,10 @@ export class CandidatesRepository {
                   ' · ', COALESCE(NULLIF(TRIM(cr.waiting_room), ''), '미지정 대기실')
                 )
               END AS name,
+              MIN(CONCAT(
+                COALESCE(DATE_FORMAT(cr.exam_date, '%Y-%m-%d'), '9999-12-31'), ' ',
+                COALESCE(NULLIF(TRIM(cr.start_time), ''), '99:99')
+              )) AS schedule,
               COUNT(DISTINCT cr.id) AS total,
               COUNT(DISTINCT CASE WHEN pa.id IS NOT NULL THEN cr.id END) AS assigned
        FROM candidate_record cr

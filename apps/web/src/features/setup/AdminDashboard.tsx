@@ -1,4 +1,5 @@
 import { ToastNotice } from "../../shared/components/ToastNotice";
+import { DashboardCandidatesModal } from "./DashboardCandidatesModal";
 import { useState, type CSSProperties } from "react";
 import { ConfirmButtonIcon, RefreshButtonIcon } from "../../shared/components/ActionIcons";
 import { attendanceViews } from "../../shared/navigation/admin-navigation";
@@ -10,6 +11,7 @@ import {
 } from "./dashboard-statistics";
 
 interface DashboardProps {
+  token?: string;
   statistics: DashboardStatistics;
   loading: boolean;
   error: string | null;
@@ -19,6 +21,7 @@ interface DashboardProps {
 }
 
 export function AdminDashboard({
+  token = "",
   statistics,
   loading,
   error,
@@ -51,6 +54,7 @@ export function AdminDashboard({
           <AssignmentProgressPanel statistics={statistics} />
         </section>
         <AdmissionStatusSection
+          token={token}
           breakdowns={statistics.breakdowns}
           loading={loading}
           onOpenCandidates={onOpenCandidates}
@@ -154,15 +158,18 @@ function AssignmentProgressPanel({ statistics }: { statistics: DashboardStatisti
 }
 
 function AdmissionStatusSection({
+  token,
   breakdowns,
   loading,
   onOpenCandidates,
 }: {
+  token: string;
   breakdowns: DashboardStatistics["breakdowns"];
   loading: boolean;
   onOpenCandidates(): void;
 }) {
   const [selectedBreakdown, setSelectedBreakdown] = useState<DashboardBreakdown>("admission");
+  const [selectedCard, setSelectedCard] = useState<{ breakdown: DashboardBreakdown; name: string } | null>(null);
   const groups = breakdowns[selectedBreakdown];
   const selectedLabel =
     DASHBOARD_BREAKDOWN_OPTIONS.find((option) => option.value === selectedBreakdown)?.label ?? "전형";
@@ -196,7 +203,12 @@ function AdmissionStatusSection({
       ) : groups.length ? (
         <div className="admission-card-grid">
           {groups.map((group) => (
-            <AdmissionStatusCard statistic={group} breakdownLabel={`${selectedLabel}별`} key={group.name} />
+            <AdmissionStatusCard
+              statistic={group}
+              breakdownLabel={`${selectedLabel}별`}
+              key={group.name}
+              onOpen={() => setSelectedCard({ breakdown: selectedBreakdown, name: group.name })}
+            />
           ))}
         </div>
       ) : (
@@ -209,13 +221,36 @@ function AdmissionStatusSection({
           </button>
         </div>
       )}
+      {selectedCard && (
+        <DashboardCandidatesModal token={token} {...selectedCard} onClose={() => setSelectedCard(null)} />
+      )}
     </section>
   );
 }
 
-function AdmissionStatusCard({ statistic, breakdownLabel }: { statistic: AdmissionStatistic; breakdownLabel: string }) {
+function AdmissionStatusCard({
+  statistic,
+  breakdownLabel,
+  onOpen,
+}: {
+  statistic: AdmissionStatistic;
+  breakdownLabel: string;
+  onOpen(): void;
+}) {
   return (
-    <article className="admission-status-card">
+    <article
+      className="admission-status-card"
+      role="button"
+      tabIndex={0}
+      aria-label={`${statistic.name} 수험생 목록`}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
       <div className="admission-card-state">
         <span className={`summary-dot ${statistic.status}`} />
         {admissionStatusLabel(statistic.status)}
@@ -283,9 +318,9 @@ function DashboardCardProgress({ label, rate, tone }: { label: string; rate: num
 }
 
 function admissionStatusLabel(status: AdmissionStatus) {
-  if (status === "complete") return "부여 완료";
-  if (status === "progress") return "부여 진행";
-  return "부여 대기";
+  if (status === "complete") return "응시";
+  if (status === "progress") return "응시 진행";
+  return "미응시";
 }
 
 const DASHBOARD_BREAKDOWN_OPTIONS: ReadonlyArray<{ value: DashboardBreakdown; label: string }> = attendanceViews

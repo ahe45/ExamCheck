@@ -44,6 +44,8 @@ describe("CandidatesRepository", () => {
 
     const [sql, values] = executor.execute.mock.calls[0] ?? [];
     expect(sql).toContain("COUNT(DISTINCT cr.id)");
+    expect(sql).toContain("MIN(CONCAT(");
+    expect(sql).toContain(")) AS schedule");
     expect(sql).toContain("cr.building_name");
     expect(sql).toContain("cr.period_name");
     expect(sql).toContain("cr.waiting_room");

@@ -1,0 +1,56 @@
+.dashboard-candidates-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / 45%);
+}
+.dashboard-candidates-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: min(900px, calc(100dvh - 48px));
+  width: min(1600px, 100%);
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgb(15 23 42 / 24%);
+}
+.dashboard-candidates-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e6eaf0;
+}
+.dashboard-candidates-heading h2 {
+  margin: 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.dashboard-candidates-modal .attendance-status-view {
+  height: auto;
+  padding: 16px;
+  min-width: 0;
+}
+.admission-status-card[role="button"] {
+  cursor: pointer;
+}
+.admission-status-card[role="button"]:hover {
+  border-color: #6254ff;
+}
+.admission-status-card[role="button"]:focus-visible {
+  outline: 3px solid #6254ff;
+  outline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .dashboard-candidates-overlay {
+    padding: 8px;
+  }
+  .dashboard-candidates-modal {
+    max-height: calc(100dvh - 16px);
+  }
+}

@@ -17,7 +17,15 @@ import {
 } from "./attendance-model";
 import "./attendance.css";
 
-export default function AttendanceStatusPage({ token, view }: { token: string; view: AttendanceView }) {
+export default function AttendanceStatusPage({
+  token,
+  view,
+  recordFilter,
+}: {
+  token: string;
+  view: AttendanceView;
+  recordFilter?: (record: CandidateAttendanceRecord) => boolean;
+}) {
   const [records, setRecords] = useState<CandidateAttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -44,10 +52,17 @@ export default function AttendanceStatusPage({ token, view }: { token: string; v
   }, [token, refresh]);
 
   const columns = useMemo(
-    () => [...attendanceDimensions[view], ...attendanceMetrics].map((key) => ({ key, label: attendanceLabels[key] })),
+    () =>
+      [...attendanceDimensions[view], ...(view === "candidate" ? [] : attendanceMetrics)].map((key) => ({
+        key,
+        label: attendanceLabels[key],
+      })),
     [view],
   );
-  const rows = useMemo(() => buildAttendanceRows(records, view), [records, view]);
+  const rows = useMemo(
+    () => buildAttendanceRows(recordFilter ? records.filter(recordFilter) : records, view),
+    [records, view, recordFilter],
+  );
   const grid = useClientDataGrid<ReturnType<typeof buildAttendanceRows>[number], AttendanceColumn>({
     rows,
     valueOf: attendanceValue,

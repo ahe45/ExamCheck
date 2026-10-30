@@ -411,8 +411,16 @@ function percentage(value: number, total: number) {
   return total ? Math.round((value / total) * 1000) / 10 : 0;
 }
 
-function toDashboardStatistics(rows: readonly { name: string; total: number; assigned: number }[]) {
-  return rows
+function toDashboardStatistics(
+  rows: readonly { name: string; total: number; assigned: number; schedule?: string | null }[],
+) {
+  return [...rows]
+    .sort(
+      (left, right) =>
+        (left.schedule || "9999-12-31 99:99").localeCompare(right.schedule || "9999-12-31 99:99", "ko", {
+          numeric: true,
+        }) || left.name.localeCompare(right.name, "ko"),
+    )
     .map((row) => {
       const total = Number(row.total);
       const assigned = Number(row.assigned);
@@ -425,6 +433,5 @@ function toDashboardStatistics(rows: readonly { name: string; total: number; ass
         assignmentRate: percentage(assigned, total),
         status,
       } as const;
-    })
-    .sort((left, right) => left.name.localeCompare(right.name, "ko"));
+    });
 }

@@ -9,6 +9,26 @@ import { CandidatesService } from "./candidates.service.js";
 import { parseCandidateWorkbook } from "./candidate-workbook-parser.js";
 
 describe("CandidatesService compatibility facade", () => {
+  it("sorts dashboard period cards by date and time before period name", async () => {
+    const fixture = createFixture();
+    fixture.repository.listDashboardBreakdownCounts.mockResolvedValue([
+      { groupType: "period", name: "1교시 · 2026.10.31 09:00", schedule: "2026-10-31 09:00", total: 1, assigned: 0 },
+      { groupType: "period", name: "2교시 · 2026.10.30 11:00", schedule: "2026-10-30 11:00", total: 1, assigned: 0 },
+      { groupType: "period", name: "3교시 · 2026.10.30 09:00", schedule: "2026-10-30 09:00", total: 1, assigned: 0 },
+    ]);
+    const result = await fixture.service.dashboardSummary({
+      id: 7,
+      loginId: "operator",
+      role: "OPERATOR",
+      admissionNames: ["일반전형"],
+    });
+    expect(result.breakdowns.period.map((row) => row.name)).toEqual([
+      "3교시 · 2026.10.30 09:00",
+      "2교시 · 2026.10.30 11:00",
+      "1교시 · 2026.10.31 09:00",
+    ]);
+  });
+
   it("loads attendance within the caller's admission scope and exposes resolved statuses", async () => {
     const fixture = createFixture();
     fixture.repository.attendance.mockResolvedValue([

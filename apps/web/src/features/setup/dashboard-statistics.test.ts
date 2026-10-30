@@ -3,6 +3,35 @@ import { buildDashboardStatistics } from "./dashboard-statistics";
 import { attendanceViews } from "../../shared/navigation/admin-navigation";
 
 describe("dashboard statistics", () => {
+  it("운영 현황 카드를 가장 이른 날짜와 시간 순으로 정렬하고 미지정 일정은 뒤에 둔다", () => {
+    const candidates = [
+      { admission: "가 전형", date: "2026-10-22", time: "08:00", assignedNumber: null },
+      { admission: "나 전형", date: "2026-10-21", time: "10:00", assignedNumber: null },
+      { admission: "다 전형", date: "2026-10-21", time: "9:00", assignedNumber: null },
+      { admission: "라 전형", assignedNumber: null },
+      { admission: "마 전형", date: "2026-10-21", assignedNumber: null },
+      { admission: "가 전형", date: "2026-10-20", time: "15:00", assignedNumber: null },
+    ];
+    const statistics = buildDashboardStatistics(candidates);
+
+    expect(statistics.breakdowns.admission.map((row) => row.name)).toEqual([
+      "가 전형",
+      "다 전형",
+      "나 전형",
+      "마 전형",
+      "라 전형",
+    ]);
+    expect(statistics.breakdowns.admission[0].total).toBe(2);
+    expect(statistics.breakdowns.period.map((row) => row.name)).toEqual([
+      "미지정 교시 · 2026.10.20 15:00",
+      "미지정 교시 · 2026.10.21 9:00",
+      "미지정 교시 · 2026.10.21 10:00",
+      "미지정 교시 · 2026.10.21",
+      "미지정 교시 · 2026.10.22 08:00",
+      "미지정 교시",
+    ]);
+  });
+
   it.each(attendanceViews.filter((view) => view.key !== "candidate"))(
     "집계 합계를 $label 기준에서도 유지한다",
     ({ key }) => {

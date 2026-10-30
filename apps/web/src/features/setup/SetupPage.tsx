@@ -80,6 +80,7 @@ export function SetupPage({
         >
           {activeSection === "dashboard" && (
             <AdminDashboard
+              token={token}
               statistics={dashboard.statistics}
               loading={dashboard.loading}
               error={dashboard.error}
