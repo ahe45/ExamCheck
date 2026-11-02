@@ -106,7 +106,7 @@ export function PseudonymAssignmentPage(props: Props) {
     exporting: exportingExcel,
   } = operationRoster;
   const isCurrentSchedule = operationRoster.isCurrentSchedule;
-  const rosterColumns = operationColumnsFor(labelPrintingEnabled);
+  const rosterColumns = operationColumnsFor(labelPrintingEnabled, useAnswerSheet);
   const rosterValueOf = useCallback(
     (row: OperationRow, key: OperationFieldKey) =>
       operationRowValue(row, key, {
@@ -119,7 +119,7 @@ export function PseudonymAssignmentPage(props: Props) {
     rows: operationRows,
     valueOf: rosterValueOf,
     initialPageSize: 0,
-    resetKey: `${currentScheduleKey}:${labelPrintingEnabled}`,
+    resetKey: `${currentScheduleKey}:${labelPrintingEnabled}:${useAnswerSheet}`,
   });
   const candidateController = useOperationCandidateController({
     token: props.token,

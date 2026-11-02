@@ -41,6 +41,15 @@ $launcherScript = Join-Path ([IO.Path]::GetDirectoryName($source)) 'runtime/laun
 $tokens = $null; $parseErrors = $null
 $tree = [Management.Automation.Language.Parser]::ParseFile($launcherScript,[ref]$tokens,[ref]$parseErrors)
 if ($parseErrors.Count) { throw 'Packaged launcher PowerShell is invalid.' }
+$identityFunction = $tree.Find({ param($ast) $ast -is [Management.Automation.Language.FunctionDefinitionAst] -and $ast.Name -eq 'Initialize-TaskbarIdentity' },$true)
+if (-not $identityFunction) { throw 'Taskbar identity helper is missing.' }
+. ([scriptblock]::Create($identityFunction.Extent.Text))
+Initialize-TaskbarIdentity
+$identityPointer = [IntPtr]::Zero
+[Runtime.InteropServices.Marshal]::ThrowExceptionForHR([ExamCheckTaskbarIdentity]::GetCurrentProcessExplicitAppUserModelID([ref]$identityPointer))
+try {
+    if ([Runtime.InteropServices.Marshal]::PtrToStringUni($identityPointer) -ne 'ExamCheck.ServerManager') { throw 'Taskbar identity does not match application shortcuts.' }
+} finally { [Runtime.InteropServices.Marshal]::FreeCoTaskMem($identityPointer) }
 $hiddenFunction = $tree.Find({ param($ast) $ast -is [Management.Automation.Language.FunctionDefinitionAst] -and $ast.Name -eq 'Start-HiddenProcess' },$true)
 if (-not $hiddenFunction) { throw 'Hidden backend process helper is missing.' }
 . ([scriptblock]::Create($hiddenFunction.Extent.Text))
@@ -54,3 +63,4 @@ try {
 } finally { $hidden.Dispose() }
 Write-Host 'GUI subsystem, product name, embedded icon, no console window, Korean/spaced paths, trailing backslash and child exit code passed.'
 Write-Host 'Packaged backend process helper also starts without a console.'
+Write-Host 'Taskbar uses the application identity instead of the PowerShell host.'

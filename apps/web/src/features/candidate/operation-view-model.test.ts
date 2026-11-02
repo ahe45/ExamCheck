@@ -12,6 +12,20 @@ import {
   toRosterExportQuery,
 } from "./operation-view-model";
 
+it.each([false, true])("답안지 사용 시 수험번호 우측에 답안지를 표시한다 (라벨 출력: %s)", (printing) => {
+  expect(
+    operationColumnsFor(printing, true)
+      .slice(0, 4)
+      .map((column) => column.key),
+  ).toEqual(["pseudonymNumber", "examineeNo", "answerSheet", "name"]);
+  expect(operationColumnsFor(printing, false).map((column) => column.key)).not.toContain("answerSheet");
+  const context = { operationClosed: false, labelPrintingEnabled: printing };
+  expect(
+    operationRowValue({ candidate: examinee({ answerSheet: "00123456" }), assignment: null }, "answerSheet", context),
+  ).toBe("00123456");
+  expect(operationRowValue({ candidate: examinee(), assignment: null }, "answerSheet", context)).toBe("-");
+});
+
 function examinee(overrides: Partial<Examinee> = {}): Examinee {
   return {
     id: 1,

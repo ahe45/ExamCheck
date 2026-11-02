@@ -42,6 +42,17 @@ const rows: CanonicalPseudonymRosterRow[] = [
 ];
 
 describe("pseudonym roster export query", () => {
+  it("supports the answer-sheet column's filters and sorting without losing leading zeros", () => {
+    const records = rows.map((row, index) => ({ ...row, answerSheet: ["0002", "0001", "-"][index] }));
+    const result = applyOperationRosterQuery(records, {
+      filters: [{ field: "answerSheet", mode: "include", values: ["0001", "0002"] }],
+      sort: { field: "answerSheet", direction: "asc" },
+    });
+    expect(result.map((row) => row.answerSheet)).toEqual(["0001", "0002"]);
+    expect(
+      buildOperationRosterFilterSql([{ field: "answerSheet", mode: "include", values: ["0001"] }]).parameters,
+    ).toEqual(["0001"]);
+  });
   it("applies the same exact-value filters and Korean numeric sort used by the client grid", () => {
     expect(
       applyOperationRosterQuery(rows, {

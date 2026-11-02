@@ -55,6 +55,7 @@ export interface PseudonymOperationScope {
 export type PseudonymRosterExportField =
   | "pseudonymNumber"
   | "examineeNo"
+  | "answerSheet"
   | "name"
   | "unitName"
   | "majorName"

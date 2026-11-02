@@ -3,6 +3,7 @@ import { BadRequestException } from "@nestjs/common";
 export const PSEUDONYM_ROSTER_EXPORT_FIELDS = [
   "pseudonymNumber",
   "examineeNo",
+  "answerSheet",
   "name",
   "unitName",
   "majorName",
@@ -37,6 +38,7 @@ export interface PseudonymRosterQuerySpecification {
 export interface CanonicalPseudonymRosterRow {
   pseudonymNumber: string;
   examineeNo: string;
+  answerSheet?: string;
   name: string;
   unitName: string;
   majorName: string;
@@ -65,6 +67,7 @@ END`;
 const valueSql: Record<PseudonymRosterExportField, string> = {
   pseudonymNumber: "COALESCE(pa.pseudonym_no, NULLIF(cr.temporary_no, ''), '-')",
   examineeNo: "cr.examinee_no",
+  answerSheet: "COALESCE(NULLIF(cr.answer_sheet, ''), '-')",
   name: "cr.name",
   unitName: "COALESCE(NULLIF(cr.unit_name, ''), '-')",
   majorName: "COALESCE(NULLIF(cr.major, ''), '-')",
@@ -111,7 +114,7 @@ export function applyOperationRosterQuery(
   assertOperationRosterQuery(query);
   const filtered = rows.filter((row) =>
     query.filters.every((filter) => {
-      const included = filter.values.includes(row[filter.field]);
+      const included = filter.values.includes(row[filter.field] ?? "-");
       return filter.mode === "include" ? included : !included;
     }),
   );
@@ -120,7 +123,7 @@ export function applyOperationRosterQuery(
     ? [...filtered].sort((left, right) => {
         const multiplier = sort.direction === "desc" ? -1 : 1;
         return (
-          left[sort.field].localeCompare(right[sort.field], "ko", {
+          (left[sort.field] ?? "-").localeCompare(right[sort.field] ?? "-", "ko", {
             numeric: true,
             sensitivity: "base",
           }) * multiplier

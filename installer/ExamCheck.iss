@@ -32,8 +32,8 @@ Source: "stage\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createa
 Name: "desktopicon"; Description: "바탕화면에 실행 아이콘 만들기"; GroupDescription: "바로가기:"
 
 [Icons]
-Name: "{group}\가번호 관리 시스템"; Filename: "{app}\가번호 관리 시스템.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\가번호 관리 시스템"; Filename: "{app}\가번호 관리 시스템.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\가번호 관리 시스템"; Filename: "{app}\가번호 관리 시스템.exe"; WorkingDir: "{app}"; AppUserModelID: "ExamCheck.ServerManager"
+Name: "{autodesktop}\가번호 관리 시스템"; Filename: "{app}\가번호 관리 시스템.exe"; WorkingDir: "{app}"; Tasks: desktopicon; AppUserModelID: "ExamCheck.ServerManager"
 
 [Run]
 Filename: "{app}\가번호 관리 시스템.exe"; Description: "가번호 관리 시스템 실행"; Flags: nowait postinstall skipifsilent

@@ -3,6 +3,24 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [Windows.Forms.Application]::EnableVisualStyles()
+function Initialize-TaskbarIdentity {
+    if (-not ('ExamCheckTaskbarIdentity' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ExamCheckTaskbarIdentity {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+    [DllImport("shell32.dll")]
+    public static extern int GetCurrentProcessExplicitAppUserModelID(out IntPtr appId);
+}
+'@
+    }
+    # Give the hosted window its own taskbar identity instead of grouping it with PowerShell.
+    [Runtime.InteropServices.Marshal]::ThrowExceptionForHR(
+        [ExamCheckTaskbarIdentity]::SetCurrentProcessExplicitAppUserModelID('ExamCheck.ServerManager'))
+}
+Initialize-TaskbarIdentity
 $mutex = New-Object Threading.Mutex($false, 'Local\ExamCheckInstallerLauncher')
 if (-not $mutex.WaitOne(0)) {
     [Windows.Forms.MessageBox]::Show('ExamCheck 실행 창이 이미 열려 있습니다.', 'ExamCheck') | Out-Null

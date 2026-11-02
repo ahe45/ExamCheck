@@ -14,6 +14,7 @@ export interface OperationRow {
 export type OperationFieldKey =
   | "pseudonymNumber"
   | "examineeNo"
+  | "answerSheet"
   | "name"
   | "unitName"
   | "majorName"
@@ -41,9 +42,11 @@ export interface OperationGridContext {
   labelPrintingEnabled: boolean;
 }
 
-export function operationColumnsFor(labelPrintingEnabled: boolean): OperationColumn[] {
+export function operationColumnsFor(labelPrintingEnabled: boolean, useAnswerSheet = false): OperationColumn[] {
   return [
-    ...operationIdentityColumns,
+    ...operationIdentityColumns.flatMap((column): OperationColumn[] =>
+      useAnswerSheet && column.key === "examineeNo" ? [column, { key: "answerSheet", label: "답안지" }] : [column],
+    ),
     labelPrintingEnabled ? { key: "printedAt", label: "출력일시" } : { key: "assignedAt", label: "등록일시" },
     { key: "attendance", label: "응시 여부" },
     { key: "status", label: "상태" },
@@ -89,6 +92,7 @@ export function operationRowAttendance(row: OperationRow, context: OperationGrid
 export function operationRowValue(row: OperationRow, key: OperationFieldKey, context: OperationGridContext): string {
   if (key === "pseudonymNumber") return row.assignment?.pseudonymNumber || "-";
   if (key === "examineeNo") return row.candidate.examineeNo;
+  if (key === "answerSheet") return row.candidate.answerSheet || "-";
   if (key === "name") return row.candidate.name;
   if (key === "unitName") return row.candidate.unitName || "-";
   if (key === "majorName") return row.candidate.majorName || "-";
