@@ -9,8 +9,9 @@ foreach ($hive in @('HKCU','HKLM')) {
     if (Test-Path -LiteralPath "${hive}:\$key") { throw 'An installed ExamCheck already exists. Use a separate Windows account or clean test PC for the installer test.' }
 }
 $testRoot = Join-Path $PSScriptRoot ('test-data\i-' + [Guid]::NewGuid().ToString('N').Substring(0,8))
-$destination = Join-Path $testRoot 'program'
-if (-not ([IO.Path]::GetFullPath($destination).StartsWith([IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'test-data')) + '\'))) { throw 'Unsafe test installation path.' }
+# Install outside the repository so missing runtime packages cannot resolve from development node_modules.
+$destination = Join-Path ([IO.Path]::GetTempPath()) ('ExamCheck-install-test-' + [Guid]::NewGuid().ToString('N'))
+if (-not ([IO.Path]::GetFullPath($destination).StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'))) { throw 'Unsafe test installation path.' }
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 $setup = Start-Process -FilePath ([IO.Path]::GetFullPath($SetupPath)) -ArgumentList @(
     '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOICONS','/TASKS=',

@@ -42,21 +42,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/build.ps1 -Com
 
 ## 파일 구성
 
-| 파일                     | 용도                                                          |
-| ------------------------ | ------------------------------------------------------------- |
-| `build.ps1`              | 빌드, 운영 의존성 설치, 런타임 다운로드·검증, ZIP/EXE 생성    |
-| `runtime-lock.json`      | 전용 런타임 버전·공식 URL·SHA-256 고정                        |
-| `ExamCheck.iss`          | 사용자별 설치, 바로가기, 실행 중 업데이트·제거 차단           |
-| `portable/ExamCheck.cs`  | 콘솔 창을 만들지 않는 Windows GUI 실행 파일 소스               |
-| `assets/app.ico`        | 설치·실행 파일 및 서버 관리 창에서 사용하는 가번호 아이콘       |
-| `test-launcher.ps1`     | GUI 실행 파일의 콘솔 미생성·경로 전달·종료 코드 검증             |
-| `runtime/launcher.ps1`   | 처음 설정, 서버 관리 창, 백업·복원·로그                       |
-| `runtime/server.mjs`     | DB 초기화·실행·마이그레이션, 웹 서버, 백업·복원, 종료         |
-| `runtime/api.mjs`        | 기존 API 구성을 재사용하는 loopback 전용 실행 진입점          |
-| `runtime/firewall.ps1`   | 선택한 경우에만 같은 서브넷에서 웹 접속 허용                  |
-| `USER-GUIDE.txt`         | 사용자에게 함께 제공할 안내                                   |
-| `smoke-test.ps1`         | 배포 폴더를 실제 실행해 새 DB·로그인·백업·복원·종료 검증      |
-| `install-test.ps1`       | EXE 설치, 설치된 프로그램 실행 검증, 제거 후 데이터 보존 확인 |
+| 파일                    | 용도                                                          |
+| ----------------------- | ------------------------------------------------------------- |
+| `build.ps1`             | 빌드, 운영 의존성 설치, 런타임 다운로드·검증, ZIP/EXE 생성    |
+| `runtime-lock.json`     | 전용 런타임 버전·공식 URL·SHA-256 고정                        |
+| `ExamCheck.iss`         | 사용자별 설치, 바로가기, 실행 중 업데이트·제거 차단           |
+| `portable/ExamCheck.cs` | 콘솔 창을 만들지 않는 Windows GUI 실행 파일 소스              |
+| `assets/app.ico`        | 설치·실행 파일 및 서버 관리 창에서 사용하는 가번호 아이콘     |
+| `test-launcher.ps1`     | GUI 실행 파일의 콘솔 미생성·경로 전달·종료 코드 검증          |
+| `runtime/launcher.ps1`  | 처음 설정, 서버 관리 창, 백업·복원·로그                       |
+| `runtime/server.mjs`    | DB 초기화·실행·마이그레이션, 웹 서버, 백업·복원, 종료         |
+| `runtime/api.mjs`       | 기존 API 구성을 재사용하는 loopback 전용 실행 진입점          |
+| `runtime/firewall.ps1`  | 선택한 경우에만 같은 서브넷에서 웹 접속 허용                  |
+| `USER-GUIDE.txt`        | 사용자에게 함께 제공할 안내                                   |
+| `smoke-test.ps1`        | 배포 폴더를 실제 실행해 새 DB·로그인·백업·복원·종료 검증      |
+| `install-test.ps1`      | EXE 설치, 설치된 프로그램 실행 검증, 제거 후 데이터 보존 확인 |
 
 ## 데이터와 실행 정책
 
@@ -99,7 +99,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File installer/install-test.p
 
 테스트는 `installer/test-data` 아래 고유 폴더와 빈 로컬 포트를 사용합니다.
 개발 `.env`와 기존 DB는 읽거나 변경하지 않습니다. 확인을 위해 테스트 자료는 남깁니다.
-설치 테스트는 기존 ExamCheck 설치가 없는 계정에서만 실행합니다. 테스트 위치에 조용히 설치한 뒤
+설치 테스트는 기존 ExamCheck 설치가 없는 계정에서만 실행합니다. 저장소 밖의 임시 폴더에 조용히 설치해
+개발용 `node_modules`가 배포 의존성 누락을 가리지 않는 환경에서 검증합니다. 설치한 뒤
 실행 검증과 제거까지 수행합니다. 수동 GUI 검수와 다른 노트북에서의 검증은 별도로 필요합니다.
 
 2026-10-01 로컬 Windows 검증에서 production 빌드, 패키지 실행, 관리자 로그인,
