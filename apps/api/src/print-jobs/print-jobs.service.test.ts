@@ -58,6 +58,43 @@ const koreanLabelLayout = {
 };
 
 describe("PrintJobsService", () => {
+  it.each([
+    ["candidate.examNo", "10001"],
+    ["candidate.temporaryNo", "8201"],
+    ["candidate.preassignedNo", "8201"],
+    ["candidate.answerSheet", "00123456"],
+    ["BARCODE", "EX10001"],
+    ["candidate.opt4", "OPTION-4"],
+    ["candidate.opt10", "OPTION-10"],
+  ])("encodes the actual %s field in the barcode print payload", async (key, expected) => {
+    const repository = createRepositoryMock({
+      findActiveLabelTemplate: vi.fn().mockResolvedValue({
+        id: 3,
+        layout: {
+          ...koreanLabelLayout,
+          sampleData: key === "BARCODE" ? {} : { [key]: "99999999" },
+          elements: [
+            {
+              id: "barcode",
+              kind: "barcode",
+              xMm: 4,
+              yMm: 4,
+              widthMm: 60,
+              heightMm: 14,
+              content: `{{${key}}}`,
+              showText: true,
+            },
+          ],
+        },
+      }),
+    });
+    const result = await createService(createConnectionMock(), repository).create(input, operator);
+    expect(result.payload).toMatch(/\^BCN,\d+,Y,N,N\^FD/);
+    expect(result.payload).toContain(`^FD${expected}^FS`);
+    expect(result.payload).not.toContain("99999999");
+    expect(result.payload).not.toContain("{{");
+  });
+
   it("OPT4~10과 답안지 태그를 실제 라벨 출력값으로 치환한다", async () => {
     const repository = createRepositoryMock({
       findActiveLabelTemplate: vi.fn().mockResolvedValue({
