@@ -108,7 +108,7 @@ export function OperationConsoleHeader({
           <div>
             <span>가번호 범위</span>
             <strong>
-              {range.start.toLocaleString()} ~ {range.end.toLocaleString()}
+              {range.start} ~ {range.end}
             </strong>
           </div>
         )}

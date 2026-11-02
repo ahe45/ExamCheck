@@ -75,6 +75,6 @@ describe("OperationConsoleHeader", () => {
     renderHeader("RANDOM");
 
     expect(screen.getByText("가번호 범위")).toBeInTheDocument();
-    expect(screen.getByText("1,001 ~ 1,099")).toBeInTheDocument();
+    expect(screen.getByText("1001 ~ 1099")).toBeInTheDocument();
   });
 });
