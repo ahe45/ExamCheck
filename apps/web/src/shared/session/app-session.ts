@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { sessionSchema, type AuthUser, type Session } from "../api/auth";
 import { operationScheduleSchema, type OperationSchedule } from "../api/examinees";
+import { operationScopeMethod } from "../classification";
 import { FORM_EDITOR_SESSION_KEY, LABEL_EDITOR_SESSION_KEY, TEMPLATE_TAB_SESSION_KEY } from "./template-session";
 
 export const SESSION_KEY = "examcheck.session";
@@ -32,6 +33,8 @@ export function readStoredOperationSchedule(storage: SessionStorageLike, user: A
   const permitted =
     stored &&
     stored.userId === user.id &&
+    !user.scopeBlocked &&
+    operationScopeMethod(stored.schedule.admissionName) === (user.classificationMethod ?? "ADMISSION") &&
     (user.role === "ADMIN" ||
       user.role === "DEVELOPER" ||
       user.admissionNames.length === 0 ||

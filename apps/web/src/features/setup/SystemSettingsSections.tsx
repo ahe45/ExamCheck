@@ -260,6 +260,7 @@ export function ScheduleRangeSection({
   onRefresh,
   onOpenBulk,
   onRangeStartChange,
+  scopeLabels,
 }: {
   assignmentMethod: PseudonymAssignmentMethod;
   ranges: RangeDraft[];
@@ -268,6 +269,7 @@ export function ScheduleRangeSection({
   onRefresh(): void;
   onOpenBulk(): void;
   onRangeStartChange(index: number, value: string): void;
+  scopeLabels?: ReadonlyMap<string, string>;
 }) {
   return (
     <section className="system-setting-card schedule-range-card">
@@ -315,44 +317,56 @@ export function ScheduleRangeSection({
               </tr>
             </thead>
             <tbody>
-              {ranges.map((range, index) => (
-                <tr className={range.rangeStart < 1 ? "invalid" : ""} key={scheduleIdentity(range)}>
-                  <td title={formatDate(range.date)}>{formatDate(range.date)}</td>
-                  <td>{range.time}</td>
-                  <td title={range.period}>{range.period || "-"}</td>
-                  <td title={range.admission}>{range.admission || "-"}</td>
-                  <td title={range.unit}>{range.unit || "-"}</td>
-                  <td title={range.major}>{range.major || "-"}</td>
-                  <td title={range.building}>{range.building || "-"}</td>
-                  <td title={range.room}>{range.room || "-"}</td>
-                  <td className="schedule-assigned-count">
-                    <strong>{range.candidateCount.toLocaleString()}</strong>명
-                  </td>
-                  <td>
-                    <input
-                      aria-label={`${formatDate(range.date)} ${range.time} 시작 번호`}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={9}
-                      value={formatRangeNumber(range.rangeStart, range.displayWidth)}
-                      onChange={(event) => onRangeStartChange(index, event.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <div className="schedule-end-number">
+              {ranges.map((range, index) => {
+                const scopeLabel = range.scopeKey ? scopeLabels?.get(range.scopeKey) : undefined;
+                const numberLabel = [scopeLabel, formatDate(range.date), range.time].filter(Boolean).join(" ");
+                return (
+                  <tr
+                    className={range.rangeStart < 1 ? "invalid" : ""}
+                    key={JSON.stringify([range.scopeKey, scheduleIdentity(range)])}
+                  >
+                    <td title={formatDate(range.date)}>{formatDate(range.date)}</td>
+                    <td>{range.time}</td>
+                    <td title={range.period}>{range.period || "-"}</td>
+                    <td title={scopeLabel ? `${range.admission} · ${scopeLabel}` : range.admission}>
+                      {range.admission || "-"}
+                      {scopeLabel && scopeLabel !== range.admission && (
+                        <small className="schedule-range-scope-label">{scopeLabel}</small>
+                      )}
+                    </td>
+                    <td title={range.unit}>{range.unit || "-"}</td>
+                    <td title={range.major}>{range.major || "-"}</td>
+                    <td title={range.building}>{range.building || "-"}</td>
+                    <td title={range.room}>{range.room || "-"}</td>
+                    <td className="schedule-assigned-count">
+                      <strong>{range.candidateCount.toLocaleString()}</strong>명
+                    </td>
+                    <td>
                       <input
-                        aria-label={`${formatDate(range.date)} ${range.time} 종료 번호`}
+                        aria-label={`${numberLabel} 시작 번호`}
                         type="text"
-                        value={formatRangeNumber(range.rangeEnd, range.displayWidth)}
-                        readOnly
-                        tabIndex={-1}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={9}
+                        value={formatRangeNumber(range.rangeStart, range.displayWidth)}
+                        onChange={(event) => onRangeStartChange(index, event.target.value)}
                       />
-                      <small>자동</small>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>
+                      <div className="schedule-end-number">
+                        <input
+                          aria-label={`${numberLabel} 종료 번호`}
+                          type="text"
+                          value={formatRangeNumber(range.rangeEnd, range.displayWidth)}
+                          readOnly
+                          tabIndex={-1}
+                        />
+                        <small>자동</small>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

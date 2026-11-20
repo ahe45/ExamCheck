@@ -15,6 +15,7 @@ import {
   ResetAdmissionOperationsDto,
   ResetOperationHistoryDto,
   UpdatePseudonymSettingDto,
+  UpdatePseudonymSettingsBatchDto,
 } from "./pseudonyms.dto.js";
 import { PseudonymsService } from "./pseudonyms.service.js";
 
@@ -38,6 +39,12 @@ export class PseudonymsController {
   @RequirePermissions("settings.manage")
   updateSetting(@Body() input: UpdatePseudonymSettingDto, @CurrentUser() user: AuthenticatedUser) {
     return this.pseudonymsService.updateSetting(input, user);
+  }
+
+  @Put("settings-batch")
+  @RequirePermissions("settings.manage")
+  updateSettingsBatch(@Body() input: UpdatePseudonymSettingsBatchDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pseudonymsService.updateSettingsBatch(input.settings, user);
   }
 
   @Get("admission-operation-schedules")

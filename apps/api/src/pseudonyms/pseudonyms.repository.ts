@@ -1,7 +1,8 @@
 import { findActiveLabelTemplate } from "../label-templates/active-label-template.js";
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { AdmissionAccessPredicate } from "../authorization/admission-policy.js";
+import { isClassifiedScope, type ClassificationMethod } from "../authorization/classification.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 import {
   pseudonymUniquenessScopeKey,
@@ -70,6 +71,8 @@ export interface TimeRangeRow extends RowDataPacket {
 }
 
 export interface AdmissionSettingsOverview {
+  classificationMethod?: ClassificationMethod;
+  label?: string;
   name: string;
   candidates: number;
   dates: number;
@@ -78,6 +81,8 @@ export interface AdmissionSettingsOverview {
 }
 
 interface AdmissionSettingsOverviewRow extends RowDataPacket {
+  classificationMethod?: ClassificationMethod;
+  label?: string;
   name: string;
   candidates: number | string;
   dates: number | string;
@@ -181,20 +186,23 @@ export class PseudonymsRepository {
     access: AdmissionAccessPredicate,
   ): Promise<AdmissionSettingsOverview[]> {
     const [rows] = await executor.execute<AdmissionSettingsOverviewRow[]>(
-      `SELECT TRIM(cr.admission) AS name, COUNT(*) AS candidates,
+      `SELECT TRIM(cr.operation_scope) AS name, MIN(cr.operation_scope_label) AS label,
+              MIN(cr.classification_method) AS classificationMethod, COUNT(*) AS candidates,
               COUNT(DISTINCT DATE_FORMAT(cr.exam_date, '%Y-%m-%d')) AS dates,
               COUNT(DISTINCT CONCAT_WS('\u001e', DATE_FORMAT(cr.exam_date, '%Y-%m-%d'),
                 cr.start_time, cr.period_name)) AS schedules,
               GROUP_CONCAT(DISTINCT NULLIF(TRIM(cr.building_name), '')
                 ORDER BY TRIM(cr.building_name) SEPARATOR '\u001f') AS buildings
-       FROM candidate_record cr
-       WHERE ${access.sql} AND TRIM(cr.admission) <> ''
-       GROUP BY TRIM(cr.admission)
-       ORDER BY name`,
+       FROM operation_candidate_record cr
+       WHERE ${access.sql} AND TRIM(cr.operation_scope) <> ''
+       GROUP BY TRIM(cr.operation_scope)
+       ORDER BY label, name`,
       access.params,
     );
     return rows.map((row) => ({
       name: row.name,
+      ...(row.label ? { label: row.label } : {}),
+      ...(row.classificationMethod ? { classificationMethod: row.classificationMethod } : {}),
       candidates: Number(row.candidates),
       dates: Number(row.dates),
       schedules: Number(row.schedules),
@@ -221,11 +229,18 @@ export class PseudonymsRepository {
 
   async listRangeSummariesForOverview(executor: SqlExecutor, settingIds: number[], admissionNames: string[]) {
     if (!settingIds.length || !admissionNames.length) return [];
+    const classified = isClassifiedScope(admissionNames[0]);
+    const scopeColumn = classified ? "ps.admission_name" : "ptr.admission";
+    const settingsJoin = classified ? "JOIN pseudonym_setting ps ON ps.id = ptr.setting_id" : "";
     const [rows] = await executor.execute<
       Array<RowDataPacket & { settingId: number; admission: string; count: number; start: number; end: number }>
     >(
-      `SELECT setting_id AS settingId, admission, COUNT(*) AS count, MIN(range_start) AS start, MAX(range_end) AS end
-      FROM pseudonym_time_range WHERE setting_id IN (${settingIds.map(() => "?").join(",")}) AND admission IN (${admissionNames.map(() => "?").join(",")}) GROUP BY setting_id, admission`,
+      `SELECT setting_id AS settingId, ${scopeColumn} AS admission, COUNT(*) AS count,
+              MIN(ptr.range_start) AS start, MAX(ptr.range_end) AS end
+      FROM pseudonym_time_range ptr ${settingsJoin}
+      WHERE setting_id IN (${settingIds.map(() => "?").join(",")})
+        AND ${scopeColumn} IN (${admissionNames.map(() => "?").join(",")})
+      GROUP BY setting_id, ${scopeColumn}`,
       [...settingIds, ...admissionNames],
     );
     return rows.map((row) => ({ ...row, count: Number(row.count), start: Number(row.start), end: Number(row.end) }));
@@ -263,13 +278,13 @@ export class PseudonymsRepository {
               COUNT(DISTINCT cr.id) AS candidateCount,
               COUNT(DISTINCT pa.id) AS assignedCount,
               MAX(COALESCE(po.closed, FALSE)) AS closed
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        LEFT JOIN pseudonym_operation po
          ON po.exam_name = cr.exam_name AND po.exam_date = cr.exam_date
         AND po.exam_time = cr.start_time AND po.period_name = cr.period_name
-        AND po.admission_name = cr.admission
-       WHERE cr.exam_name = ? AND cr.admission = ?
+        AND po.admission_name = cr.operation_scope
+       WHERE cr.exam_name = ? AND cr.operation_scope = ?
        GROUP BY cr.exam_date, cr.start_time, cr.period_name
        ORDER BY cr.exam_date, cr.start_time, cr.period_name`,
       [examName, admissionName],
@@ -294,7 +309,9 @@ export class PseudonymsRepository {
 
   async lockHistoryCandidates(executor: SqlExecutor, scope: PseudonymOperationScopeInput) {
     const [rows] = await executor.execute<RowDataPacket[]>(
-      "SELECT cr.id FROM candidate_record cr WHERE " + historyCandidatePredicate + " ORDER BY cr.id FOR UPDATE",
+      "SELECT cr.id FROM operation_candidate_record cr WHERE " +
+        historyCandidatePredicate +
+        " ORDER BY cr.id FOR UPDATE",
       historyScopeParams(scope),
     );
     return rows;
@@ -307,7 +324,7 @@ export class PseudonymsRepository {
     examineeNo: string,
   ) {
     const [rows] = await executor.execute<RowDataPacket[]>(
-      `SELECT cr.id FROM candidate_record cr WHERE ${historyCandidatePredicate}
+      `SELECT cr.id FROM operation_candidate_record cr WHERE ${historyCandidatePredicate}
        AND cr.id = ? AND cr.examinee_no = ? FOR UPDATE`,
       [...historyScopeParams(scope), candidateRecordId, examineeNo],
     );
@@ -349,7 +366,7 @@ export class PseudonymsRepository {
 
   async hasPendingSchedulePrintJobs(executor: SqlExecutor, scope: PseudonymOperationScopeInput) {
     const [rows] = await executor.execute<RowDataPacket[]>(
-      `SELECT pj.id FROM print_job pj INNER JOIN candidate_record cr ON cr.id = pj.candidate_record_id
+      `SELECT pj.id FROM print_job pj INNER JOIN operation_candidate_record cr ON cr.id = pj.candidate_record_id
        WHERE ${historyCandidatePredicate} AND pj.label_type = 'PSEUDONYM_LABEL'
          AND pj.status IN ('CREATED', 'READY', 'DISPATCHING') AND (pj.expires_at IS NULL OR pj.expires_at > NOW())
        LIMIT 1 FOR UPDATE`,
@@ -360,7 +377,7 @@ export class PseudonymsRepository {
 
   async resetSchedulePrintHistory(executor: SqlExecutor, scope: PseudonymOperationScopeInput) {
     const [result] = await executor.execute<ResultSetHeader>(
-      `UPDATE print_job pj INNER JOIN candidate_record cr ON cr.id = pj.candidate_record_id
+      `UPDATE print_job pj INNER JOIN operation_candidate_record cr ON cr.id = pj.candidate_record_id
        SET pj.status = 'CANCELLED', pj.sent_at = NULL, pj.dispatched_at = NULL
        WHERE ${historyCandidatePredicate} AND pj.label_type = 'PSEUDONYM_LABEL' AND pj.status <> 'CANCELLED'`,
       historyScopeParams(scope),
@@ -375,12 +392,13 @@ export class PseudonymsRepository {
     schedules: readonly AdmissionOperationScheduleInput[],
   ): Promise<number> {
     const selection = scheduleSelectionSql("cr", schedules);
+    const classified = isClassifiedScope(admissionName);
     const [result] = await executor.execute<ResultSetHeader>(
       `DELETE pa FROM pseudonym_assignment pa
-       INNER JOIN candidate_record cr ON cr.id = pa.candidate_record_id
-       WHERE pa.exam_name = ? AND pa.admission_name = ?
-         AND cr.exam_name = ? AND cr.admission = ? AND (${selection.sql})`,
-      [examName, admissionName, examName, admissionName, ...selection.parameters],
+       INNER JOIN operation_candidate_record cr ON cr.id = pa.candidate_record_id
+       WHERE pa.exam_name = ? ${classified ? "" : "AND pa.admission_name = ?"}
+         AND cr.exam_name = ? AND cr.operation_scope = ? AND (${selection.sql})`,
+      [examName, ...(classified ? [] : [admissionName]), examName, admissionName, ...selection.parameters],
     );
     return Number(result.affectedRows);
   }
@@ -420,7 +438,7 @@ export class PseudonymsRepository {
       `UPDATE pseudonym_time_range ptr
        INNER JOIN pseudonym_setting ps ON ps.id = ptr.setting_id
        SET ptr.next_sequence = ptr.range_start, ptr.updated_by = ?
-       WHERE ps.exam_name = ? AND ptr.admission = ? AND (${selection.sql})`,
+       WHERE ps.exam_name = ? AND ${isClassifiedScope(admissionName) ? "ps.admission_name" : "ptr.admission"} = ? AND (${selection.sql})`,
       [actorUserId, examName, admissionName, ...selection.parameters],
     );
     return Number(result.affectedRows);
@@ -504,13 +522,16 @@ export class PseudonymsRepository {
   }
 
   async listTimeRanges(executor: SqlExecutor, settingId: number, admissionName: string): Promise<TimeRangeRow[]> {
+    const rangeScope = isClassifiedScope(admissionName)
+      ? "EXISTS (SELECT 1 FROM pseudonym_setting ps WHERE ps.id = setting_id AND ps.admission_name = ?)"
+      : "admission = ?";
     const [rows] = await executor.execute<TimeRangeRow[]>(
       `SELECT id, DATE_FORMAT(exam_date, '%Y-%m-%d') AS date, exam_time AS time,
               period_name AS period, admission, unit_name AS unit, major,
               building_name AS building, room_name AS room, schedule_key AS scheduleKey,
               range_start AS rangeStart, range_end AS rangeEnd, display_width AS displayWidth,
               next_sequence AS nextSequence
-       FROM pseudonym_time_range WHERE setting_id = ? AND admission = ? ORDER BY exam_date, exam_time`,
+       FROM pseudonym_time_range WHERE setting_id = ? AND ${rangeScope} ORDER BY exam_date, exam_time`,
       [settingId, admissionName],
     );
     return rows;
@@ -521,6 +542,10 @@ export class PseudonymsRepository {
     settingId: number,
     scope?: PseudonymOperationScopeInput,
   ): Promise<TimeRangeRow[]> {
+    const rangeScope =
+      scope && isClassifiedScope(scope.admissionName)
+        ? "EXISTS (SELECT 1 FROM pseudonym_setting ps WHERE ps.id = setting_id AND ps.admission_name = ?)"
+        : "admission = ?";
     const [rows] = await executor.execute<TimeRangeRow[]>(
       `SELECT id, schedule_key AS scheduleKey,
               DATE_FORMAT(exam_date, '%Y-%m-%d') AS date, exam_time AS time,
@@ -529,7 +554,7 @@ export class PseudonymsRepository {
               range_start AS rangeStart, range_end AS rangeEnd, display_width AS displayWidth,
               next_sequence AS nextSequence
        FROM pseudonym_time_range
-       WHERE setting_id = ?${scope ? " AND exam_date = ? AND exam_time = ? AND period_name = ? AND admission = ?" : ""}
+       WHERE setting_id = ?${scope ? ` AND exam_date = ? AND exam_time = ? AND period_name = ? AND ${rangeScope}` : ""}
        ORDER BY schedule_key
        FOR UPDATE`,
       [settingId, ...(scope ? [scope.examDate, scope.examTime, scope.periodName, scope.admissionName] : [])],
@@ -542,8 +567,8 @@ export class PseudonymsRepository {
       `SELECT DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS date, cr.start_time AS time,
               cr.period_name AS period, cr.admission, cr.unit_name AS unit, cr.major,
               cr.building_name AS building, cr.room_name AS room, COUNT(*) AS candidateCount
-       FROM candidate_record cr
-       WHERE cr.exam_name = ? AND cr.status = 'ACTIVE' AND cr.admission = ?
+       FROM operation_candidate_record cr
+       WHERE cr.exam_name = ? AND cr.status = 'ACTIVE' AND cr.operation_scope = ?
        GROUP BY cr.exam_date, cr.start_time, cr.period_name, cr.admission,
                 cr.unit_name, cr.major, cr.building_name, cr.room_name
        ORDER BY cr.exam_date, cr.start_time, cr.period_name, cr.admission,
@@ -565,8 +590,12 @@ export class PseudonymsRepository {
               cr.period_name AS period, cr.admission, cr.unit_name AS unit, cr.major,
               cr.building_name AS building, cr.room_name AS room
        FROM pseudonym_assignment pa
-       INNER JOIN candidate_record cr ON cr.id = pa.candidate_record_id AND cr.admission = ?
-       WHERE pa.exam_name = ? AND pa.admission_name = ?
+       INNER JOIN operation_candidate_record cr ON cr.id = pa.candidate_record_id AND cr.operation_scope = ?
+       WHERE pa.exam_name = ? AND ${
+         isClassifiedScope(admissionName)
+           ? "pa.operation_scope_key = ?"
+           : "pa.admission_name = ? AND pa.operation_scope_key IS NULL"
+       }
        ORDER BY pa.id, cr.exam_date, cr.start_time, cr.period_name, cr.id
        FOR UPDATE`,
       [admissionName, examName, admissionName],
@@ -717,11 +746,11 @@ export class PseudonymsRepository {
     const filter = buildOperationRosterFilterSql(filters);
     const [rows] = await executor.execute<OperationRosterRow[]>(
       `SELECT ${operationRosterSelectSql()}
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        LEFT JOIN pseudonym_operation po
          ON po.exam_name = cr.exam_name AND po.exam_date = cr.exam_date AND po.exam_time = cr.start_time
-        AND po.period_name = cr.period_name AND po.admission_name = cr.admission
+        AND po.period_name = cr.period_name AND po.admission_name = cr.operation_scope
        LEFT JOIN (
          SELECT candidate_record_id, MAX(sent_at) AS last_printed_at
          FROM print_job
@@ -729,7 +758,7 @@ export class PseudonymsRepository {
          GROUP BY candidate_record_id
        ) printed ON printed.candidate_record_id = cr.id
        WHERE cr.exam_name = ? AND cr.status = 'ACTIVE'
-         AND cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.admission = ?${filter.sql}
+         AND cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.operation_scope = ?${filter.sql}
        ORDER BY cr.designated_sort, cr.examinee_no
        LIMIT ${PSEUDONYM_ROSTER_EXPORT_MAX_ROWS + 1}`,
       [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName, ...filter.parameters],
@@ -741,11 +770,11 @@ export class PseudonymsRepository {
     const [rows] = await executor.execute<Array<RowDataPacket & { autoAssignedAbsenteeCount: number }>>(
       `SELECT COUNT(*) AS autoAssignedAbsenteeCount
        FROM pseudonym_assignment pa
-       INNER JOIN candidate_record cr ON cr.id = pa.candidate_record_id
+       INNER JOIN operation_candidate_record cr ON cr.id = pa.candidate_record_id
        WHERE pa.auto_assigned_on_close = TRUE
-         AND pa.exam_name = ? AND pa.admission_name = ?
+         AND pa.exam_name = ? AND ${autoAssignedScopePredicate(input.admissionName)}
          AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ?`,
+         AND cr.period_name = ? AND cr.operation_scope = ?`,
       [input.examName, input.admissionName, input.examDate, input.examTime, input.periodName, input.admissionName],
     );
     return Number(rows[0]?.autoAssignedAbsenteeCount || 0);
@@ -794,10 +823,10 @@ export class PseudonymsRepository {
               DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate, cr.start_time AS examTime,
               cr.period_name AS period, cr.admission, cr.unit_name AS unit, cr.major,
               cr.building_name AS building, cr.room_name AS room
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        WHERE cr.exam_name = ? AND cr.status = 'ACTIVE' AND cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?
-          AND cr.admission = ? AND pa.id IS NULL${excludePreassigned ? " AND NULLIF(cr.temporary_no, '') IS NULL" : ""}
+          AND cr.operation_scope = ? AND pa.id IS NULL${excludePreassigned ? " AND NULLIF(cr.temporary_no, '') IS NULL" : ""}
        ORDER BY cr.designated_sort, cr.examinee_no FOR UPDATE`,
       [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName],
     );
@@ -811,13 +840,14 @@ export class PseudonymsRepository {
     scopeKey: string,
     mode: PseudonymAssignmentMode,
     actorUserId: number,
+    operationScope?: string,
   ): Promise<number[]> {
     const ids: number[] = [];
     for (let offset = 0; offset < items.length; offset += 100) {
       const batch = items.slice(offset, offset + 100);
       await executor.execute(
-        `INSERT INTO pseudonym_assignment (candidate_record_id, exam_name, admission_name, uniqueness_scope_key, pseudonym_no, assignment_mode, is_absentee, auto_assigned_on_close, assigned_by)
-        VALUES ${batch.map(() => "(?, ?, ?, ?, ?, ?, TRUE, TRUE, ?)").join(",")}`,
+        `INSERT INTO pseudonym_assignment (candidate_record_id, exam_name, admission_name, uniqueness_scope_key, pseudonym_no, assignment_mode, is_absentee, auto_assigned_on_close, assigned_by, operation_scope_key)
+        VALUES ${batch.map(() => "(?, ?, ?, ?, ?, ?, TRUE, TRUE, ?, ?)").join(",")}`,
         batch.flatMap((item) => [
           item.candidate.candidateRecordId,
           item.candidate.examName,
@@ -826,6 +856,7 @@ export class PseudonymsRepository {
           item.number,
           mode,
           actorUserId,
+          operationScope ?? null,
         ]),
       );
       const [rows] = await executor.execute<IdRow[]>(
@@ -876,11 +907,11 @@ export class PseudonymsRepository {
   async deleteAutoAssignedAbsentees(executor: SqlExecutor, input: PseudonymOperationScopeInput): Promise<number> {
     const [result] = await executor.execute<ResultSetHeader>(
       `DELETE pa FROM pseudonym_assignment pa
-       INNER JOIN candidate_record cr ON cr.id = pa.candidate_record_id
+       INNER JOIN operation_candidate_record cr ON cr.id = pa.candidate_record_id
        WHERE pa.auto_assigned_on_close = TRUE
-         AND pa.exam_name = ? AND pa.admission_name = ?
+         AND pa.exam_name = ? AND ${autoAssignedScopePredicate(input.admissionName)}
          AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ?`,
+         AND cr.period_name = ? AND cr.operation_scope = ?`,
       [input.examName, input.admissionName, input.examDate, input.examTime, input.periodName, input.admissionName],
     );
     return result.affectedRows;
@@ -893,11 +924,11 @@ export class PseudonymsRepository {
     const [rows] = await executor.execute<IdRow[]>(
       `SELECT pa.id
        FROM pseudonym_assignment pa
-       INNER JOIN candidate_record cr ON cr.id = pa.candidate_record_id
+       INNER JOIN operation_candidate_record cr ON cr.id = pa.candidate_record_id
        WHERE pa.auto_assigned_on_close = TRUE
-         AND pa.exam_name = ? AND pa.admission_name = ?
+         AND pa.exam_name = ? AND ${autoAssignedScopePredicate(input.admissionName)}
          AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ?
+         AND cr.period_name = ? AND cr.operation_scope = ?
        ORDER BY pa.id FOR UPDATE`,
       [input.examName, input.admissionName, input.examDate, input.examTime, input.periodName, input.admissionName],
     );
@@ -925,10 +956,10 @@ export class PseudonymsRepository {
               DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate, cr.start_time AS examTime,
               cr.period_name AS period, cr.admission, cr.unit_name AS unit, cr.major,
               cr.building_name AS building, cr.room_name AS room
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE'
-       LIMIT 1${options.forUpdate ? " FOR UPDATE" : ""}`,
+         AND cr.period_name = ? AND cr.operation_scope = ? AND cr.status = 'ACTIVE'
+       LIMIT ${isClassifiedScope(input.admissionName) ? 2 : 1}${options.forUpdate ? " FOR UPDATE" : ""}`,
       [
         input.examName?.trim() || "",
         input.examineeNo.trim(),
@@ -938,6 +969,8 @@ export class PseudonymsRepository {
         input.admissionName,
       ],
     );
+    if (rows.length > 1)
+      throw new ConflictException("같은 운영 범위·교시에 동일한 수험번호가 여러 건 등록되어 있습니다.");
     return rows[0];
   }
 
@@ -985,12 +1018,13 @@ export class PseudonymsRepository {
     assignmentMode: PseudonymAssignmentMode,
     actorUserId: number,
     absent = false,
+    operationScope?: string,
   ): Promise<number> {
     const [result] = await executor.execute<ResultSetHeader>(
       `INSERT INTO pseudonym_assignment
         (candidate_record_id, exam_name, admission_name, uniqueness_scope_key,
-         pseudonym_no, assignment_mode, assigned_by, is_absentee)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         pseudonym_no, assignment_mode, assigned_by, is_absentee, operation_scope_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         candidate.candidateRecordId,
         candidate.examName,
@@ -1000,6 +1034,7 @@ export class PseudonymsRepository {
         assignmentMode,
         actorUserId,
         absent,
+        operationScope ?? null,
       ],
     );
     return result.insertId;
@@ -1018,6 +1053,16 @@ export class PseudonymsRepository {
       "INSERT INTO pseudonym_admission_lock (exam_name, admission_name) VALUES (?, ?) ON DUPLICATE KEY UPDATE admission_name = VALUES(admission_name)",
       [examName, admissionName],
     );
+  }
+
+  async listPhysicalAdmissions(executor: SqlExecutor, input: PseudonymOperationScopeInput) {
+    const [rows] = await executor.execute<Array<RowDataPacket & { admission: string }>>(
+      `SELECT DISTINCT admission FROM operation_candidate_record
+       WHERE exam_name = ? AND exam_date = ? AND start_time = ? AND period_name = ? AND operation_scope = ?
+       ORDER BY admission`,
+      operationParams(input),
+    );
+    return rows.map(({ admission }) => admission);
   }
 
   async loadReservedNumbers(
@@ -1096,8 +1141,14 @@ function operationParams(input: PseudonymOperationScopeInput) {
   return [input.examName, input.examDate, input.examTime, input.periodName, input.admissionName];
 }
 
+function autoAssignedScopePredicate(scope: string) {
+  return isClassifiedScope(scope)
+    ? "pa.operation_scope_key = ?"
+    : "pa.admission_name = ? AND pa.operation_scope_key IS NULL";
+}
+
 const historyCandidatePredicate =
-  "cr.exam_name = ? AND cr.admission = ? AND cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?";
+  "cr.exam_name = ? AND cr.operation_scope = ? AND cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ?";
 function historyScopeParams(scope: PseudonymOperationScopeInput) {
   return [scope.examName, scope.admissionName, scope.examDate, scope.examTime, scope.periodName];
 }

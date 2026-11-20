@@ -32,6 +32,7 @@ export type CandidateFieldKey =
   | "opt10";
 
 export interface CandidateRecord extends Record<CandidateFieldKey, string> {
+  operationScope?: string;
   id: number;
   assignedNumber: string | null;
   assignedAt: string | null;

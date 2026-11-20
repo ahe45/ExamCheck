@@ -69,6 +69,7 @@ describe("DeveloperSettingsService mutation transactions", () => {
       eventType: "SYSTEM_PROFILE_UPDATED",
       actorUserId: 9,
       details: {
+        classificationMethod: "ADMISSION",
         schoolName: "한국대학교",
         academicYear: 2026,
         systemName: "가번호 관리 시스템",

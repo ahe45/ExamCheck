@@ -195,7 +195,7 @@ export function useOperationRoster(options: Options) {
           admissionName: schedule.admissionName,
           query,
         },
-        `${safeFileName(`${schedule.admissionName}_${schedule.date}_${schedule.periodName}_가번호 등록 현황`)}.xlsx`,
+        `${safeFileName(`${schedule.scopeLabel ?? schedule.admissionName}_${schedule.date}_${schedule.periodName}_가번호 등록 현황`)}.xlsx`,
       );
       if (isCurrentSchedule(requestScheduleKey)) {
         onNotice({

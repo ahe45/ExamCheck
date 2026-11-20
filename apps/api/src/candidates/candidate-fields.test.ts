@@ -45,6 +45,7 @@ describe("candidate field definitions", () => {
       "room",
       "waitingRoom",
       "temporaryNo",
+      "group",
     ]);
   });
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { OperationSchedule } from "../../shared/api/examinees";
+import { operationScopeMethod } from "../../shared/classification";
 import {
   fetchPseudonymSetting,
   type AssignmentMode,
@@ -59,7 +60,7 @@ export function useOperationSettings(token: string, examName: string, schedule: 
             item.date === schedule.date &&
             item.time === schedule.time &&
             item.period === schedule.periodName &&
-            item.admission === schedule.admissionName,
+            (operationScopeMethod(schedule.admissionName) !== "ADMISSION" || item.admission === schedule.admissionName),
         );
         setRange(
           selectedScheduleRange

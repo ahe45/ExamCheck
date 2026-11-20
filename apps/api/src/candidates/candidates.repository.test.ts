@@ -14,7 +14,7 @@ describe("CandidatesRepository", () => {
     expect(sql).toContain("cr.admission IN (?)");
     expect(sql).toContain("pj.status = 'SENT'");
     expect(sql).toContain("po.exam_time = cr.start_time");
-    expect(sql).toContain("po.admission_name = cr.admission");
+    expect(sql).toContain("po.admission_name = cr.operation_scope");
     expect(sql).toContain("print_preassigned_label");
   });
 

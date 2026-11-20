@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Pool, PoolConnection } from "mysql2/promise";
 import type { AuthenticatedUser, UserRole } from "../auth/auth.types.js";
+import type { ClassificationMethod } from "../authorization/classification.js";
 import { hashPassword } from "../auth/password.js";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { withTransaction } from "../common/database/transaction.js";
@@ -13,6 +14,7 @@ import {
   isSelfRoleChangeForbidden,
   normalizeLoginId,
   resolveAdmissionAssignments,
+  toManagedAccountRole,
   toStoredAccountRole,
   type ManagedAccountRole,
 } from "./accounts.domain.js";
@@ -36,6 +38,7 @@ export class AccountsApplicationService {
     return withTransaction(this.pool, async (connection) => {
       const identityDecision = await this.identityTransition.decideWrite(connection);
       assertLegacyCompatibilityWrite(identityDecision.writeLegacy);
+      const method = await this.classificationForWrite(connection, input.classificationMethod, actor);
       if (await this.repository.findIdByLoginId(connection, loginId)) {
         throw new ConflictException("이미 사용 중인 아이디입니다.");
       }
@@ -45,11 +48,11 @@ export class AccountsApplicationService {
         toStoredAccountRole(input.role),
         passwordHash,
       );
-      await this.replaceAdmissions(connection, userId, input.role, input.admissionNames);
+      await this.replaceAccess(connection, userId, input.role, input.admissionNames, method);
       if (identityDecision.writeTarget) {
         await this.identityProjection.syncAccountForCurrentCycle(connection, userId);
       }
-      const account = await this.requireAccount(connection, userId);
+      const account = await this.requireAccount(connection, userId, method);
       await this.audit.record(connection, {
         eventType: "ACCOUNT_CREATED",
         actorUserId: actor.id,
@@ -68,6 +71,7 @@ export class AccountsApplicationService {
     return withTransaction(this.pool, async (connection) => {
       const identityDecision = await this.identityTransition.decideWrite(connection);
       assertLegacyCompatibilityWrite(identityDecision.writeLegacy);
+      const method = await this.classificationForWrite(connection, input.classificationMethod, actor);
       const target = await this.repository.findTargetForUpdate(connection, id);
       if (!target) throw new NotFoundException("계정을 찾을 수 없습니다.");
       assertGeneralAccountTarget(target);
@@ -81,11 +85,13 @@ export class AccountsApplicationService {
         ...(passwordHash ? { passwordHash } : {}),
         invalidateSessions: Boolean(input.password) || target.role !== storedRole,
       });
-      await this.replaceAdmissions(connection, id, input.role, input.admissionNames);
+      if (!input.preserveClassificationAccess || toManagedAccountRole(target.role) !== input.role) {
+        await this.replaceAccess(connection, id, input.role, input.admissionNames, method);
+      }
       if (identityDecision.writeTarget) {
         await this.identityProjection.syncAccountForCurrentCycle(connection, id);
       }
-      const account = await this.requireAccount(connection, id);
+      const account = await this.requireAccount(connection, id, method);
       await this.audit.record(connection, {
         eventType: "ACCOUNT_UPDATED",
         actorUserId: actor.id,
@@ -107,6 +113,7 @@ export class AccountsApplicationService {
         throw new NotFoundException("계정을 찾을 수 없습니다.");
       }
       await this.repository.deleteAdmissionAssignments(connection, id);
+      await this.repository.deleteClassificationAssignments(connection, id);
       if (identityDecision.writeTarget) await this.identityProjection.clearAccountScope(connection, id);
       await this.audit.record(connection, {
         eventType: "ACCOUNT_DELETED",
@@ -117,12 +124,36 @@ export class AccountsApplicationService {
     });
   }
 
-  private async replaceAdmissions(
+  private async classificationForWrite(
+    connection: PoolConnection,
+    requested: ClassificationMethod | undefined,
+    actor: AuthenticatedUser,
+  ) {
+    const observed = actor.classificationMethod ?? "ADMISSION";
+    if (requested === undefined && observed === "ADMISSION") return observed;
+    const current = await this.repository.lockClassificationMethod(connection);
+    if ((requested ?? "ADMISSION") !== current)
+      throw new ConflictException("분류 방법이 변경되었습니다. 계정 관리 화면을 새로고침해 주세요.");
+    return current;
+  }
+
+  private async replaceAccess(
     connection: PoolConnection,
     userId: number,
     role: ManagedAccountRole,
     requestedAdmissionNames: readonly string[],
+    method: ClassificationMethod,
   ): Promise<void> {
+    if (method !== "ADMISSION") {
+      const available =
+        role === "ADMIN" || method === "NONE"
+          ? []
+          : (await this.repository.listClassificationScopes(connection, method)).map((scope) => scope.key);
+      const resolution = resolveAdmissionAssignments(role, requestedAdmissionNames, available);
+      if (resolution.invalidAdmissionName) throw new NotFoundException("현재 분류 방법에 등록되지 않은 항목입니다.");
+      await this.repository.replaceClassificationAssignments(connection, userId, method, resolution.admissionNames);
+      return;
+    }
     await this.repository.deleteAdmissionAssignments(connection, userId);
     const availableAdmissionNames = role === "ADMIN" ? [] : await this.repository.listAdmissionNames(connection);
     const resolution = resolveAdmissionAssignments(role, requestedAdmissionNames, availableAdmissionNames);
@@ -132,10 +163,22 @@ export class AccountsApplicationService {
     for (const admissionName of resolution.admissionNames) {
       await this.repository.insertAdmissionAssignment(connection, userId, admissionName);
     }
+    await this.repository.setUnrestrictedAdmissionAccess(
+      connection,
+      userId,
+      role === "USER" && resolution.admissionNames.length === 0,
+    );
   }
 
-  private async requireAccount(connection: PoolConnection, id: number): Promise<ManagedAccountView> {
-    const account = await this.repository.findOne(connection, id);
+  private async requireAccount(
+    connection: PoolConnection,
+    id: number,
+    method: ClassificationMethod,
+  ): Promise<ManagedAccountView> {
+    const account =
+      method === "ADMISSION"
+        ? await this.repository.findOne(connection, id)
+        : await this.repository.findOne(connection, id, method);
     if (!account) throw new NotFoundException("계정을 찾을 수 없습니다.");
     return account;
   }

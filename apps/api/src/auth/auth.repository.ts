@@ -2,8 +2,10 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import type { UserRole } from "./auth.types.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
+import type { ClassificationMethod } from "../authorization/classification.js";
 
 export interface AuthUserRow extends RowDataPacket {
+  classificationMethod?: ClassificationMethod;
   id: number;
   loginId: string;
   role: UserRole;
@@ -37,6 +39,22 @@ export class AuthRepository {
     return rows.map((row) => row.admissionName);
   }
 
+  async getClassifiedAccess(userId: number, method: ClassificationMethod) {
+    const [rows] = await this.pool.execute<Array<RowDataPacket & { method: string; scopeKey: string; legacy: number }>>(
+      `SELECT classification_method AS method, scope_key AS scopeKey, FALSE AS legacy
+       FROM user_classification_assignment WHERE user_id = ?
+       UNION ALL
+       SELECT 'ADMISSION', admission_name, TRUE FROM user_admission_assignment WHERE user_id = ?`,
+      [userId, userId],
+    );
+    const current = rows.filter((row) => row.method === method);
+    const restricted = (row: (typeof rows)[number]) => Boolean(row.legacy) || row.scopeKey !== "*";
+    return {
+      admissionNames: current.filter(restricted).map((row) => row.scopeKey),
+      scopeBlocked: !current.length && rows.some(restricted),
+    };
+  }
+
   async recordAccess(userId: number): Promise<void> {
     await this.pool.execute("UPDATE app_user SET last_access_at = NOW(3) WHERE id = ?", [userId]);
   }
@@ -44,7 +62,8 @@ export class AuthRepository {
   private async findUser(column: "id" | "login_id", value: number | string): Promise<AuthUserRow | null> {
     const [rows] = await this.pool.execute<AuthUserRow[]>(
       `SELECT id, login_id AS loginId, role,
-              password_hash AS passwordHash, enabled, session_version AS sessionVersion
+              password_hash AS passwordHash, enabled, session_version AS sessionVersion,
+              (SELECT classification_method FROM system_profile WHERE id = 1) AS classificationMethod
        FROM app_user WHERE ${column} = ? LIMIT 1`,
       [value],
     );

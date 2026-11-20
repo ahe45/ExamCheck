@@ -87,7 +87,7 @@ const candidateFieldDefinitions = [
     width: 16,
     format: "date",
   },
-  { key: "group", dbColumn: "group_name", label: "조", sample: "1조", width: 12, optional },
+  { key: "group", dbColumn: "group_name", label: "조", sample: "1조", width: 12, optional, operationallyProtected },
   { key: "answerSheet", dbColumn: "answer_sheet", label: "답안지", sample: "", width: 14, optional },
   { key: "opt1", dbColumn: "opt1", label: "OPT1", sample: "", width: 14, optional },
   { key: "opt2", dbColumn: "opt2", label: "OPT2", sample: "", width: 14, optional },

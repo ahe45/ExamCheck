@@ -186,7 +186,7 @@ export class PrintJobsService {
         JSON.stringify(template.layout ?? template.zplTemplate),
       )
     ) {
-      Object.assign(candidate, await this.repository.roomCounts(executor, candidate));
+      Object.assign(candidate, await this.repository.roomCounts(executor, candidate, admissionName));
     }
     const workstationId = await this.repository.findEnabledWorkstationId(executor, input.workstationCode);
     if (workstationId === null) throw new NotFoundException("등록된 출력 워크스테이션을 찾을 수 없습니다.");

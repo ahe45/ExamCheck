@@ -4,6 +4,7 @@ import type { AuthUser } from "../../shared/api/auth";
 import { fetchOperationSchedules, type OperationSchedule } from "../../shared/api/examinees";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import { AppLogoutIcon } from "../../shared/components/ActionIcons";
+import { operationScopeFieldLabel } from "../../shared/classification";
 
 export function OperationSchedulePage({
   token,
@@ -87,9 +88,11 @@ export function OperationSchedulePage({
             <span>!</span>
             <h2>선택할 수 있는 운영 일정이 없습니다.</h2>
             <p>
-              {user.admissionNames.length
-                ? "배정된 전형에 등록된 수험생 일정이 없습니다. 관리자에게 수험생 데이터를 확인해 달라고 요청해 주세요."
-                : "등록된 전형·교시 일정이 없습니다. 관리자에게 수험생 데이터를 확인해 달라고 요청해 주세요."}
+              {user.scopeBlocked
+                ? "현재 분류 방법에 배정된 접근 범위가 없습니다."
+                : user.admissionNames.length
+                  ? "배정된 범위에 등록된 수험생 일정이 없습니다. 관리자에게 수험생 데이터를 확인해 달라고 요청해 주세요."
+                  : "등록된 전형·교시 일정이 없습니다. 관리자에게 수험생 데이터를 확인해 달라고 요청해 주세요."}
             </p>
           </section>
         ) : (
@@ -142,8 +145,8 @@ export function OperationSchedulePage({
                           <h3>{schedule.periodName}</h3>
                           <div className="operation-schedule-details">
                             <p>
-                              <span>전형명</span>
-                              <strong>{schedule.admissionName}</strong>
+                              <span>{operationScopeFieldLabel(schedule.admissionName)}</span>
+                              <strong>{schedule.scopeLabel ?? schedule.admissionName}</strong>
                             </p>
                             <p>
                               <span>고사건물명</span>

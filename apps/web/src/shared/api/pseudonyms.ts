@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { classificationMethodSchema } from "../classification";
 import { apiBlob, apiFetch, saveBlob } from "./client";
 
 const nonnegativeIntegerSchema = z.number().int().nonnegative();
@@ -113,6 +114,8 @@ export type PseudonymSetting = z.infer<typeof pseudonymSettingSchema>;
 
 export const pseudonymSettingsOverviewCardSchema = z.object({
   name: z.string().min(1),
+  label: z.string().optional(),
+  classificationMethod: classificationMethodSchema.optional(),
   candidates: nonnegativeIntegerSchema,
   dates: nonnegativeIntegerSchema,
   schedules: nonnegativeIntegerSchema,
@@ -251,6 +254,15 @@ export function updatePseudonymSetting(token: string, input: UpdatePseudonymSett
     },
     token,
     pseudonymSettingSchema,
+  );
+}
+
+export function updatePseudonymSettingsBatch(token: string, settings: UpdatePseudonymSettingInput[]) {
+  return apiFetch(
+    "/pseudonyms/settings-batch",
+    { method: "PUT", body: JSON.stringify({ settings }) },
+    token,
+    z.array(pseudonymSettingSchema),
   );
 }
 

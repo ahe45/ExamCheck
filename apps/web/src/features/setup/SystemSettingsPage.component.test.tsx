@@ -13,6 +13,7 @@ const labelTemplateApi = vi.hoisted(() => ({ fetchLabelTemplates: vi.fn() }));
 const pseudonymApi = vi.hoisted(() => ({
   fetchPseudonymSetting: vi.fn(),
   updatePseudonymSetting: vi.fn(),
+  updatePseudonymSettingsBatch: vi.fn(),
 }));
 
 vi.mock("../../shared/api/candidates", () => candidateApi);
@@ -45,12 +46,65 @@ beforeEach(() => {
   candidateApi.fetchCandidates.mockReset();
   pseudonymApi.fetchPseudonymSetting.mockReset();
   pseudonymApi.updatePseudonymSetting.mockReset();
+  pseudonymApi.updatePseudonymSettingsBatch.mockReset();
   candidateApi.fetchCandidates.mockResolvedValue([]);
   labelTemplateApi.fetchLabelTemplates.mockResolvedValue({ dataTags: { groups: [] }, templates: [] });
   pseudonymApi.fetchPseudonymSetting.mockResolvedValue({ ...setting });
 });
 
 describe("SystemSettingsPage optimistic save", () => {
+  it("keeps separate ranges when classified scopes share the same physical schedule", async () => {
+    const scopes = [
+      { key: `~GROUP:${"a".repeat(64)}`, label: "1조" },
+      { key: `~GROUP:${"b".repeat(64)}`, label: "2조" },
+    ];
+    const [first, second] = scopes;
+    const physicalSchedule = {
+      date: "2026-10-30",
+      time: "10:00",
+      period: "오전",
+      admission: "학생부교과 면접",
+      unit: "유아교육과",
+      major: "",
+      building: "사범관",
+      room: "면접고사실",
+    };
+    const settings = [
+      { ...setting, admissionName: first.key },
+      { ...setting, admissionName: second.key, rangeStart: 2001, rangeEnd: 2999, version: 3 },
+    ];
+    candidateApi.fetchCandidates.mockResolvedValue([
+      { ...physicalSchedule, operationScope: first.key },
+      { ...physicalSchedule, operationScope: second.key },
+      { ...physicalSchedule, operationScope: second.key },
+    ]);
+    pseudonymApi.fetchPseudonymSetting.mockResolvedValueOnce(settings[0]).mockResolvedValueOnce(settings[1]);
+    pseudonymApi.updatePseudonymSettingsBatch.mockImplementation(async (_token, inputs) =>
+      inputs.map((input: (typeof settings)[number], index: number) => ({ ...settings[index], ...input })),
+    );
+    const ref = createRef<SystemSettingsPageHandle>();
+    render(<SystemSettingsPage ref={ref} token="admin-token" admissionName={first.key} batchScopes={scopes} />);
+
+    fireEvent.change(await screen.findByRole("textbox", { name: /^1조 .*시작 번호$/ }), { target: { value: "1101" } });
+    expect(screen.getByRole("textbox", { name: /^2조 .*시작 번호$/ })).toHaveValue("2001");
+    await act(async () => {
+      expect(await ref.current?.save()).toBe(true);
+    });
+
+    expect(pseudonymApi.updatePseudonymSettingsBatch).toHaveBeenCalledWith("admin-token", [
+      expect.objectContaining({
+        admissionName: first.key,
+        expectedVersion: 7,
+        ranges: [expect.objectContaining({ ...physicalSchedule, rangeStart: 1101, rangeEnd: 1101 })],
+      }),
+      expect.objectContaining({
+        admissionName: second.key,
+        expectedVersion: 3,
+        ranges: [expect.objectContaining({ ...physicalSchedule, rangeStart: 2001, rangeEnd: 2002 })],
+      }),
+    ]);
+  });
+
   it.each(["SEQUENTIAL", "MATCHING"] as const)(
     "답안지 사용을 %s 설정에 저장하고 다시 불러온다",
     async (assignmentMethod) => {

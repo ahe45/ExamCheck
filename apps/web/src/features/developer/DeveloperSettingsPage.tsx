@@ -2,6 +2,7 @@ import { DatabaseBackupSection } from "./DatabaseBackupSection";
 import type { FormEvent } from "react";
 import type { AuthUser } from "../../shared/api/auth";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
+import { classificationLabels, type ClassificationMethod } from "../../shared/classification";
 import { ToastNotice } from "../../shared/components/ToastNotice";
 import { DeveloperPasswordModal } from "./DeveloperPasswordModal";
 import { HistoryResetPasswordSection } from "./HistoryResetPasswordSection";
@@ -69,6 +70,26 @@ function DeveloperSettingsContent({ token, user, onProfileChange }: Props) {
               disabled={controller.saving || controller.logoBusy}
               onFormChange={controller.updateForm}
             />
+            <label className="developer-classification-field">
+              <strong>분류 방법</strong>
+              <select
+                value={controller.form.classificationMethod ?? "ADMISSION"}
+                onChange={(event) =>
+                  controller.updateForm({ classificationMethod: event.target.value as ClassificationMethod })
+                }
+                disabled={controller.saving || controller.logoBusy}
+              >
+                {Object.entries(classificationLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <small>
+                시스템 설정과 사용자 접근 권한에 적용합니다. 기존에 접근 범위가 제한된 계정은 새 기준에서 권한을 확인해
+                주세요.
+              </small>
+            </label>
           </div>
           <footer>
             <span>

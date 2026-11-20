@@ -118,6 +118,12 @@ export class DeveloperSettingsService {
           pseudonymNoUniqueness,
           updatedBy: user.id,
         });
+        if (
+          input.classificationMethod &&
+          input.classificationMethod !== (profile.classificationMethod ?? "ADMISSION")
+        ) {
+          await this.repository.updateClassificationMethod(connection, input.classificationMethod);
+        }
         if (identityDecision.writeTarget) {
           await this.identityProjection.syncCurrentNumberPolicyAndClaims(connection, user.id);
         }
@@ -130,6 +136,7 @@ export class DeveloperSettingsService {
             systemName: input.systemName.trim(),
             examineeNoUniqueness,
             pseudonymNoUniqueness,
+            classificationMethod: input.classificationMethod ?? profile.classificationMethod ?? "ADMISSION",
           },
         });
       });
@@ -340,6 +347,7 @@ function profileResponse(profile: ProfileRow) {
     systemName: profile.systemName,
     examineeNoUniqueness: profile.examineeNoUniqueness,
     pseudonymNoUniqueness: profile.pseudonymNoUniqueness,
+    ...(profile.classificationMethod ? { classificationMethod: profile.classificationMethod } : {}),
     logoFileName: profile.logoFileName,
     logoDataUrl:
       profile.logoData && profile.logoMimeType

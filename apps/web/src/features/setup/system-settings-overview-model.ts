@@ -1,8 +1,11 @@
 import type { CandidateRecord } from "../../shared/api/candidates";
+import type { ClassificationMethod } from "../../shared/classification";
 import type { PseudonymAssignmentMethod, PseudonymSetting } from "../../shared/api/pseudonyms";
 
 export interface AdmissionCardData {
   name: string;
+  label?: string;
+  classificationMethod?: ClassificationMethod;
   candidates: number;
   dates: number;
   schedules: number;

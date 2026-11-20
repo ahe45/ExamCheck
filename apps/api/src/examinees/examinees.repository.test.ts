@@ -45,7 +45,9 @@ describe("ExamineesRepository", () => {
         labelPrintingEnabled: true,
       },
     ]);
-    expect(execute.mock.calls[0]?.[0]).toContain("GROUP BY cr.exam_date, cr.start_time, cr.period_name, cr.admission");
+    expect(execute.mock.calls[0]?.[0]).toContain(
+      "GROUP BY cr.exam_date, cr.start_time, cr.period_name, cr.operation_scope",
+    );
     expect(execute.mock.calls[0]?.[0]).toContain("NULLIF(cr.temporary_no, '') IS NOT NULL");
   });
 

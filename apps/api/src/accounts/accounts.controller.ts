@@ -14,13 +14,18 @@ export class AccountsController {
   constructor(@Inject(AccountsService) private readonly accountsService: AccountsService) {}
 
   @Get()
-  list() {
-    return this.accountsService.list();
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.accountsService.list(user.classificationMethod ?? "ADMISSION");
   }
 
   @Get("admissions")
   admissions() {
     return this.accountsService.admissions();
+  }
+
+  @Get("classification-scopes")
+  classificationScopes(@CurrentUser() user: AuthenticatedUser) {
+    return this.accountsService.classificationScopes(user.classificationMethod ?? "ADMISSION");
   }
 
   @Post()

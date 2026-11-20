@@ -6,6 +6,7 @@ import type {
 } from "../../shared/api/pseudonyms";
 
 export interface RangeDraft {
+  scopeKey?: string;
   date: string;
   time: string;
   period: string;

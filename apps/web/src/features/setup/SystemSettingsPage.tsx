@@ -14,6 +14,7 @@ import { fetchLabelTemplates, type LabelTemplateSummary } from "../../shared/api
 import {
   fetchPseudonymSetting,
   updatePseudonymSetting,
+  updatePseudonymSettingsBatch,
   type PseudonymAssignmentMethod,
   type PseudonymSetting,
 } from "../../shared/api/pseudonyms";
@@ -48,25 +49,31 @@ export interface SystemSettingsPageHandle {
   save(): Promise<boolean>;
 }
 
+export interface SettingsScope {
+  key: string;
+  label: string;
+}
+
 interface SystemSettingsPageProps {
   token: string;
   admissionName: string;
+  scopeLabel?: string;
+  batchScopes?: readonly SettingsScope[];
   embedded?: boolean;
   onDirtyChange?(dirty: boolean): void;
   onSaveStateChange?(state: { canSave: boolean; saving: boolean }): void;
-  onSaved?(setting: PseudonymSetting): void;
+  onSaved?(settings: PseudonymSetting[]): void;
 }
 
 export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSettingsPageProps>(
   function SystemSettingsPage(
-    { token, admissionName, embedded = false, onDirtyChange, onSaveStateChange, onSaved },
+    { token, admissionName, scopeLabel, batchScopes, embedded = false, onDirtyChange, onSaveStateChange, onSaved },
     ref,
   ) {
     const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
     const [assignmentMethod, setAssignmentMethod] = useState<PseudonymAssignmentMethod>("DRAW");
     const [ranges, setRanges] = useState<RangeDraft[]>([]);
-    const [fallbackRange, setFallbackRange] = useState({ start: 1001, end: 1999, displayWidth: 4 });
-    const [settingVersion, setSettingVersion] = useState(1);
+    const [savedSettings, setSavedSettings] = useState<PseudonymSetting[]>([]);
     const [autoDrawEnabled, setAutoDrawEnabled] = useState(false);
     const [autoDrawDelaySeconds, setAutoDrawDelaySeconds] = useState(3);
     const [printPreassignedLabel, setPrintPreassignedLabel] = useState(true);
@@ -81,6 +88,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [useAnswerSheet, setUseAnswerSheet] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const saveInProgress = useRef(false);
     const [bulkOpen, setBulkOpen] = useState(false);
     const [bulkMode, setBulkMode] = useState<BulkRangeMode>("SAME_START");
     const [bulkStart, setBulkStart] = useState("1001");
@@ -103,78 +111,66 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       return () => observer.disconnect();
     }, [embedded, loading, assignmentMethod]);
 
-    const applySetting = useCallback((setting: PseudonymSetting, rows: CandidateRecord[]) => {
-      const nextRanges = buildScheduleRanges(rows, setting);
-      setRequiresInitialSave(
-        setting.version === 0 ||
-          setting.ranges.length !== nextRanges.length ||
-          nextRanges.some((range) => {
-            const saved = setting.ranges.find((item) => scheduleIdentity(item) === scheduleIdentity(range));
-            return (
-              !saved ||
-              saved.rangeStart !== range.rangeStart ||
-              saved.rangeEnd !== range.rangeEnd ||
-              (saved.displayWidth ?? setting.displayWidth) !== range.displayWidth
-            );
-          }),
-      );
-      setCandidates(rows);
-      setSettingVersion(setting.version);
-      setAssignmentMethod(setting.assignmentMethod);
-      setAutoDrawEnabled(setting.autoDrawEnabled);
-      setAutoDrawDelaySeconds(setting.autoDrawDelaySeconds);
-      setFallbackRange({
-        start: setting.rangeStart,
-        end: setting.rangeEnd,
-        displayWidth:
-          setting.displayWidth ?? Math.max(String(setting.rangeStart).length, String(setting.rangeEnd).length),
-      });
-      setRanges(nextRanges);
-      setPrintPreassignedLabel(setting.printPreassignedLabel);
-      setLabelTemplateId(setting.labelTemplateId ?? null);
-      setAutoAssignAbsenteesOnClose(setting.autoAssignAbsenteesOnClose);
-      setDeleteAbsenteeInfoOnReopen(setting.deleteAbsenteeInfoOnReopen);
-      setUseCandidatePhotos(setting.useCandidatePhotos);
-      setEnableBulkDraw(setting.enableBulkDraw);
-      setShowAttendanceSelection(setting.showAttendanceSelection ?? true);
-      setUseAnswerSheet(setting.useAnswerSheet ?? false);
-      setSavedSnapshot(
-        createSettingsSnapshot({
-          assignmentMethod: setting.assignmentMethod,
-          ranges: nextRanges,
-          autoDrawEnabled: setting.autoDrawEnabled,
-          autoDrawDelaySeconds: setting.autoDrawDelaySeconds,
-          printPreassignedLabel: setting.printPreassignedLabel,
-          labelTemplateId: setting.labelTemplateId ?? null,
-          autoAssignAbsenteesOnClose: setting.autoAssignAbsenteesOnClose,
-          deleteAbsenteeInfoOnReopen: setting.deleteAbsenteeInfoOnReopen,
-          useCandidatePhotos: setting.useCandidatePhotos,
-          enableBulkDraw: setting.enableBulkDraw,
-          showAttendanceSelection: setting.showAttendanceSelection ?? true,
-          useAnswerSheet: setting.useAnswerSheet ?? false,
-        }),
-      );
-    }, []);
+    const applySettings = useCallback(
+      (settings: PseudonymSetting[], rows: CandidateRecord[]) => {
+        const [setting] = settings;
+        const rowsByScope = new Map<string, CandidateRecord[]>();
+        for (const row of rows) {
+          const key = (row.operationScope ?? row.admission).trim();
+          const group = rowsByScope.get(key);
+          if (group) group.push(row);
+          else rowsByScope.set(key, [row]);
+        }
+        const scopes = settings.map((item) => ({
+          setting: item,
+          ranges: buildScheduleRanges(rowsByScope.get(item.admissionName) ?? [], item),
+        }));
+        const nextRanges = scopes.flatMap(({ setting: item, ranges }) =>
+          batchScopes ? ranges.map((range) => ({ ...range, scopeKey: item.admissionName })) : ranges,
+        );
+        setRequiresInitialSave(
+          scopes.some(
+            ({ setting: item, ranges }) =>
+              settingSnapshot(item, []) !== settingSnapshot(setting, []) || needsRangeSave(item, ranges),
+          ),
+        );
+        setCandidates(rows);
+        setSavedSettings(settings);
+        setAssignmentMethod(setting.assignmentMethod);
+        setAutoDrawEnabled(setting.autoDrawEnabled);
+        setAutoDrawDelaySeconds(setting.autoDrawDelaySeconds);
+        setRanges(nextRanges);
+        setPrintPreassignedLabel(setting.printPreassignedLabel);
+        setLabelTemplateId(setting.labelTemplateId ?? null);
+        setAutoAssignAbsenteesOnClose(setting.autoAssignAbsenteesOnClose);
+        setDeleteAbsenteeInfoOnReopen(setting.deleteAbsenteeInfoOnReopen);
+        setUseCandidatePhotos(setting.useCandidatePhotos);
+        setEnableBulkDraw(setting.enableBulkDraw);
+        setShowAttendanceSelection(setting.showAttendanceSelection ?? true);
+        setUseAnswerSheet(setting.useAnswerSheet ?? false);
+        setSavedSnapshot(settingSnapshot(setting, nextRanges));
+      },
+      [batchScopes],
+    );
     const load = useCallback(async () => {
       setLoading(true);
       setNotice(null);
       try {
-        const [setting, rows, labelTemplateResult] = await Promise.all([
-          fetchPseudonymSetting(token, DEFAULT_EXAM_NAME, admissionName),
+        const keys = batchScopes?.map(({ key }) => key) ?? [admissionName];
+        const [settings, rows, labelTemplateResult] = await Promise.all([
+          Promise.all(keys.map((key) => fetchPseudonymSetting(token, DEFAULT_EXAM_NAME, key))),
           fetchCandidates(token),
           fetchLabelTemplates(token),
         ]);
         setLabelTemplates(labelTemplateResult.templates.filter((template) => template.active));
-        applySetting(
-          setting,
-          rows.filter((candidate) => candidate.admission.trim() === admissionName),
-        );
+        applySettings(settings, rows);
       } catch (reason) {
+        setSavedSnapshot(null);
         setNotice({ kind: "error", text: messageOf(reason, "시스템 설정을 불러오지 못했습니다.") });
       } finally {
         setLoading(false);
       }
-    }, [admissionName, applySetting, token]);
+    }, [admissionName, applySettings, batchScopes, token]);
 
     useEffect(() => {
       void load();
@@ -215,58 +211,77 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
         useAnswerSheet,
       ],
     );
-    const dirty = savedSnapshot !== null && (requiresInitialSave || savedSnapshot !== currentSnapshot);
+    const dirty =
+      savedSnapshot !== null && (savedSnapshot !== currentSnapshot || (!batchScopes && requiresInitialSave));
+    const canSave = savedSnapshot !== null && !loading && !saving && !invalidRange && (dirty || requiresInitialSave);
+    const scopeLabels = batchScopes ? new Map(batchScopes.map(({ key, label }) => [key, label])) : undefined;
 
     useEffect(() => {
       onDirtyChange?.(dirty);
     }, [dirty, onDirtyChange]);
     useEffect(() => {
-      onSaveStateChange?.({ canSave: dirty && !invalidRange && !saving, saving });
-    }, [dirty, invalidRange, onSaveStateChange, saving]);
+      onSaveStateChange?.({ canSave, saving });
+    }, [canSave, onSaveStateChange, saving]);
 
     useImperativeHandle(ref, () => ({ save: persistSettings }));
 
     async function persistSettings(): Promise<boolean> {
-      if (invalidRange || saving || !dirty) return !dirty && !invalidRange;
+      if (saveInProgress.current) return false;
+      if (!canSave) return !dirty && !invalidRange;
+      saveInProgress.current = true;
       setSaving(true);
       setNotice(null);
-      const configuredRanges = ranges;
-      const { rangeStart, rangeEnd } = configuredRangeBounds(configuredRanges, fallbackRange);
       try {
-        const setting = await updatePseudonymSetting(token, {
-          examName: DEFAULT_EXAM_NAME,
-          admissionName,
-          expectedVersion: settingVersion,
-          rangeStart,
-          rangeEnd,
-          displayWidth: configuredRanges.length
-            ? Math.max(...configuredRanges.map((range) => range.displayWidth ?? String(range.rangeEnd).length))
-            : fallbackRange.displayWidth,
-          assignmentMethod,
-          autoDrawEnabled,
-          autoDrawDelaySeconds,
-          printPreassignedLabel,
-          labelTemplateId,
-          autoAssignAbsenteesOnClose,
-          deleteAbsenteeInfoOnReopen,
-          useCandidatePhotos,
-          enableBulkDraw,
-          showAttendanceSelection,
-          useAnswerSheet,
-          ranges: toSettingRanges(configuredRanges),
+        const inputs = savedSettings.map((setting) => {
+          const configuredRanges = batchScopes
+            ? ranges.filter((range) => range.scopeKey === setting.admissionName)
+            : ranges;
+          const { rangeStart, rangeEnd } = configuredRangeBounds(configuredRanges, {
+            start: setting.rangeStart,
+            end: setting.rangeEnd,
+          });
+          return {
+            examName: DEFAULT_EXAM_NAME,
+            admissionName: setting.admissionName,
+            expectedVersion: setting.version,
+            rangeStart,
+            rangeEnd,
+            displayWidth: configuredRanges.length
+              ? Math.max(...configuredRanges.map((range) => range.displayWidth ?? String(range.rangeEnd).length))
+              : (setting.displayWidth ?? Math.max(String(setting.rangeStart).length, String(setting.rangeEnd).length)),
+            assignmentMethod,
+            autoDrawEnabled,
+            autoDrawDelaySeconds,
+            printPreassignedLabel,
+            labelTemplateId,
+            autoAssignAbsenteesOnClose,
+            deleteAbsenteeInfoOnReopen,
+            useCandidatePhotos,
+            enableBulkDraw,
+            showAttendanceSelection,
+            useAnswerSheet,
+            ranges: toSettingRanges(configuredRanges),
+          };
         });
-        applySetting(setting, candidates);
-        onSaved?.(setting);
-        setNotice({ kind: "success", text: "시스템 설정을 저장했습니다." });
+        const settings = batchScopes
+          ? await updatePseudonymSettingsBatch(token, inputs)
+          : [await updatePseudonymSetting(token, inputs[0])];
+        applySettings(settings, candidates);
+        onSaved?.(settings);
+        setNotice({
+          kind: "success",
+          text: batchScopes ? `${settings.length}개 항목의 설정을 저장했습니다.` : "시스템 설정을 저장했습니다.",
+        });
         return true;
       } catch (reason) {
         const conflictMessage =
           reason instanceof ApiError && reason.status === 409
-            ? `${messageOf(reason, "다른 관리자가 먼저 설정을 변경했습니다.")} 새로고침하여 최신 설정을 확인해 주세요.`
+            ? `${messageOf(reason, "다른 관리자가 먼저 설정을 변경했습니다.")} ${batchScopes ? "시스템 설정 목록을 새로고침한 뒤 일괄 설정을 다시 열어 주세요." : "새로고침하여 최신 설정을 확인해 주세요."}`
             : messageOf(reason, "시스템 설정을 저장하지 못했습니다.");
         setNotice({ kind: "error", text: conflictMessage });
         return false;
       } finally {
+        saveInProgress.current = false;
         setSaving(false);
       }
     }
@@ -283,10 +298,11 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
 
     function openBulkSettings() {
       const firstRange = ranges[0];
+      const [setting] = savedSettings;
       setBulkStart(
         firstRange
           ? formatRangeNumber(firstRange.rangeStart, firstRange.displayWidth)
-          : formatRangeNumber(fallbackRange.start, fallbackRange.displayWidth),
+          : formatRangeNumber(setting?.rangeStart ?? 1001, setting?.displayWidth ?? 4),
       );
       setBulkMode("SAME_START");
       setBulkCriteria([]);
@@ -322,7 +338,9 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     if (loading)
       return (
         <section className={`admin-standard-view system-settings-view ${embedded ? "embedded" : ""}`}>
-          <div className="admin-view-loading">{admissionName} 설정을 불러오고 있습니다.</div>
+          <div className="admin-view-loading">
+            {batchScopes ? "전체 항목의" : (scopeLabel ?? admissionName)} 설정을 불러오고 있습니다.
+          </div>
         </section>
       );
 
@@ -330,7 +348,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       <section ref={viewRef} className={`admin-standard-view system-settings-view ${embedded ? "embedded" : ""}`}>
         <form onSubmit={submitSettings}>
           {notice && <ToastNotice notice={notice} onClose={() => setNotice(null)} />}
-          <div className="system-settings-content">
+          <fieldset className="system-settings-content" disabled={saving}>
             <div className="system-settings-top-grid">
               <AssignmentMethodSection
                 useAnswerSheet={useAnswerSheet}
@@ -374,9 +392,10 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
                 onRefresh={refreshSettings}
                 onOpenBulk={openBulkSettings}
                 onRangeStartChange={changeRangeStart}
+                scopeLabels={scopeLabels}
               />
             )}
-          </div>
+          </fieldset>
         </form>
 
         {bulkOpen && (
@@ -398,4 +417,22 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
 
 function messageOf(reason: unknown, fallback: string) {
   return reason instanceof Error ? reason.message : fallback;
+}
+
+function settingSnapshot(setting: PseudonymSetting, ranges: RangeDraft[]) {
+  return createSettingsSnapshot({ ...setting, labelTemplateId: setting.labelTemplateId ?? null, ranges });
+}
+
+function needsRangeSave(setting: PseudonymSetting, ranges: RangeDraft[]) {
+  if (setting.version === 0 || setting.ranges.length !== ranges.length) return true;
+  const savedBySchedule = new Map(setting.ranges.map((range) => [scheduleIdentity(range), range]));
+  return ranges.some((range) => {
+    const saved = savedBySchedule.get(scheduleIdentity(range));
+    return (
+      !saved ||
+      saved.rangeStart !== range.rangeStart ||
+      saved.rangeEnd !== range.rangeEnd ||
+      (saved.displayWidth ?? setting.displayWidth) !== range.displayWidth
+    );
+  });
 }

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { RowDataPacket } from "mysql2/promise";
+import { CLASSIFICATION_SCOPE_SQL_PATTERN } from "../authorization/classification.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 import { normalizeCandidateNumber, normalizeSourceCode, parseCanonicalPseudonymNumber } from "./identity-keys.js";
 import { normalizeIdentityText } from "./identity-normalization.js";
@@ -278,7 +279,9 @@ export class IdentityShadowSnapshotRepository {
               setting.delete_absentee_info_on_reopen AS deleteAbsenteeInfoOnReopen,
               setting.use_candidate_photos AS useCandidatePhotos,
               setting.enable_bulk_draw AS enableBulkDraw, setting.version
-       FROM pseudonym_setting setting ORDER BY setting.id`,
+       FROM pseudonym_setting setting
+       WHERE setting.admission_name NOT REGEXP '${CLASSIFICATION_SCOPE_SQL_PATTERN}'
+       ORDER BY setting.id`,
     );
     const [target] = await executor.query<SettingRow[]>(
       `SELECT policy.source_setting_id AS entityId, cycle.display_name AS examName,
@@ -313,6 +316,7 @@ export class IdentityShadowSnapshotRepository {
               range_row.next_sequence AS nextValue
        FROM pseudonym_time_range range_row
        INNER JOIN pseudonym_setting setting ON setting.id = range_row.setting_id
+       WHERE setting.admission_name NOT REGEXP '${CLASSIFICATION_SCOPE_SQL_PATTERN}'
        ORDER BY range_row.id`,
     );
     const [target] = await executor.query<RangeRow[]>(
@@ -348,7 +352,9 @@ export class IdentityShadowSnapshotRepository {
               DATE_FORMAT(operation.closed_at, '%Y-%m-%dT%H:%i:%s.%f') AS closedAt,
               operation.reopened_by AS reopenedBy,
               DATE_FORMAT(operation.reopened_at, '%Y-%m-%dT%H:%i:%s.%f') AS reopenedAt
-       FROM pseudonym_operation operation ORDER BY operation.id`,
+       FROM pseudonym_operation operation
+       WHERE operation.admission_name NOT REGEXP '${CLASSIFICATION_SCOPE_SQL_PATTERN}'
+       ORDER BY operation.id`,
     );
     const [target] = await executor.query<OperationRow[]>(
       `SELECT operation.source_operation_id AS entityId, cycle.display_name AS examName,

@@ -268,6 +268,8 @@ function createFixture() {
     list: vi.fn(),
     findOne: vi.fn(),
     listAdmissionNames: vi.fn(),
+    deleteClassificationAssignments: vi.fn(),
+    setUnrestrictedAdmissionAccess: vi.fn(),
     findIdByLoginId: vi.fn(),
     insertAccount: vi.fn(),
     findTargetForUpdate: vi.fn(),

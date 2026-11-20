@@ -1,6 +1,7 @@
 import { ModalCloseButton } from "../../shared/components/ModalCloseButton";
 import { useState, type FormEvent } from "react";
 import type { Account, AccountInput, AccountRole } from "../../shared/api/accounts";
+import { classificationLabels, type ClassificationMethod } from "../../shared/classification";
 import { CancelButtonIcon, SaveButtonIcon } from "../../shared/components/ActionIcons";
 import { useDialogFocus } from "../../shared/hooks/useDialogFocus";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
@@ -8,12 +9,15 @@ import {
   accountFormError,
   accountFormFor,
   accountInputFrom,
+  accountScopeLabel,
   withAccountRole,
   withToggledAdmission,
 } from "./account-management-model";
 
 interface AccountEditorModalProps {
   admissions: string[];
+  scopeLabels?: Record<string, string>;
+  classificationMethod?: ClassificationMethod;
   editing: Account | null;
   onClose(): void;
   onSave(account: Account | null, input: AccountInput): Promise<boolean>;
@@ -22,6 +26,8 @@ interface AccountEditorModalProps {
 
 export function AccountEditorModal({
   admissions,
+  scopeLabels = {},
+  classificationMethod = "ADMISSION",
   editing,
   onClose,
   onSave,
@@ -30,6 +36,8 @@ export function AccountEditorModal({
   const dialogRef = useDialogFocus<HTMLDivElement>();
   const [form, setForm] = useState(() => accountFormFor(editing));
   const [saving, setSaving] = useState(false);
+  const [allowAll, setAllowAll] = useState(false);
+  const scopeChoices = [...new Set([...admissions, ...(editing?.admissionNames ?? [])])];
 
   useEscapeKey(!saving, onClose);
 
@@ -47,7 +55,14 @@ export function AccountEditorModal({
     }
     setSaving(true);
     try {
-      await onSave(editing, accountInputFrom(form));
+      const accessUnchanged =
+        editing?.role === form.role &&
+        form.admissionNames.length === editing.admissionNames.length &&
+        form.admissionNames.every((scope) => editing.admissionNames.includes(scope));
+      await onSave(editing, {
+        ...accountInputFrom(form),
+        ...(accessUnchanged && !allowAll ? { preserveClassificationAccess: true } : {}),
+      });
     } finally {
       setSaving(false);
     }
@@ -118,11 +133,11 @@ export function AccountEditorModal({
                 onClick={() => changeRole("ADMIN")}
               >
                 <strong>관리자</strong>
-                <small>모든 관리 기능과 전체 전형 접근</small>
+                <small>모든 관리 기능과 전체 접근</small>
               </button>
               <button type="button" className={form.role === "USER" ? "active" : ""} onClick={() => changeRole("USER")}>
                 <strong>사용자</strong>
-                <small>전형 지정 또는 전체 전형 운영</small>
+                <small>지정된 항목 또는 전체 운영</small>
               </button>
             </div>
           </section>
@@ -130,27 +145,45 @@ export function AccountEditorModal({
             <section className="account-admission-section">
               <header>
                 <div>
-                  <strong>전형 배정</strong>
-                  <small>선택한 전형만 조회되며, 아무것도 선택하지 않으면 전체 전형·교시에 접근합니다.</small>
+                  <strong>{classificationMethod === "ADMISSION" ? "전형 배정" : "접근 범위 배정"}</strong>
+                  <small>
+                    {classificationMethod === "NONE"
+                      ? "분류 없음에서는 전체 일정에 접근합니다."
+                      : `${classificationLabels[classificationMethod]} 항목을 선택하면 선택한 범위만 조회됩니다.`}
+                  </small>
                 </div>
-                <span>{form.admissionNames.length ? `${form.admissionNames.length}개 선택` : "전체 접근"}</span>
+                <span>
+                  {form.admissionNames.length
+                    ? `${form.admissionNames.length}개 선택`
+                    : editing?.scopeBlocked && !allowAll
+                      ? "미배정"
+                      : "전체 접근"}
+                </span>
               </header>
-              {admissions.length ? (
+              {scopeChoices.length ? (
                 <div>
-                  {admissions.map((admission) => (
+                  {scopeChoices.map((admission) => (
                     <label className={form.admissionNames.includes(admission) ? "selected" : ""} key={admission}>
                       <input
                         type="checkbox"
                         checked={form.admissionNames.includes(admission)}
                         onChange={() => setForm((current) => withToggledAdmission(current, admission))}
                       />
-                      <span>{admission}</span>
+                      <span>{accountScopeLabel(admission, scopeLabels)}</span>
                       <i>✓</i>
                     </label>
                   ))}
                 </div>
               ) : (
-                <p>등록된 수험생 전형이 없습니다. 수험생 데이터를 먼저 업로드해 주세요.</p>
+                classificationMethod !== "NONE" && (
+                  <p>등록된 분류 항목이 없습니다. 수험생 데이터를 먼저 업로드해 주세요.</p>
+                )
+              )}
+              {editing?.scopeBlocked && !form.admissionNames.length && (
+                <label>
+                  <input type="checkbox" checked={allowAll} onChange={(event) => setAllowAll(event.target.checked)} />
+                  전체 접근 허용
+                </label>
               )}
             </section>
           )}

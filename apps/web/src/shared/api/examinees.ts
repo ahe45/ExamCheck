@@ -52,6 +52,7 @@ export const operationScheduleSchema = z.object({
   time: z.string().min(1),
   periodName: z.string().min(1),
   admissionName: z.string().min(1),
+  scopeLabel: z.string().optional(),
   buildingNames: z.array(z.string()),
   candidateCount: z.number().int().nonnegative(),
   assignedCount: z.number().int().nonnegative(),
@@ -60,9 +61,13 @@ export const operationScheduleSchema = z.object({
 });
 export type OperationSchedule = z.infer<typeof operationScheduleSchema>;
 
-export type OperationScheduleScope = Pick<OperationSchedule, "date" | "time" | "periodName" | "admissionName">;
+export type OperationScheduleScope = Pick<
+  OperationSchedule,
+  "date" | "time" | "periodName" | "admissionName" | "scopeLabel"
+>;
 
 export interface ExamineeScheduleAssignment {
+  scopeLabel?: string;
   examineeNo: string;
   name: string;
   examDate: string;

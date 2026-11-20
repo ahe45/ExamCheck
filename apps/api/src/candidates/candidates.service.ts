@@ -104,11 +104,14 @@ export class CandidatesService {
   }
 
   async dashboardSummary(user: AuthenticatedUser, requestedAdmissionName?: string) {
-    const admissionName = requestedAdmissionName
-      ? assertAdmissionAccess(user, requestedAdmissionName, {
-          forbiddenMessage: "배정되지 않은 전형의 대시보드는 조회할 수 없습니다.",
-        })
-      : undefined;
+    const admissionName =
+      requestedAdmissionName && user.classificationMethod
+        ? requestedAdmissionName.trim()
+        : requestedAdmissionName
+          ? assertAdmissionAccess(user, requestedAdmissionName, {
+              forbiddenMessage: "배정되지 않은 전형의 대시보드는 조회할 수 없습니다.",
+            })
+          : undefined;
     const access = buildAdmissionAccessPredicate(user, ADMISSION_SQL_COLUMNS.candidateRecord);
     const rows = await this.repository.listDashboardBreakdownCounts(this.pool, access, admissionName);
     const breakdowns = {

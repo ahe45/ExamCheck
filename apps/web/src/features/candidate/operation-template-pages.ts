@@ -2,6 +2,7 @@ import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import { fetchExamineePhoto, type OperationSchedule } from "../../shared/api/examinees";
 import type { FormTemplate } from "../../shared/api/form-templates";
 import { boundedMap, isAbortError, throwIfAborted } from "../../shared/async/bounded-map";
+import { operationScopeMethod } from "../../shared/classification";
 import { getTemplateDocumentHtml, renderTemplateHtml } from "../templates/template-renderer";
 import {
   getPrintableCandidateGrid,
@@ -185,7 +186,9 @@ function templateValues(
     "candidate.testTypeCode": "",
     "candidate.testTypeName": "",
     "candidate.admissionTypeCode": candidate?.admissionCode || "",
-    "candidate.admissionTypeName": candidate?.admissionName || context.schedule.admissionName,
+    "candidate.admissionTypeName":
+      candidate?.admissionName ||
+      (operationScopeMethod(context.schedule.admissionName) === "ADMISSION" ? context.schedule.admissionName : ""),
     "candidate.campusCode": "",
     "candidate.campusName": "",
     "candidate.collegeCode": "",

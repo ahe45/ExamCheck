@@ -9,6 +9,7 @@ import {
   IsDefined,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   Length,
@@ -307,6 +308,15 @@ export class UpdatePseudonymSettingDto implements UpdatePseudonymSettingInput {
   @ValidateNested({ each: true })
   @Type(() => PseudonymTimeRangeDto)
   ranges!: PseudonymTimeRangeDto[];
+}
+
+export class UpdatePseudonymSettingsBatchDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsObject({ each: true })
+  @ValidateNested({ each: true })
+  @Type(() => UpdatePseudonymSettingDto)
+  settings!: UpdatePseudonymSettingDto[];
 }
 
 export class PseudonymTimeRangeDto implements PseudonymTimeRangeInput {

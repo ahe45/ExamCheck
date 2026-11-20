@@ -170,7 +170,7 @@ describe("PseudonymsRepository SQL mapping", () => {
     expect(call?.sql).toContain("cr.exam_date = ?");
     expect(call?.sql).toContain("cr.start_time = ?");
     expect(call?.sql).toContain("cr.period_name = ?");
-    expect(call?.sql).toContain("cr.admission = ?");
+    expect(call?.sql).toContain("cr.operation_scope = ?");
     expect(call?.sql).toContain("LEFT JOIN pseudonym_operation po");
     expect(call?.sql).toContain("MAX(sent_at) AS last_printed_at");
     expect(call?.sql).toContain("LIMIT 10001");

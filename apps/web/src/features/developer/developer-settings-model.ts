@@ -32,6 +32,7 @@ export function toDeveloperSettingsForm(profile: DeveloperSettings): DeveloperSe
     systemName: profile.systemName,
     examineeNoUniqueness: profile.examineeNoUniqueness,
     pseudonymNoUniqueness: profile.pseudonymNoUniqueness,
+    classificationMethod: profile.classificationMethod,
   };
 }
 
@@ -42,6 +43,7 @@ export function buildDeveloperSettingsInput(form: DeveloperSettingsInput): Devel
     systemName: form.systemName.trim(),
     examineeNoUniqueness: form.examineeNoUniqueness,
     pseudonymNoUniqueness: form.pseudonymNoUniqueness,
+    ...(form.classificationMethod ? { classificationMethod: form.classificationMethod } : {}),
   };
 }
 
@@ -53,7 +55,8 @@ export function isDeveloperSettingsDirty(profile: DeveloperSettings | null, form
     input.academicYear !== profile.academicYear ||
     input.systemName !== profile.systemName ||
     input.examineeNoUniqueness !== profile.examineeNoUniqueness ||
-    input.pseudonymNoUniqueness !== profile.pseudonymNoUniqueness
+    input.pseudonymNoUniqueness !== profile.pseudonymNoUniqueness ||
+    (input.classificationMethod ?? "ADMISSION") !== (profile.classificationMethod ?? "ADMISSION")
   );
 }
 

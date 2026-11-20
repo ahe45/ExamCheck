@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { isClassifiedScope } from "../authorization/classification.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 import {
   admissionPolicyScopeKey,
@@ -55,6 +56,7 @@ interface ExistingPolicyRow extends RowDataPacket {
 }
 
 interface LegacyRangeRow extends RowDataPacket {
+  settingScope?: string;
   id: number;
   settingId: number;
   admissionName: string;
@@ -454,6 +456,7 @@ export class IdentityBackfillProjectionRepository {
       throw new IdentityBackfillProjectionError("SOURCE_SETTING_NOT_FOUND", "pseudonym_setting", sourceSettingId);
     }
     const admissionName = normalizeIdentityText(source.admissionName);
+    if (isClassifiedScope(admissionName)) return;
     const admissionId = admissionName
       ? await this.resolveAdmissionByName(executor, examCycleId, admissionName, "pseudonym_setting", source.id)
       : null;
@@ -526,6 +529,7 @@ export class IdentityBackfillProjectionRepository {
   async syncRange(executor: SqlExecutor, sourceRangeId: number): Promise<void> {
     const [rows] = await executor.execute<LegacyRangeRow[]>(
       `SELECT ptr.id, ptr.setting_id AS settingId,
+              ps.admission_name AS settingScope,
               COALESCE(NULLIF(ptr.admission, ''), ps.admission_name) AS admissionName,
               DATE_FORMAT(ptr.exam_date, '%Y-%m-%d') AS examDate,
               ptr.exam_time AS examTime, ptr.period_name AS periodName,
@@ -541,6 +545,7 @@ export class IdentityBackfillProjectionRepository {
     const source = rows[0];
     if (!source)
       throw new IdentityBackfillProjectionError("SOURCE_RANGE_NOT_FOUND", "pseudonym_time_range", sourceRangeId);
+    if (source.settingScope && isClassifiedScope(source.settingScope)) return;
     const [policies] = await executor.execute<IdRow[]>(
       `SELECT id FROM pseudonym_policy WHERE source_setting_id = ? LIMIT 1 FOR UPDATE`,
       [source.settingId],
@@ -626,6 +631,7 @@ export class IdentityBackfillProjectionRepository {
     const source = rows[0];
     if (!source)
       throw new IdentityBackfillProjectionError("SOURCE_OPERATION_NOT_FOUND", "pseudonym_operation", sourceOperationId);
+    if (isClassifiedScope(source.admissionName)) return;
     const admissionId = await this.resolveAdmissionByName(
       executor,
       examCycleId,

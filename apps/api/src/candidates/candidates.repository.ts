@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { AdmissionAccessPredicate } from "../authorization/admission-policy.js";
+import { candidateClassificationScope, type ClassificationMethod } from "../authorization/classification.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 import type { ExamineeNoUniqueness } from "../uniqueness/number-uniqueness.js";
 import type { CandidatePhotoReference, CandidateRecord } from "./candidate-domain.js";
@@ -53,6 +54,7 @@ interface CandidateIdRow extends RowDataPacket {
 }
 
 export interface CandidateImportScopeGuardRow extends RowDataPacket {
+  settingScope?: string;
   rangeId: number | null;
   guardType: "RANGE" | "CLOSED";
   date: string;
@@ -75,7 +77,7 @@ export class CandidatesRepository {
         cr.waiting_room AS waitingRoom, cr.examinee_no AS examineeNo, cr.name,
         COALESCE(pa.is_absentee, FALSE) AS absent, COALESCE(po.closed, FALSE) AS closed,
         ${attendanceProcessedSql} AS processed
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        ${attendanceJoinsSql}
        WHERE cr.status = 'ACTIVE' AND ${access.sql}
@@ -185,7 +187,7 @@ export class CandidatesRepository {
               COUNT(DISTINCT cr.id) AS total,
               COUNT(DISTINCT CASE WHEN NOT COALESCE(pa.is_absentee, FALSE)
                 AND (${attendanceProcessedSql}) THEN cr.id END) AS assigned
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        ${attendanceJoinsSql}
        CROSS JOIN (
@@ -231,7 +233,7 @@ export class CandidatesRepository {
     const placeholders = candidateIds.map(() => "?").join(", ");
     const [rows] = await executor.execute<CandidateIdRow[]>(
       `SELECT cr.id
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        WHERE cr.id IN (${placeholders})
          AND (
            EXISTS (
@@ -244,7 +246,7 @@ export class CandidatesRepository {
                AND po.exam_date = cr.exam_date
                AND po.exam_time = cr.start_time
                AND po.period_name = cr.period_name
-               AND po.admission_name = cr.admission
+               AND po.admission_name = cr.operation_scope
            )
          )`,
       [...candidateIds, examName],
@@ -256,14 +258,15 @@ export class CandidatesRepository {
     const [rows] = await executor.execute<CandidateImportScopeGuardRow[]>(
       `SELECT ptr.id AS rangeId, 'RANGE' AS guardType, DATE_FORMAT(ptr.exam_date, '%Y-%m-%d') AS date,
               ptr.exam_time AS time, ptr.period_name AS period, ptr.admission,
-              ptr.unit_name AS unit, ptr.major, ptr.building_name AS building, ptr.room_name AS room
+              ptr.unit_name AS unit, ptr.major, ptr.building_name AS building, ptr.room_name AS room,
+              ps.admission_name AS settingScope
        FROM pseudonym_time_range ptr
        INNER JOIN pseudonym_setting ps ON ps.id = ptr.setting_id
        WHERE ps.exam_name = ?
        UNION ALL
        SELECT NULL AS rangeId, 'CLOSED' AS guardType, DATE_FORMAT(po.exam_date, '%Y-%m-%d') AS date,
               po.exam_time AS time, po.period_name AS period, po.admission_name AS admission,
-              '' AS unit, '' AS major, '' AS building, '' AS room
+              '' AS unit, '' AS major, '' AS building, '' AS room, NULL AS settingScope
        FROM pseudonym_operation po
        WHERE po.exam_name = ? AND po.closed = TRUE`,
       [examName, examName],
@@ -313,15 +316,22 @@ export class CandidatesRepository {
   }
 
   async lockImportOperations(executor: SqlExecutor, examName: string, candidates: readonly CandidateInput[]) {
+    if (!candidates.length) return;
+    const [profiles] = await executor.query<Array<RowDataPacket & { method: ClassificationMethod }>>(
+      "SELECT classification_method AS method FROM system_profile WHERE id = 1 LOCK IN SHARE MODE",
+    );
+    const method = profiles[0]?.method ?? "ADMISSION";
     const scopes = new Map(
-      candidates.map((row) => [JSON.stringify([row.date, row.time, row.period, row.admission]), row]),
+      candidates.map((row) => {
+        const scope = [row.date, row.time, row.period, candidateClassificationScope(row, method)];
+        return [JSON.stringify(scope), scope];
+      }),
     );
     for (const key of [...scopes.keys()].sort()) {
-      const row = scopes.get(key)!;
       await executor.execute(
         `INSERT INTO pseudonym_operation_mutex (exam_name, exam_date, exam_time, period_name, admission_name)
         VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE admission_name = VALUES(admission_name)`,
-        [examName, row.date, row.time, row.period, row.admission],
+        [examName, ...scopes.get(key)!],
       );
     }
   }
@@ -429,9 +439,9 @@ const aliases = candidateFields
   )
   .join(",\n  ");
 
-const candidateSelectSql = `SELECT cr.id, ${aliases}, pa.pseudonym_no AS assignedNumber, pa.assigned_at AS assignedAt,
+const candidateSelectSql = `SELECT cr.id, cr.operation_scope AS operationScope, ${aliases}, pa.pseudonym_no AS assignedNumber, pa.assigned_at AS assignedAt,
   cr.created_at AS createdAt, cr.updated_at AS updatedAt
-  FROM candidate_record cr
+  FROM operation_candidate_record cr
   LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id`;
 
 const placeholders = candidateFields.map(() => "?").join(", ");
@@ -451,7 +461,7 @@ const attendanceProcessedSql = `CASE WHEN ${preassigned} AND COALESCE(s.print_pr
             AND pj.label_type = 'PSEUDONYM_LABEL' AND pj.status = 'SENT')
           ELSE (pa.id IS NOT NULL OR (${preassigned} AND NULLIF(cr.temporary_no, '') IS NOT NULL))
         END`;
-const attendanceJoinsSql = `LEFT JOIN pseudonym_setting s ON s.exam_name = cr.exam_name AND s.admission_name = cr.admission AND s.active = TRUE
+const attendanceJoinsSql = `LEFT JOIN pseudonym_setting s ON s.exam_name = cr.exam_name AND s.admission_name = cr.operation_scope AND s.active = TRUE
        LEFT JOIN pseudonym_setting d ON d.exam_name = cr.exam_name AND d.admission_name = '' AND d.active = TRUE
        LEFT JOIN pseudonym_operation po ON po.exam_name = cr.exam_name AND po.exam_date = cr.exam_date
-         AND po.exam_time = cr.start_time AND po.period_name = cr.period_name AND po.admission_name = cr.admission`;
+         AND po.exam_time = cr.start_time AND po.period_name = cr.period_name AND po.admission_name = cr.operation_scope`;

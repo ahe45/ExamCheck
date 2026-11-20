@@ -199,7 +199,7 @@ export function useOperationPrint(options: Options) {
       if (!isActiveGeneration(controller, requestScheduleKey)) return;
       setProgress({ label: "PDF 페이지를 생성하고 있습니다.", completed: 0, total: pages.length });
       await downloadTemplatePdf(
-        `${options.schedule.admissionName}_${options.schedule.date}_${options.schedule.periodName}_${template.name}`,
+        `${options.schedule.scopeLabel ?? options.schedule.admissionName}_${options.schedule.date}_${options.schedule.periodName}_${template.name}`,
         pages,
         template.layout,
         {

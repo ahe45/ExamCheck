@@ -3,6 +3,7 @@ import { AppLogoutIcon } from "../../shared/components/ActionIcons";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import type { OperationSchedule } from "../../shared/api/examinees";
 import type { AssignmentMode } from "../../shared/api/pseudonyms";
+import { operationScopeFieldLabel } from "../../shared/classification";
 import { assignmentModeDisplay } from "./operation-view-model";
 
 interface Props {
@@ -76,8 +77,8 @@ export function OperationConsoleHeader({
         aria-label="현재 고사 요약"
       >
         <div>
-          <span>전형명</span>
-          <strong>{schedule.admissionName}</strong>
+          <span>{operationScopeFieldLabel(schedule.admissionName)}</span>
+          <strong>{schedule.scopeLabel ?? schedule.admissionName}</strong>
         </div>
         <div>
           <span>시험일자</span>

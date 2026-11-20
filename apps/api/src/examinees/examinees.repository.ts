@@ -1,6 +1,7 @@
 import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import type { AdmissionAccessPredicate } from "../authorization/admission-policy.js";
+import { isClassifiedScope } from "../authorization/classification.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import type {
   ExamineePhotoRow,
@@ -17,7 +18,7 @@ export class ExamineesRepository {
   async listSchedules(access: AdmissionAccessPredicate) {
     const [rows] = await this.pool.execute<OperationScheduleRow[]>(
       `SELECT DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS date, cr.start_time AS time,
-              cr.period_name AS periodName, cr.admission AS admissionName,
+              cr.period_name AS periodName, cr.operation_scope AS admissionName, cr.operation_scope_label AS scopeLabel,
               GROUP_CONCAT(DISTINCT NULLIF(cr.building_name, '') ORDER BY cr.building_name SEPARATOR '\u001f') AS buildingNames,
               COUNT(*) AS candidateCount,
               SUM(CASE WHEN pa.id IS NOT NULL OR (${preassignedModeSql} AND NULLIF(cr.temporary_no, '') IS NOT NULL) THEN 1 ELSE 0 END) AS assignedCount,
@@ -25,13 +26,13 @@ export class ExamineesRepository {
               MIN(CASE WHEN ${preassignedModeSql}
                 AND COALESCE(admission_setting.print_preassigned_label, default_setting.print_preassigned_label, TRUE)
                 THEN 1 ELSE 0 END) AS labelPrintingEnabled
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        ${settingJoinSql}
        ${printedJoinSql}
        WHERE ${access.sql}
-       GROUP BY cr.exam_date, cr.start_time, cr.period_name, cr.admission
-       ORDER BY cr.exam_date, cr.start_time, cr.period_name, cr.admission`,
+       GROUP BY cr.exam_date, cr.start_time, cr.period_name, cr.operation_scope, cr.operation_scope_label
+       ORDER BY cr.exam_date, cr.start_time, cr.period_name, cr.operation_scope`,
       access.params,
     );
     return rows.map((row) => ({
@@ -47,7 +48,7 @@ export class ExamineesRepository {
   async listRoster(scope: OperationScheduleScope, admissionName: string): Promise<ExamineeRow[]> {
     const [rows] = await this.pool.execute<ExamineeRow[]>(
       `${examineeSelectSql}
-       WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.admission = ?
+       WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.operation_scope = ?
          AND cr.status = 'ACTIVE'
        ORDER BY cr.designated_sort, cr.examinee_no`,
       [scope.date, scope.time, scope.periodName, admissionName],
@@ -59,8 +60,8 @@ export class ExamineesRepository {
     const [rows] = await this.pool.execute<Array<{ enabled: number } & RowDataPacket>>(
       `SELECT (COALESCE(admission_setting.assignment_method, default_setting.assignment_method) IN ('SEQUENTIAL', 'MATCHING')
         AND COALESCE(admission_setting.use_answer_sheet, default_setting.use_answer_sheet, FALSE)) AS enabled
-       FROM candidate_record cr ${settingJoinSql}
-       WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.admission = ?
+       FROM operation_candidate_record cr ${settingJoinSql}
+       WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.operation_scope = ?
          AND cr.status = 'ACTIVE' LIMIT 1`,
       [scope.date, scope.time, scope.periodName, admissionName],
     );
@@ -71,12 +72,15 @@ export class ExamineesRepository {
     const [rows] = await this.pool.execute<ExamineeRow[]>(
       `${examineeSelectSql}
        WHERE cr.${useAnswerSheet ? "answer_sheet" : "examinee_no"} = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE' LIMIT ${useAnswerSheet ? 2 : 1}`,
+         AND cr.period_name = ? AND cr.operation_scope = ? AND cr.status = 'ACTIVE'
+       LIMIT ${useAnswerSheet || isClassifiedScope(admissionName) ? 2 : 1}`,
       [examineeNo, scope.date, scope.time, scope.periodName, admissionName],
     );
-    if (useAnswerSheet && rows.length > 1) {
+    if (rows.length > 1) {
       throw new ConflictException(
-        "같은 전형·교시에 동일한 답안지 값이 여러 수험생에게 등록되어 있습니다. 수험생 데이터를 확인해 주세요.",
+        useAnswerSheet
+          ? "같은 운영 범위·교시에 동일한 답안지 값이 여러 수험생에게 등록되어 있습니다."
+          : "같은 운영 범위·교시에 동일한 수험번호가 여러 건 등록되어 있습니다.",
       );
     }
     return rows[0] ?? null;
@@ -91,11 +95,11 @@ export class ExamineesRepository {
       `SELECT cr.examinee_no AS examineeNo, cr.name,
               DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS examDate,
               TIME_FORMAT(cr.start_time, '%H:%i') AS examTime,
-              cr.period_name AS periodName, cr.admission AS admissionName,
+              cr.period_name AS periodName, cr.operation_scope AS admissionName, cr.operation_scope_label AS scopeLabel,
               cr.building_name AS buildingName, cr.room_name AS roomName
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        WHERE cr.${useAnswerSheet ? "answer_sheet" : "examinee_no"} = ? AND cr.status = 'ACTIVE' AND ${access.sql}
-       ORDER BY cr.exam_date, cr.start_time, cr.period_name, cr.admission`,
+       ORDER BY cr.exam_date, cr.start_time, cr.period_name, cr.operation_scope`,
       [examineeNo, ...access.params],
     );
     return rows;
@@ -104,10 +108,10 @@ export class ExamineesRepository {
   async findPhoto(examineeNo: string, scope: OperationScheduleScope, admissionName: string) {
     const [rows] = await this.pool.execute<ExamineePhotoRow[]>(
       `SELECT cp.content, cp.mime_type AS mimeType
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        INNER JOIN candidate_photo cp ON cp.candidate_record_id = cr.id
        WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? LIMIT 1`,
+         AND cr.period_name = ? AND cr.operation_scope = ? LIMIT 1`,
       [examineeNo, scope.date, scope.time, scope.periodName, admissionName],
     );
     return rows[0] ?? null;
@@ -115,7 +119,7 @@ export class ExamineesRepository {
 }
 
 const settingJoinSql = `LEFT JOIN pseudonym_setting admission_setting
-  ON admission_setting.exam_name = cr.exam_name AND admission_setting.admission_name = cr.admission AND admission_setting.active = TRUE
+  ON admission_setting.exam_name = cr.exam_name AND admission_setting.admission_name = cr.operation_scope AND admission_setting.active = TRUE
  LEFT JOIN pseudonym_setting default_setting
   ON default_setting.exam_name = cr.exam_name AND default_setting.admission_name = '' AND default_setting.active = TRUE`;
 const preassignedModeSql =
@@ -151,6 +155,6 @@ const examineeSelectSql = `SELECT cr.id, cr.examinee_no AS examineeNo, cr.name,
   cr.building_name AS buildingName, cr.building_code AS buildingCode,
   cr.room_code AS roomCode, cr.group_name AS groupName, cr.answer_sheet AS answerSheet,
  cr.opt1, cr.opt2, cr.opt3, cr.opt4, cr.opt5, cr.opt6, cr.opt7, cr.opt8, cr.opt9, cr.opt10
- FROM candidate_record cr
+ FROM operation_candidate_record cr
  LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
  ${settingJoinSql}`;

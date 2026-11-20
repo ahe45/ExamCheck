@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiFetch } from "./client";
+import { classificationMethodSchema, type ClassificationMethod } from "../classification";
 
 export const examineeNoUniquenessSchema = z.enum(["SYSTEM", "SCHEDULE"]);
 export const pseudonymNoUniquenessSchema = z.enum(["ADMISSION", "SCHEDULE"]);
@@ -12,6 +13,7 @@ export const developerSettingsSchema = z.object({
   systemName: z.string(),
   examineeNoUniqueness: examineeNoUniquenessSchema,
   pseudonymNoUniqueness: pseudonymNoUniquenessSchema,
+  classificationMethod: classificationMethodSchema.optional(),
   logoFileName: z.string().nullable(),
   logoDataUrl: z.string().nullable(),
   updatedAt: z.string(),
@@ -24,6 +26,7 @@ export interface DeveloperSettingsInput {
   systemName: string;
   examineeNoUniqueness: ExamineeNoUniqueness;
   pseudonymNoUniqueness: PseudonymNoUniqueness;
+  classificationMethod?: ClassificationMethod;
 }
 
 export function fetchDeveloperSettings(token: string) {

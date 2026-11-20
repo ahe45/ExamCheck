@@ -57,7 +57,7 @@ export function OperationScheduleMismatchModal({ mismatch, onClose }: ScheduleMi
           <h3>배정된 교시 정보</h3>
           {mismatch.schedules.map((schedule, index) => (
             <article
-              key={`${schedule.examDate}|${schedule.examTime}|${schedule.periodName}|${schedule.admissionName}|${index}`}
+              key={`${schedule.examDate}|${schedule.examTime}|${schedule.periodName}|${schedule.scopeLabel ?? schedule.admissionName}|${index}`}
             >
               <div>
                 <span>시험일자</span>
@@ -73,7 +73,7 @@ export function OperationScheduleMismatchModal({ mismatch, onClose }: ScheduleMi
               </div>
               <div>
                 <span>전형명</span>
-                <strong>{schedule.admissionName || "-"}</strong>
+                <strong>{(schedule.scopeLabel ?? schedule.admissionName) || "-"}</strong>
               </div>
               <div>
                 <span>고사장소</span>
@@ -157,7 +157,7 @@ export function OperationFinishModal({
           </div>
           <div>
             <span>전형명</span>
-            <strong>{schedule.admissionName}</strong>
+            <strong>{schedule.scopeLabel ?? schedule.admissionName}</strong>
           </div>
           <div>
             <span>{labelPrintingEnabled ? "현재 출력" : "현재 등록"}</span>
@@ -261,7 +261,7 @@ export function OperationPrintModal({
           <ModalCloseButton onClick={onClose} aria-label={generating ? "PDF 생성 취소" : "인쇄창 닫기"} />
         </header>
         <div className="operator-print-context">
-          <span>{schedule.admissionName}</span>
+          <span>{schedule.scopeLabel ?? schedule.admissionName}</span>
           <strong>
             {schedule.date} · {schedule.time} · {schedule.periodName}
           </strong>

@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { UserRole } from "../auth/auth.types.js";
+import type { ClassificationMethod } from "../authorization/classification.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 import { toManagedAccountRole, type StoredManagedAccountRole } from "./accounts.domain.js";
 
@@ -44,6 +45,7 @@ export interface ManagedAccountView {
   lastAccessAt: Date | null;
   isOnline: number;
   admissionNames: string[];
+  scopeBlocked?: boolean;
 }
 
 export interface AccountUpdateValues {
@@ -55,7 +57,7 @@ export interface AccountUpdateValues {
 
 @Injectable()
 export class AccountsRepository {
-  async list(executor: SqlExecutor): Promise<ManagedAccountView[]> {
+  async list(executor: SqlExecutor, method?: ClassificationMethod): Promise<ManagedAccountView[]> {
     const [accounts] = await executor.query<AccountRow[]>(
       `SELECT id, login_id AS loginId, role,
               created_at AS createdAt, created_at AS updatedAt,
@@ -75,6 +77,34 @@ export class AccountsRepository {
       values.push(assignment.admissionName);
       admissionsByUser.set(assignment.userId, values);
     }
+    if (method) {
+      const [classified] = await executor.execute<Array<AssignmentRow & { method: string }>>(
+        `SELECT user_id AS userId, classification_method AS method, scope_key AS admissionName
+         FROM user_classification_assignment ORDER BY scope_key`,
+      );
+      const classifiedByUser = new Map<number, typeof classified>();
+      for (const assignment of classified) {
+        const assigned = classifiedByUser.get(assignment.userId) ?? [];
+        assigned.push(assignment);
+        classifiedByUser.set(assignment.userId, assigned);
+      }
+      return accounts.map((account) => {
+        const scopes = classifiedByUser.get(account.id) ?? [];
+        const active = scopes.filter((scope) => scope.method === method).map((scope) => scope.admissionName);
+        const legacy = admissionsByUser.get(account.id) ?? [];
+        const assigned = method === "ADMISSION" ? legacy : active.filter((scope) => scope !== "*");
+        return {
+          ...account,
+          role: toManagedAccountRole(account.role),
+          admissionNames: assigned,
+          scopeBlocked:
+            account.role !== "ADMIN" &&
+            !active.length &&
+            !assigned.length &&
+            (admissionsByUser.has(account.id) || scopes.some((scope) => scope.admissionName !== "*")),
+        };
+      });
+    }
     return accounts.map((account) => ({
       ...account,
       role: toManagedAccountRole(account.role),
@@ -82,8 +112,12 @@ export class AccountsRepository {
     }));
   }
 
-  async findOne(executor: SqlExecutor, id: number): Promise<ManagedAccountView | null> {
-    const accounts = await this.list(executor);
+  async findOne(
+    executor: SqlExecutor,
+    id: number,
+    method: ClassificationMethod = "ADMISSION",
+  ): Promise<ManagedAccountView | null> {
+    const accounts = await this.list(executor, method);
     return accounts.find((account) => account.id === id) ?? null;
   }
 
@@ -93,6 +127,56 @@ export class AccountsRepository {
        FROM candidate_record WHERE admission <> '' ORDER BY admission`,
     );
     return rows.map((row) => row.admissionName);
+  }
+
+  async listClassificationScopes(executor: SqlExecutor, method: ClassificationMethod) {
+    const [rows] = await executor.execute<Array<RowDataPacket & { key: string; label: string }>>(
+      `SELECT operation_scope AS \u0060key\u0060, MIN(operation_scope_label) AS label
+       FROM operation_candidate_record WHERE classification_method = ? AND operation_scope <> ''
+       GROUP BY operation_scope ORDER BY label, operation_scope`,
+      [method],
+    );
+    return rows;
+  }
+
+  async lockClassificationMethod(executor: SqlExecutor): Promise<ClassificationMethod> {
+    const [rows] = await executor.query<Array<RowDataPacket & { method: ClassificationMethod }>>(
+      "SELECT classification_method AS method FROM system_profile WHERE id = 1 LOCK IN SHARE MODE",
+    );
+    return rows[0].method;
+  }
+
+  async replaceClassificationAssignments(
+    executor: SqlExecutor,
+    userId: number,
+    method: ClassificationMethod,
+    scopes: string[],
+  ) {
+    await executor.execute(
+      "DELETE FROM user_classification_assignment WHERE user_id = ? AND classification_method = ?",
+      [userId, method],
+    );
+    const keys = scopes.length ? scopes : ["*"];
+    await executor.execute(
+      `INSERT INTO user_classification_assignment (user_id, classification_method, scope_key)
+       VALUES ${keys.map(() => "(?, ?, ?)").join(", ")}`,
+      keys.flatMap((key) => [userId, method, key]),
+    );
+  }
+
+  async setUnrestrictedAdmissionAccess(executor: SqlExecutor, userId: number, enabled: boolean) {
+    if (enabled) {
+      await this.replaceClassificationAssignments(executor, userId, "ADMISSION", []);
+    } else {
+      await executor.execute(
+        "DELETE FROM user_classification_assignment WHERE user_id = ? AND classification_method = 'ADMISSION'",
+        [userId],
+      );
+    }
+  }
+
+  async deleteClassificationAssignments(executor: SqlExecutor, userId: number) {
+    await executor.execute("DELETE FROM user_classification_assignment WHERE user_id = ?", [userId]);
   }
 
   async findIdByLoginId(executor: SqlExecutor, loginId: string, exceptId?: number): Promise<number | null> {

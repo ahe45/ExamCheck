@@ -96,6 +96,7 @@ export function SetupPage({
               <SystemSettingsOverviewPage
                 ref={navigation.settingsPageRef}
                 token={token}
+                classificationMethod={systemProfile.classificationMethod}
                 onDirtyChange={navigation.updateSettingsDirty}
               />
             )}

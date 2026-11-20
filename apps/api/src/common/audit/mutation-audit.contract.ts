@@ -1,4 +1,5 @@
 import { isValidRequestId } from "../http/request-context.js";
+import { CLASSIFICATION_METHODS, type ClassificationMethod } from "../../authorization/classification.js";
 
 export interface MutationAuditDetailsByEvent {
   HISTORY_RESET_PASSWORD_CHANGED: Record<never, never>;
@@ -53,6 +54,7 @@ export interface MutationAuditDetailsByEvent {
     checksum: string;
   };
   SYSTEM_PROFILE_UPDATED: {
+    classificationMethod: ClassificationMethod;
     schoolName: string;
     academicYear: number;
     systemName: string;
@@ -314,6 +316,7 @@ const EVENT_CONTRACTS = {
     candidatePhotoCountsMatch,
   ),
   SYSTEM_PROFILE_UPDATED: fields({
+    classificationMethod: oneOf(...CLASSIFICATION_METHODS),
     schoolName: identifier,
     academicYear: integer({ min: 2000, max: 2100 }),
     systemName: identifier,

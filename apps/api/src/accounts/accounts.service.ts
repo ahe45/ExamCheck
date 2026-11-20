@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { Pool } from "mysql2/promise";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
+import type { ClassificationMethod } from "../authorization/classification.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import { AccountsApplicationService } from "./accounts.application.js";
 import type { CreateAccountDto, UpdateAccountDto } from "./accounts.dto.js";
@@ -16,12 +17,17 @@ export class AccountsService {
     @Inject(AccountsApplicationService) private readonly application: AccountsApplicationService,
   ) {}
 
-  list() {
-    return this.repository.list(this.pool);
+  list(method?: ClassificationMethod) {
+    return method ? this.repository.list(this.pool, method) : this.repository.list(this.pool);
   }
 
   admissions() {
     return this.repository.listAdmissionNames(this.pool);
+  }
+
+  async classificationScopes(method: ClassificationMethod) {
+    const scopes = method === "NONE" ? [] : await this.repository.listClassificationScopes(this.pool, method);
+    return { method, scopes };
   }
 
   create(input: CreateAccountDto, actor: AuthenticatedUser) {

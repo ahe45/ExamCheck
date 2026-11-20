@@ -69,6 +69,34 @@ describe("UpdatePseudonymSettingUseCase audit boundary", () => {
     expect(fixture.connection.rollback).toHaveBeenCalledOnce();
     expect(fixture.repository.updateSetting).not.toHaveBeenCalled();
   });
+
+  it("rolls back earlier settings when a later batch item has a stale version", async () => {
+    const fixture = createFixture();
+    const inputs = [settingInput(), settingInput({ admissionName: "실기", expectedVersion: 2 })];
+    fixture.repository.listAdmissionSettingsOverview.mockResolvedValue(
+      inputs.map(({ admissionName }) => ({ name: admissionName })),
+    );
+
+    await expect(fixture.useCase.executeBatch(inputs, actor)).rejects.toBeInstanceOf(ConflictException);
+
+    expect(fixture.connection.beginTransaction).toHaveBeenCalledOnce();
+    expect(fixture.repository.updateSetting).toHaveBeenCalledOnce();
+    expect(fixture.connection.rollback).toHaveBeenCalledOnce();
+    expect(fixture.connection.commit).not.toHaveBeenCalled();
+  });
+
+  it("rejects a batch when the active overview has a new target", async () => {
+    const fixture = createFixture();
+    const input = settingInput();
+    fixture.repository.listAdmissionSettingsOverview.mockResolvedValue([
+      { name: input.admissionName },
+      { name: "실기" },
+    ]);
+
+    await expect(fixture.useCase.executeBatch([input], actor)).rejects.toBeInstanceOf(ConflictException);
+
+    expect(fixture.repository.updateSetting).not.toHaveBeenCalled();
+  });
 });
 
 const actor = { id: 7, loginId: "admin", role: "ADMIN" as const, admissionNames: [] };
@@ -85,6 +113,7 @@ function createFixture() {
     lockAdmissionNumbers: vi.fn(),
     insertAbsenteeAssignments: vi.fn().mockResolvedValue([1]),
     loadPseudonymNumberPolicyForUpdate: vi.fn().mockResolvedValue("ADMISSION"),
+    listAdmissionSettingsOverview: vi.fn(),
     findExactSettingForUpdate: vi.fn().mockResolvedValue(setting),
     listScheduleCounts: vi.fn().mockResolvedValue([]),
     listTimeRangesForUpdate: vi.fn().mockResolvedValue([]),

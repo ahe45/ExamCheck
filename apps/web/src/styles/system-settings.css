@@ -12,6 +12,12 @@
 .admission-settings-overview-heading {
   background: #fff;
 }
+.admission-settings-overview-heading .admin-view-actions {
+  flex: none;
+}
+.admission-settings-overview-heading p {
+  white-space: normal;
+}
 .admission-settings-card-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(var(--admission-card-min-width), 1fr));
@@ -778,6 +784,17 @@
   display: grid;
   gap: 14px;
   padding: 14px 16px 24px;
+}
+.system-settings-view fieldset.system-settings-content {
+  min-inline-size: 0;
+  margin: 0;
+  border: 0;
+}
+.schedule-range-scope-label {
+  display: block;
+  overflow: hidden;
+  color: #52637b;
+  text-overflow: ellipsis;
 }
 .system-settings-top-grid {
   --system-setting-row-height: 102px;

@@ -1,10 +1,12 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
+import type { ClassificationMethod } from "../authorization/classification.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import type { ExamineeNoUniqueness, PseudonymNoUniqueness } from "../uniqueness/number-uniqueness.js";
 
 export interface ProfileRow extends RowDataPacket {
+  classificationMethod?: ClassificationMethod;
   schoolName: string;
   academicYear: number;
   systemName: string;
@@ -84,6 +86,10 @@ export class DeveloperSettingsRepository {
         input.updatedBy,
       ],
     );
+  }
+
+  updateClassificationMethod(connection: PoolConnection, method: ClassificationMethod) {
+    return connection.execute("UPDATE system_profile SET classification_method = ? WHERE id = 1", [method]);
   }
 
   updateLogo(
@@ -182,6 +188,7 @@ export class DeveloperSettingsRepository {
 }
 
 const profileSelectSql = `SELECT school_name AS schoolName, academic_year AS academicYear, system_name AS systemName,
+  classification_method AS classificationMethod,
   examinee_no_uniqueness AS examineeNoUniqueness,
   pseudonym_no_uniqueness AS pseudonymNoUniqueness,
   logo_file_name AS logoFileName, logo_mime_type AS logoMimeType, logo_data AS logoData,
@@ -189,6 +196,7 @@ const profileSelectSql = `SELECT school_name AS schoolName, academic_year AS aca
  FROM system_profile WHERE id = 1 LIMIT 1`;
 
 const targetProfileSelectSql = `SELECT profile.school_name AS schoolName,
+  profile.classification_method AS classificationMethod,
   cycle.academic_year AS academicYear, profile.system_name AS systemName,
   policy.examinee_scope AS examineeNoUniqueness,
   policy.pseudonym_scope AS pseudonymNoUniqueness,

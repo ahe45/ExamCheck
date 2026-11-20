@@ -498,7 +498,8 @@ describe("pseudonym P0 transaction invariants", () => {
           sql.includes("INSERT INTO pseudonym_operation_mutex")
         )
           return [{ affectedRows: 1 }, []];
-        if (sql.includes("FROM candidate_record cr") && sql.includes("cr.examinee_no = ?")) return [[candidate], []];
+        if (sql.includes("FROM operation_candidate_record cr") && sql.includes("cr.examinee_no = ?"))
+          return [[candidate], []];
         if (
           sql.includes("INSERT INTO pseudonym_admission_lock") ||
           sql.includes("INSERT INTO pseudonym_operation_mutex") ||
@@ -568,7 +569,7 @@ describe("pseudonym P0 transaction invariants", () => {
     expect(executed).toHaveLength(8);
     expect(executed[0]).toContain("FROM system_profile");
     expect(executed[0]).toContain("LOCK IN SHARE MODE");
-    expect(executed[1]).toContain("FROM candidate_record cr");
+    expect(executed[1]).toContain("FROM operation_candidate_record cr");
     expect(executed[1]).not.toContain("FOR UPDATE");
     expect(executed[2]).toContain("INSERT IGNORE INTO pseudonym_operation");
     expect(executed[3]).toContain("FROM pseudonym_operation");
@@ -576,7 +577,7 @@ describe("pseudonym P0 transaction invariants", () => {
     expect(executed[4]).toContain("FROM pseudonym_setting");
     expect(executed[5]).toContain("FROM pseudonym_time_range");
     expect(executed[5]).toContain("FOR UPDATE");
-    expect(executed[6]).toContain("FROM candidate_record cr");
+    expect(executed[6]).toContain("FROM operation_candidate_record cr");
     expect(executed[6]).toContain("FOR UPDATE");
     expect(executed[7]).toContain("FROM pseudonym_assignment");
   });
@@ -707,7 +708,7 @@ describe("pseudonym P0 transaction invariants", () => {
         if (sql.includes("FROM system_profile")) return [[{ pseudonymNoUniqueness: "ADMISSION" }], []];
         if (sql.includes("SELECT pseudonym_no AS pseudonymNumber")) return [[], []];
         if (sql.includes("cr.temporary_no AS pseudonymNumber")) return [[], []];
-        if (sql.includes("FROM candidate_record cr")) {
+        if (sql.includes("FROM operation_candidate_record cr")) {
           candidateSql = sql;
           candidateParams = params;
           return [[], []];

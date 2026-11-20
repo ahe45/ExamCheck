@@ -55,8 +55,8 @@ export interface PseudonymRosterExportRow extends CanonicalPseudonymRosterRow {
 const labelPrintingEnabledSql = `COALESCE((
   SELECT ps.assignment_method = 'PREASSIGNED' AND ps.print_preassigned_label = TRUE
   FROM pseudonym_setting ps
-  WHERE ps.exam_name = cr.exam_name AND ps.admission_name IN (cr.admission, '') AND ps.active = TRUE
-  ORDER BY CASE WHEN ps.admission_name = cr.admission THEN 0 ELSE 1 END
+   WHERE ps.exam_name = cr.exam_name AND ps.admission_name IN (cr.operation_scope, '') AND ps.active = TRUE
+   ORDER BY CASE WHEN ps.admission_name = cr.operation_scope THEN 0 ELSE 1 END
   LIMIT 1
 ), FALSE)`;
 const processedSql = `CASE WHEN ${labelPrintingEnabledSql}

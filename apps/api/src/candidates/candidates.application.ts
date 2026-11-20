@@ -2,6 +2,11 @@ import { readFile } from "node:fs/promises";
 import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import type { Pool, PoolConnection } from "mysql2/promise";
+import {
+  candidateClassificationScope,
+  classificationOfScope,
+  isClassifiedScope,
+} from "../authorization/classification.js";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { withScopedTransaction } from "../common/database/transaction.js";
 import { APP_CONFIG, type AppConfig } from "../config/app-config.js";
@@ -326,6 +331,9 @@ function affectedRangeIds(
 function sameRangeScope(candidate: CandidateInput, guard: CandidateImportScopeGuardRow) {
   return (
     sameOperation(candidate, guard) &&
+    (!guard.settingScope ||
+      !isClassifiedScope(guard.settingScope) ||
+      candidateClassificationScope(candidate, classificationOfScope(guard.settingScope)) === guard.settingScope) &&
     candidate.unit === guard.unit &&
     candidate.major === guard.major &&
     candidate.building === guard.building &&
@@ -338,6 +346,8 @@ function sameOperation(candidate: CandidateInput, guard: CandidateImportScopeGua
     candidate.date === guard.date &&
     candidate.time === guard.time &&
     candidate.period === guard.period &&
-    candidate.admission === guard.admission
+    (guard.guardType === "CLOSED" && isClassifiedScope(guard.admission)
+      ? candidateClassificationScope(candidate, classificationOfScope(guard.admission))
+      : candidate.admission) === guard.admission
   );
 }

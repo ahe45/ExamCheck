@@ -9,24 +9,25 @@ import { DeleteButtonIcon, ResetButtonIcon } from "../../shared/components/Actio
 interface Props {
   card: AdmissionCardData;
   onOpen(admissionName: string): void;
-  onReset(admissionName: string): void;
-  onDelete(admissionName: string): void;
+  onReset?(admissionName: string): void;
+  onDelete?(admissionName: string): void;
 }
 
 export function AdmissionSettingsCard({ card, onOpen, onReset, onDelete }: Props) {
+  const label = card.label ?? card.name;
   return (
     <article className="admission-settings-card">
       <button
         type="button"
         className="admission-settings-card-open"
-        aria-label={`${card.name} 설정 열기`}
+        aria-label={`${label} 설정 열기`}
         onClick={() => onOpen(card.name)}
       />
       <header>
-        <span>{card.name.trim().slice(0, 1) || "전"}</span>
+        <span>{label.trim().slice(0, 1) || "전"}</span>
         <div>
           <small>ADMISSION SETTINGS</small>
-          <h3>{card.name}</h3>
+          <h3>{label}</h3>
         </div>
         <b>
           설정 열기 <i>→</i>
@@ -55,14 +56,18 @@ export function AdmissionSettingsCard({ card, onOpen, onReset, onDelete }: Props
           <strong>{card.buildings.length ? card.buildings.join(" · ") : "-"}</strong>
         </div>
         <div className="admission-settings-card-actions">
-          <button type="button" onClick={() => onReset(card.name)}>
-            <ResetButtonIcon />
-            <span>초기화</span>
-          </button>
-          <button type="button" className="danger" onClick={() => onDelete(card.name)}>
-            <DeleteButtonIcon />
-            <span>삭제</span>
-          </button>
+          {onReset && (
+            <button type="button" onClick={() => onReset(card.name)}>
+              <ResetButtonIcon />
+              <span>초기화</span>
+            </button>
+          )}
+          {onDelete && (
+            <button type="button" className="danger" onClick={() => onDelete(card.name)}>
+              <DeleteButtonIcon />
+              <span>삭제</span>
+            </button>
+          )}
         </div>
       </footer>
     </article>

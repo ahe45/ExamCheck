@@ -4,20 +4,33 @@ import { ClientGridFilterLayer, ClientGridPagination } from "../../shared/compon
 import { ClientGridHeaderCell } from "../../shared/components/ClientGridHeaderCell";
 import { useClientDataGrid } from "../../shared/hooks/useClientDataGrid";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
-import { accountColumns, accountColumnValue, type AccountColumnKey } from "./account-management-model";
+import {
+  accountColumns,
+  accountColumnValue,
+  accountScopeLabel,
+  type AccountColumnKey,
+} from "./account-management-model";
 
 interface AccountDataGridProps {
   accounts: Account[];
+  scopeLabels?: Record<string, string>;
   currentUserId: number;
   loading: boolean;
   onEdit(account: Account): void;
   onDelete(account: Account): void;
 }
 
-export function AccountDataGrid({ accounts, currentUserId, loading, onEdit, onDelete }: AccountDataGridProps) {
+export function AccountDataGrid({
+  accounts,
+  scopeLabels = {},
+  currentUserId,
+  loading,
+  onEdit,
+  onDelete,
+}: AccountDataGridProps) {
   const grid = useClientDataGrid<Account, AccountColumnKey>({
     rows: accounts,
-    valueOf: accountColumnValue,
+    valueOf: (account, key) => accountColumnValue(account, key, scopeLabels),
   });
   useEscapeKey(Boolean(grid.filterMenu), grid.closeFilter);
 
@@ -66,12 +79,14 @@ export function AccountDataGrid({ accounts, currentUserId, loading, onEdit, onDe
                         </span>
                       </td>
                       <td>
-                        {account.role === "ADMIN" || !account.admissionNames.length ? (
+                        {account.scopeBlocked ? (
+                          <span className="account-all-access">미배정</span>
+                        ) : account.role === "ADMIN" || !account.admissionNames.length ? (
                           <span className="account-all-access">전체 전형·교시</span>
                         ) : (
                           <div className="account-admission-tags">
                             {account.admissionNames.map((admission) => (
-                              <span key={admission}>{admission}</span>
+                              <span key={admission}>{accountScopeLabel(admission, scopeLabels)}</span>
                             ))}
                           </div>
                         )}

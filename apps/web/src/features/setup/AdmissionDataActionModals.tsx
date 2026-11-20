@@ -14,6 +14,7 @@ interface ResetModalProps {
   token: string;
   examName: string;
   admissionName: string;
+  scopeLabel?: string;
   onClose(): void;
   onCompleted(resetScheduleCount: number, deletedAssignmentCount: number): void;
 }
@@ -22,6 +23,7 @@ export function AdmissionOperationsResetModal({
   token,
   examName,
   admissionName,
+  scopeLabel = admissionName,
   onClose,
   onCompleted,
 }: ResetModalProps) {
@@ -138,7 +140,7 @@ export function AdmissionOperationsResetModal({
             </span>
             <div>
               <p>OPERATION HISTORY RESET</p>
-              <h2 id="admission-operation-reset-title">{admissionName} 운영 이력 초기화</h2>
+              <h2 id="admission-operation-reset-title">{scopeLabel} 운영 이력 초기화</h2>
             </div>
           </header>
           <div className="admission-operation-reset-description">
@@ -213,7 +215,7 @@ export function AdmissionOperationsResetModal({
       </div>
       {passwordOpen && (
         <AdmissionResetPasswordModal
-          admissionName={admissionName}
+          admissionName={scopeLabel}
           scheduleCount={selectedSchedules.length}
           password={password}
           onPassword={setPassword}

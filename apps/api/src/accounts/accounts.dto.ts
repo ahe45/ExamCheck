@@ -1,6 +1,10 @@
-import { ArrayUnique, IsArray, IsIn, IsOptional, IsString, Length, MaxLength } from "class-validator";
+import { ArrayUnique, IsArray, IsBoolean, IsIn, IsOptional, IsString, Length, MaxLength } from "class-validator";
+import { CLASSIFICATION_METHODS, type ClassificationMethod } from "../authorization/classification.js";
 
 export class CreateAccountDto {
+  @IsOptional()
+  @IsIn(CLASSIFICATION_METHODS)
+  classificationMethod?: ClassificationMethod;
   @IsString()
   @Length(1, 100)
   loginId!: string;
@@ -20,6 +24,13 @@ export class CreateAccountDto {
 }
 
 export class UpdateAccountDto {
+  @IsOptional()
+  @IsIn(CLASSIFICATION_METHODS)
+  classificationMethod?: ClassificationMethod;
+
+  @IsOptional()
+  @IsBoolean()
+  preserveClassificationAccess?: boolean;
   @IsString()
   @Length(1, 100)
   loginId!: string;

@@ -76,7 +76,7 @@ export function OperationHistoryResetModal({
           <div className="operator-finish-summary">
             <div>
               <span>전형명</span>
-              <strong>{schedule.admissionName}</strong>
+              <strong>{schedule.scopeLabel ?? schedule.admissionName}</strong>
             </div>
             <div>
               <span>대상 교시</span>

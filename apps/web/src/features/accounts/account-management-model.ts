@@ -1,4 +1,5 @@
 import type { Account, AccountInput, AccountRole } from "../../shared/api/accounts";
+import { operationScopeMethod } from "../../shared/classification";
 
 export type AccountColumnKey = "loginId" | "role" | "lastAccessAt" | "isOnline" | "access";
 
@@ -17,7 +18,7 @@ export const accountColumns: AccountColumn[] = [
   { key: "role", label: "권한" },
   { key: "lastAccessAt", label: "마지막 접속 시간" },
   { key: "isOnline", label: "접속 상태" },
-  { key: "access", label: "배정 전형" },
+  { key: "access", label: "접근 범위" },
 ];
 
 export function emptyAccountForm(): AccountForm {
@@ -63,15 +64,22 @@ export function accountInputFrom(form: AccountForm): AccountInput {
   };
 }
 
-export function accountColumnValue(account: Account, key: AccountColumnKey) {
+export function accountColumnValue(account: Account, key: AccountColumnKey, scopeLabels?: Record<string, string>) {
   if (key === "lastAccessAt") return formatAccountAccessTime(account.lastAccessAt);
   if (key === "isOnline") return account.isOnline ? "접속 중" : "미접속";
   if (key === "role") return account.role === "ADMIN" ? "관리자" : "사용자";
-  if (key === "access")
+  if (key === "access") {
+    if (account.scopeBlocked) return "미배정";
     return account.role === "ADMIN" || !account.admissionNames.length
       ? "전체 전형·교시"
-      : account.admissionNames.join(", ");
+      : account.admissionNames.map((scope) => accountScopeLabel(scope, scopeLabels)).join(", ");
+  }
   return account[key];
+}
+
+export function accountScopeLabel(scope: string, labels?: Record<string, string>) {
+  if (labels && Object.hasOwn(labels, scope)) return labels[scope];
+  return operationScopeMethod(scope) === "ADMISSION" ? scope : "등록되지 않은 항목";
 }
 
 export function formatAccountAccessTime(value: string | null | undefined): string {

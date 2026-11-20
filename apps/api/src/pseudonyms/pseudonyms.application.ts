@@ -1,8 +1,14 @@
-import { beginScopedWrite } from "../common/database/transaction.js";
+import { beginScopedWrite, withTransaction } from "../common/database/transaction.js";
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import type { Pool, PoolConnection } from "mysql2/promise";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
-import { assertAdmissionAccess, normalizeAdmissionName } from "../authorization/admission-policy.js";
+import {
+  ADMISSION_SQL_COLUMNS,
+  assertAdmissionAccess,
+  buildAdmissionAccessPredicate,
+  normalizeAdmissionName,
+} from "../authorization/admission-policy.js";
+import { isClassifiedScope } from "../authorization/classification.js";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import {
   isConcurrentWriteError as isConcurrentSettingWriteError,
@@ -62,6 +68,71 @@ export class UpdatePseudonymSettingUseCase {
   ) {}
 
   async execute(input: UpdatePseudonymSettingInput, user: AuthenticatedUser) {
+    const setting = this.validateSetting(input, user);
+    await this.saveSettings([setting], user, async () => undefined);
+    return this.getSetting(this.pool, setting.examName, setting.admissionName);
+  }
+
+  executeBatch(inputs: UpdatePseudonymSettingInput[], user: AuthenticatedUser) {
+    const settings = inputs.map((input) => this.validateSetting(input, user));
+    return this.saveSettings(
+      settings,
+      user,
+      async (connection) => {
+        const saved = [];
+        for (const { examName, admissionName } of settings) {
+          saved.push(await this.getSetting(connection, examName, admissionName));
+        }
+        return saved;
+      },
+      true,
+    );
+  }
+
+  private async saveSettings<T>(
+    settings: UpdatePseudonymSettingInput[],
+    user: AuthenticatedUser,
+    readResult: (connection: PoolConnection) => Promise<T>,
+    bulk = false,
+  ) {
+    try {
+      return await withTransaction(this.pool, async (connection) => {
+        const identityDecision = await this.identityTransition.decideWrite(connection);
+        assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym settings");
+        await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
+        if (bulk) await this.assertBatchTargets(connection, settings, user);
+        for (const setting of settings) {
+          await this.writeSetting(connection, setting, user.id, identityDecision.writeTarget);
+        }
+        return readResult(connection);
+      });
+    } catch (error) {
+      if (isConcurrentSettingWriteError(error)) throw toPseudonymHttpError(settingVersionConflict());
+      throw toPseudonymHttpError(error);
+    }
+  }
+
+  private async assertBatchTargets(
+    connection: PoolConnection,
+    settings: UpdatePseudonymSettingInput[],
+    user: AuthenticatedUser,
+  ) {
+    const targets = new Set(settings.map(({ admissionName }) => admissionName));
+    if (
+      !settings.length ||
+      targets.size !== settings.length ||
+      settings.some(({ examName }) => examName !== settings[0].examName)
+    ) {
+      throw new BadRequestException("일괄 저장 대상과 시험명을 확인해 주세요.");
+    }
+    const access = buildAdmissionAccessPredicate(user, ADMISSION_SQL_COLUMNS.candidateRecord);
+    const current = await this.repository.listAdmissionSettingsOverview(connection, access);
+    if (targets.size !== current.length || current.some(({ name }) => !targets.has(name))) {
+      throw new ConflictException("분류 방법 또는 저장 대상이 변경되었습니다.");
+    }
+  }
+
+  private validateSetting(input: UpdatePseudonymSettingInput, user: AuthenticatedUser) {
     const admissionName = assertAdmissionAccess(user, input.admissionName, {
       forbiddenMessage: "배정되지 않은 전형의 설정은 변경할 수 없습니다.",
     });
@@ -76,7 +147,7 @@ export class UpdatePseudonymSettingUseCase {
     if (input.rangeStart > input.rangeEnd) throw new BadRequestException("가번호 시작값은 종료값보다 클 수 없습니다.");
     const scheduleKeys = new Set<string>();
     for (const range of input.ranges) {
-      if (range.admission !== input.admissionName)
+      if (!isClassifiedScope(input.admissionName) && range.admission !== input.admissionName)
         throw new BadRequestException("선택한 전형과 다른 가번호 범위가 포함되어 있습니다.");
       if (range.rangeStart > range.rangeEnd)
         throw new BadRequestException(`${range.date} ${range.time}의 시작값은 종료값보다 클 수 없습니다.`);
@@ -85,125 +156,121 @@ export class UpdatePseudonymSettingUseCase {
       scheduleKeys.add(key);
     }
 
-    const connection = await this.pool.getConnection();
-    try {
-      await connection.beginTransaction();
-      const identityDecision = await this.identityTransition.decideWrite(connection);
-      assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym settings");
-      await this.repository.loadPseudonymNumberPolicyForUpdate(connection);
-      const existingSetting = await this.repository.findExactSettingForUpdate(
+    return input;
+  }
+
+  private async writeSetting(
+    connection: PoolConnection,
+    input: UpdatePseudonymSettingInput,
+    userId: number,
+    writeTarget: boolean,
+  ) {
+    const existingSetting = await this.repository.findExactSettingForUpdate(
+      connection,
+      input.examName,
+      input.admissionName,
+    );
+    assertExpectedSettingVersion(input.expectedVersion, existingSetting?.version ?? 1, !existingSetting);
+    input.showAttendanceSelection ??= Boolean(existingSetting?.showAttendanceSelection ?? true);
+    input.useAnswerSheet ??= Boolean(existingSetting?.useAnswerSheet ?? false);
+
+    const scheduleCounts = await this.repository.listScheduleCounts(connection, input.examName, input.admissionName);
+    if (isClassifiedScope(input.admissionName) && !scheduleCounts.length)
+      throw new NotFoundException("현재 분류에 등록된 시험 일정이 없습니다.");
+    assertScheduleRangeCapacities(
+      input.ranges,
+      scheduleCounts,
+      input.assignmentMethod === "DRAW" ||
+        input.assignmentMethod === "SEQUENTIAL" ||
+        input.assignmentMethod === "MATCHING",
+    );
+
+    const existingRanges = existingSetting
+      ? await this.repository.listTimeRangesForUpdate(connection, existingSetting.id)
+      : [];
+    if (hasRangeConfigurationChanged(existingSetting, existingRanges, input)) {
+      const existingAssignments = await this.repository.listAssignmentScopesForUpdate(
         connection,
         input.examName,
         input.admissionName,
       );
-      assertExpectedSettingVersion(input.expectedVersion, existingSetting?.version ?? 1, !existingSetting);
-      input.showAttendanceSelection ??= Boolean(existingSetting?.showAttendanceSelection ?? true);
-      input.useAnswerSheet ??= Boolean(existingSetting?.useAnswerSheet ?? false);
-
-      const scheduleCounts = await this.repository.listScheduleCounts(connection, input.examName, input.admissionName);
-      assertScheduleRangeCapacities(
-        input.ranges,
-        scheduleCounts,
-        input.assignmentMethod === "DRAW" ||
-          input.assignmentMethod === "SEQUENTIAL" ||
-          input.assignmentMethod === "MATCHING",
-      );
-
-      const existingRanges = existingSetting
-        ? await this.repository.listTimeRangesForUpdate(connection, existingSetting.id)
-        : [];
-      if (hasRangeConfigurationChanged(existingSetting, existingRanges, input)) {
-        const existingAssignments = await this.repository.listAssignmentScopesForUpdate(
-          connection,
-          input.examName,
-          input.admissionName,
-        );
-        assertExistingAssignmentsWithinProposedRanges(existingAssignments, input);
-      }
-
-      const settingNextSequence = preserveNextSequence(existingSetting?.nextSequence, input.rangeStart, input.rangeEnd);
-      let settingId: number;
-      if (existingSetting) {
-        const affectedRows = await this.repository.updateSetting(
-          connection,
-          existingSetting.id,
-          input.expectedVersion,
-          settingNextSequence,
-          input,
-          user.id,
-        );
-        if (affectedRows !== 1) throw settingVersionConflict();
-        settingId = existingSetting.id;
-      } else {
-        settingId = await this.repository.insertSetting(connection, settingNextSequence, input, user.id);
-        if (!Number.isSafeInteger(settingId) || settingId < 1) {
-          throw new NotFoundException("가번호 운영 설정을 저장하지 못했습니다.");
-        }
-      }
-
-      const existingRangesByKey = new Map(existingRanges.map((range) => [range.scheduleKey, range]));
-      const proposedScheduleKeys = new Set<string>();
-      for (const range of input.ranges) {
-        const key = scheduleKey(range);
-        proposedScheduleKeys.add(key);
-        const nextSequence = preserveNextSequence(
-          existingRangesByKey.get(key)?.nextSequence,
-          range.rangeStart,
-          range.rangeEnd,
-        );
-        const prior = existingRangesByKey.get(key);
-        if (
-          !prior ||
-          prior.rangeStart !== range.rangeStart ||
-          prior.rangeEnd !== range.rangeEnd ||
-          prior.displayWidth !== range.displayWidth ||
-          prior.nextSequence !== nextSequence
-        ) {
-          await this.repository.upsertTimeRange(connection, settingId, range, key, nextSequence, user.id);
-        }
-      }
-      for (const existingRange of existingRanges) {
-        if (!proposedScheduleKeys.has(existingRange.scheduleKey)) {
-          await this.repository.deleteTimeRange(connection, existingRange.id);
-        }
-      }
-      if (identityDecision.writeTarget) {
-        await this.identityProjection.syncSettingTree(connection, settingId, input.examName);
-      }
-      await this.audit.record(connection, {
-        eventType: "PSEUDONYM_SETTING_UPDATED",
-        actorUserId: user.id,
-        details: {
-          settingId,
-          version: existingSetting ? existingSetting.version + 1 : 1,
-          assignmentMethod: input.assignmentMethod,
-          rangeCount: input.ranges.length,
-          autoDrawEnabled: input.autoDrawEnabled,
-          autoDrawDelaySeconds: input.autoDrawDelaySeconds,
-          printPreassignedLabel: input.printPreassignedLabel,
-          autoAssignAbsenteesOnClose: input.autoAssignAbsenteesOnClose,
-          deleteAbsenteeInfoOnReopen: input.deleteAbsenteeInfoOnReopen,
-          useCandidatePhotos: input.useCandidatePhotos,
-          enableBulkDraw: input.enableBulkDraw,
-          showAttendanceSelection: input.showAttendanceSelection,
-          useAnswerSheet: input.useAnswerSheet,
-        },
-      });
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      if (isConcurrentSettingWriteError(error)) throw toPseudonymHttpError(settingVersionConflict());
-      throw toPseudonymHttpError(error);
-    } finally {
-      connection.release();
+      assertExistingAssignmentsWithinProposedRanges(existingAssignments, input);
     }
-    return this.getSetting(input.examName, input.admissionName);
+
+    const settingNextSequence = preserveNextSequence(existingSetting?.nextSequence, input.rangeStart, input.rangeEnd);
+    let settingId: number;
+    if (existingSetting) {
+      const affectedRows = await this.repository.updateSetting(
+        connection,
+        existingSetting.id,
+        input.expectedVersion,
+        settingNextSequence,
+        input,
+        userId,
+      );
+      if (affectedRows !== 1) throw settingVersionConflict();
+      settingId = existingSetting.id;
+    } else {
+      settingId = await this.repository.insertSetting(connection, settingNextSequence, input, userId);
+      if (!Number.isSafeInteger(settingId) || settingId < 1) {
+        throw new NotFoundException("가번호 운영 설정을 저장하지 못했습니다.");
+      }
+    }
+
+    const existingRangesByKey = new Map(existingRanges.map((range) => [range.scheduleKey, range]));
+    const proposedScheduleKeys = new Set<string>();
+    for (const range of input.ranges) {
+      const key = scheduleKey(range);
+      proposedScheduleKeys.add(key);
+      const nextSequence = preserveNextSequence(
+        existingRangesByKey.get(key)?.nextSequence,
+        range.rangeStart,
+        range.rangeEnd,
+      );
+      const prior = existingRangesByKey.get(key);
+      if (
+        !prior ||
+        prior.rangeStart !== range.rangeStart ||
+        prior.rangeEnd !== range.rangeEnd ||
+        prior.displayWidth !== range.displayWidth ||
+        prior.nextSequence !== nextSequence
+      ) {
+        await this.repository.upsertTimeRange(connection, settingId, range, key, nextSequence, userId);
+      }
+    }
+    for (const existingRange of existingRanges) {
+      if (!proposedScheduleKeys.has(existingRange.scheduleKey)) {
+        await this.repository.deleteTimeRange(connection, existingRange.id);
+      }
+    }
+    if (writeTarget) {
+      await this.identityProjection.syncSettingTree(connection, settingId, input.examName);
+    }
+    await this.audit.record(connection, {
+      eventType: "PSEUDONYM_SETTING_UPDATED",
+      actorUserId: userId,
+      details: {
+        settingId,
+        version: existingSetting ? existingSetting.version + 1 : 1,
+        assignmentMethod: input.assignmentMethod,
+        rangeCount: input.ranges.length,
+        autoDrawEnabled: input.autoDrawEnabled,
+        autoDrawDelaySeconds: input.autoDrawDelaySeconds,
+        printPreassignedLabel: input.printPreassignedLabel,
+        autoAssignAbsenteesOnClose: input.autoAssignAbsenteesOnClose,
+        deleteAbsenteeInfoOnReopen: input.deleteAbsenteeInfoOnReopen,
+        useCandidatePhotos: input.useCandidatePhotos,
+        enableBulkDraw: input.enableBulkDraw,
+        showAttendanceSelection: input.showAttendanceSelection,
+        useAnswerSheet: input.useAnswerSheet,
+      },
+    });
   }
 
-  private async getSetting(examName: string, admissionName: string) {
-    const setting = await this.repository.findSetting(this.pool, examName, admissionName, { forUpdate: false });
+  private async getSetting(executor: Pool | PoolConnection, examName: string, admissionName: string) {
+    const setting = await this.repository.findSetting(executor, examName, admissionName, { forUpdate: false });
     if (!setting) throw new NotFoundException("이 시험의 가번호 범위가 설정되지 않았습니다.");
-    const ranges = await this.repository.listTimeRanges(this.pool, setting.id, admissionName);
+    const ranges = await this.repository.listTimeRanges(executor, setting.id, admissionName);
     return settingResponse(setting, ranges, admissionName);
   }
 }
@@ -240,7 +307,11 @@ export class AssignPseudonymUseCase {
       if (!identifiedCandidate) throw new NotFoundException("선택한 전형·교시에 해당하는 수험생을 찾을 수 없습니다.");
 
       if (pseudonymNoUniqueness === "ADMISSION")
-        await this.repository.lockAdmissionNumbers(connection, identifiedCandidate.examName, input.admissionName);
+        await this.repository.lockAdmissionNumbers(
+          connection,
+          identifiedCandidate.examName,
+          isClassifiedScope(input.admissionName) ? (identifiedCandidate.admission ?? "") : input.admissionName,
+        );
       const operation = await lockOperationForUpdate(this.repository, connection, {
         examName: identifiedCandidate.examName,
         examDate: input.examDate,
@@ -395,6 +466,7 @@ export class AssignPseudonymUseCase {
         input.mode,
         user.id,
         input.absent ?? false,
+        ...(isClassifiedScope(input.admissionName) ? [input.admissionName] : []),
       );
       if (identityDecision.writeTarget) {
         await this.identityProjection.syncSettingTree(connection, setting.id, candidate.examName);
@@ -457,8 +529,15 @@ export class ChangePseudonymOperationStatusUseCase {
       const identityDecision = await this.identityTransition.decideWrite(connection);
       assertLegacyCompatibilityWrite(identityDecision.writeLegacy, "pseudonym operation");
       const pseudonymNoUniqueness = await this.repository.loadPseudonymNumberPolicyForUpdate(connection, true);
-      if (pseudonymNoUniqueness === "ADMISSION")
-        await this.repository.lockAdmissionNumbers(connection, input.examName, input.admissionName);
+      const classified = isClassifiedScope(input.admissionName);
+      const admissions = classified
+        ? await this.repository.listPhysicalAdmissions(connection, input)
+        : [input.admissionName];
+      if (!admissions.length) throw new NotFoundException("현재 분류에 등록된 교시가 없습니다.");
+      if (pseudonymNoUniqueness === "ADMISSION") {
+        for (const admission of admissions)
+          await this.repository.lockAdmissionNumbers(connection, input.examName, admission);
+      }
       const operation = await lockOperationForUpdate(this.repository, connection, input);
       if (operation.closed) {
         if (identityDecision.writeTarget) {
@@ -478,24 +557,34 @@ export class ChangePseudonymOperationStatusUseCase {
       let autoAssignedAbsenteeCount = 0;
       if (setting.autoAssignAbsenteesOnClose) {
         const timeRanges = await this.repository.listTimeRangesForUpdate(connection, setting.id);
-        const uniquenessScope = operationPseudonymScope(input);
-        const uniquenessScopeKey = pseudonymUniquenessScopeKey(pseudonymNoUniqueness, uniquenessScope);
         const candidates = await this.repository.listUnassignedCandidatesForUpdate(
           connection,
           input,
           setting.assignmentMethod === "PREASSIGNED",
         );
         const rangesByKey = new Map(timeRanges.map((range) => [scheduleIdentity(range), range]));
-        const reserved = await this.repository.loadReservedNumbers(
-          connection,
-          input.examName,
-          input.admissionName,
-          pseudonymNoUniqueness,
-          uniquenessScope,
-        );
-        const assignments: { candidate: (typeof candidates)[number]; number: string }[] = [];
+        const reservedByAdmission = new Map<string, Set<number>>();
+        const assignments = new Map<string, { candidate: (typeof candidates)[number]; number: string }[]>();
         const nextByRange = new Map<string, number>();
+        for (const admission of admissions) {
+          const scope = { ...operationPseudonymScope(input), admission };
+          reservedByAdmission.set(
+            admission,
+            await this.repository.loadReservedNumbers(
+              connection,
+              input.examName,
+              admission,
+              pseudonymNoUniqueness,
+              scope,
+            ),
+          );
+          assignments.set(admission, []);
+        }
         for (const candidate of candidates) {
+          const admission = classified ? (candidate.admission ?? "") : input.admissionName;
+          const reserved = reservedByAdmission.get(admission);
+          if (!reserved) throw new ConflictException("교시의 수험생 분류가 변경되었습니다. 다시 시도해 주세요.");
+          const uniquenessScope = { ...operationPseudonymScope(input), admission };
           const exactRange =
             candidate.examDate && candidate.examTime
               ? rangesByKey.get(
@@ -512,7 +601,7 @@ export class ChangePseudonymOperationStatusUseCase {
                 )
               : undefined;
           const effectiveRange = exactRange || setting;
-          const rangeCursorKey = `${effectiveRange.rangeStart}:${effectiveRange.rangeEnd}`;
+          const rangeCursorKey = JSON.stringify([admission, effectiveRange.rangeStart, effectiveRange.rangeEnd]);
           const nextAvailable = nextByRange.get(rangeCursorKey) ?? effectiveRange.rangeStart;
           let number: number;
           let displayWidth =
@@ -525,7 +614,7 @@ export class ChangePseudonymOperationStatusUseCase {
             const owner = await this.repository.findPreassignedOwner(
               connection,
               input.examName,
-              input.admissionName,
+              admission,
               candidate.preassignedNumber,
               pseudonymNoUniqueness,
               uniquenessScope,
@@ -548,21 +637,28 @@ export class ChangePseudonymOperationStatusUseCase {
           reserved.add(number);
           nextByRange.set(rangeCursorKey, number >= effectiveRange.rangeEnd ? effectiveRange.rangeStart : number + 1);
           const pseudonymNumber = displayPseudonymNumber(number, Math.max(displayWidth, String(number).length));
-          assignments.push({ candidate, number: pseudonymNumber });
+          assignments.get(admission)!.push({ candidate, number: pseudonymNumber });
         }
-        const assignmentIds = await this.repository.insertAbsenteeAssignments(
-          connection,
-          assignments,
-          input.admissionName,
-          uniquenessScopeKey,
-          assignmentModeForSetting(setting.assignmentMethod),
-          user.id,
-        );
-        if (identityDecision.writeTarget) {
-          for (const assignmentId of assignmentIds)
-            await this.identityProjection.syncAssignmentTree(connection, assignmentId, input.examName);
+        for (const [admission, items] of assignments) {
+          const uniquenessScopeKey = pseudonymUniquenessScopeKey(pseudonymNoUniqueness, {
+            ...operationPseudonymScope(input),
+            admission,
+          });
+          const assignmentIds = await this.repository.insertAbsenteeAssignments(
+            connection,
+            items,
+            admission,
+            uniquenessScopeKey,
+            assignmentModeForSetting(setting.assignmentMethod),
+            user.id,
+            ...(classified ? [input.admissionName] : []),
+          );
+          if (identityDecision.writeTarget) {
+            for (const assignmentId of assignmentIds)
+              await this.identityProjection.syncAssignmentTree(connection, assignmentId, input.examName);
+          }
+          autoAssignedAbsenteeCount += items.length;
         }
-        autoAssignedAbsenteeCount = assignments.length;
       }
 
       await this.repository.closeOperation(connection, operation.id, user.id);

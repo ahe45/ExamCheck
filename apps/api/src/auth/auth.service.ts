@@ -121,6 +121,19 @@ export class AuthService {
   }
 
   private async toAuthenticatedUser(row: AuthUserRow): Promise<AuthenticatedUser> {
+    if (row.classificationMethod) {
+      const privileged = row.role === "ADMIN" || row.role === "DEVELOPER";
+      const access = privileged
+        ? { admissionNames: [], scopeBlocked: false }
+        : await this.repository.getClassifiedAccess(row.id, row.classificationMethod);
+      return {
+        id: row.id,
+        loginId: row.loginId,
+        role: row.role,
+        ...(row.classificationMethod === "ADMISSION" ? {} : { classificationMethod: row.classificationMethod }),
+        ...access,
+      };
+    }
     const admissionNames = await this.repository.listAdmissionNames(row.id);
     return {
       id: row.id,

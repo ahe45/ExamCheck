@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import type { ClassificationMethod } from "../classification";
 
 export type AccountRole = "ADMIN" | "USER";
 
@@ -7,6 +8,7 @@ export interface Account {
   loginId: string;
   role: AccountRole;
   admissionNames: string[];
+  scopeBlocked?: boolean;
   createdAt: string;
   updatedAt: string | null;
   lastAccessAt?: string | null;
@@ -18,6 +20,13 @@ export interface AccountInput {
   role: AccountRole;
   password?: string;
   admissionNames: string[];
+  classificationMethod?: ClassificationMethod;
+  preserveClassificationAccess?: boolean;
+}
+
+export interface AccountScopeOptions {
+  method: ClassificationMethod;
+  scopes: { key: string; label: string }[];
 }
 
 export function fetchAccounts(token: string) {
@@ -26,6 +35,10 @@ export function fetchAccounts(token: string) {
 
 export function fetchAccountAdmissions(token: string) {
   return apiFetch<string[]>("/accounts/admissions", {}, token);
+}
+
+export function fetchAccountScopes(token: string) {
+  return apiFetch<AccountScopeOptions>("/accounts/classification-scopes", {}, token);
 }
 
 export function createAccount(token: string, input: AccountInput & { password: string }) {

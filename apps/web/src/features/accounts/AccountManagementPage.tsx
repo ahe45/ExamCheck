@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   createAccount,
   deleteAccount,
-  fetchAccountAdmissions,
+  fetchAccountScopes,
   fetchAccounts,
   updateAccount,
   type Account,
   type AccountInput,
+  type AccountScopeOptions,
 } from "../../shared/api/accounts";
+import { classificationLabels } from "../../shared/classification";
 import { AddButtonIcon, RefreshButtonIcon } from "../../shared/components/ActionIcons";
 import { ToastNotice } from "../../shared/components/ToastNotice";
 import { AccountDataGrid } from "./AccountDataGrid";
@@ -21,7 +23,8 @@ interface Props {
 
 export function AccountManagementPage({ token, currentUserId }: Props) {
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [admissions, setAdmissions] = useState<string[]>([]);
+  const [scopeOptions, setScopeOptions] = useState<AccountScopeOptions>({ method: "ADMISSION", scopes: [] });
+  const scopeLabels = Object.fromEntries(scopeOptions.scopes.map(({ key, label }) => [key, label]));
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
@@ -32,9 +35,9 @@ export function AccountManagementPage({ token, currentUserId }: Props) {
     setLoading(true);
     setNotice(null);
     try {
-      const [nextAccounts, nextAdmissions] = await Promise.all([fetchAccounts(token), fetchAccountAdmissions(token)]);
+      const [nextAccounts, nextScopes] = await Promise.all([fetchAccounts(token), fetchAccountScopes(token)]);
       setAccounts(nextAccounts);
-      setAdmissions(nextAdmissions);
+      setScopeOptions(nextScopes);
     } catch (reason) {
       setNotice({ kind: "error", text: reason instanceof Error ? reason.message : "계정 정보를 불러오지 못했습니다." });
     } finally {
@@ -75,8 +78,9 @@ export function AccountManagementPage({ token, currentUserId }: Props) {
   async function saveAccount(account: Account | null, input: AccountInput) {
     setNotice(null);
     try {
-      if (account) await updateAccount(token, account.id, input);
-      else await createAccount(token, { ...input, password: input.password || "" });
+      const scopedInput = { ...input, classificationMethod: scopeOptions.method };
+      if (account) await updateAccount(token, account.id, scopedInput);
+      else await createAccount(token, { ...scopedInput, password: input.password || "" });
       closeEditor();
       await load();
       setNotice({ kind: "success", text: account ? "계정 정보가 수정되었습니다." : "새 계정이 생성되었습니다." });
@@ -107,7 +111,9 @@ export function AccountManagementPage({ token, currentUserId }: Props) {
         <header className="candidate-data-header">
           <div>
             <h2>계정 관리</h2>
-            <p>시스템 계정과 사용자별 접근 가능한 전형을 생성, 수정, 삭제합니다.</p>
+            <p>
+              계정과 사용자별 접근 범위를 관리합니다. 분류 방법은 {classificationLabels[scopeOptions.method]}입니다.
+            </p>
           </div>
           <div className="candidate-data-actions">
             <button className="exam-outline-button" onClick={() => void load()} disabled={loading}>
@@ -123,6 +129,7 @@ export function AccountManagementPage({ token, currentUserId }: Props) {
         {notice && <ToastNotice notice={notice} onClose={() => setNotice(null)} />}
         <AccountDataGrid
           accounts={accounts}
+          scopeLabels={scopeLabels}
           currentUserId={currentUserId}
           loading={loading}
           onEdit={openEdit}
@@ -132,7 +139,9 @@ export function AccountManagementPage({ token, currentUserId }: Props) {
 
       {editorOpen && (
         <AccountEditorModal
-          admissions={admissions}
+          admissions={scopeOptions.scopes.map(({ key }) => key)}
+          scopeLabels={scopeLabels}
+          classificationMethod={scopeOptions.method}
           editing={editing}
           onClose={closeEditor}
           onSave={saveAccount}

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiFetch } from "./client";
+import { classificationMethodSchema } from "../classification";
 
 export const userRoleSchema = z.enum(["ADMIN", "OPERATOR", "VIEWER", "DEVELOPER"]);
 export type UserRole = z.infer<typeof userRoleSchema>;
@@ -9,6 +10,8 @@ export const authUserSchema = z.object({
   loginId: z.string().min(1),
   role: userRoleSchema,
   admissionNames: z.array(z.string()),
+  classificationMethod: classificationMethodSchema.optional(),
+  scopeBlocked: z.boolean().optional(),
 });
 export type AuthUser = z.infer<typeof authUserSchema>;
 

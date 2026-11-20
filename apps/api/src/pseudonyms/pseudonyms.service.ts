@@ -148,6 +148,10 @@ export class PseudonymsService {
     return this.updatePseudonymSetting.execute(input, user);
   }
 
+  updateSettingsBatch(settings: UpdatePseudonymSettingDto[], user: AuthenticatedUser) {
+    return this.updatePseudonymSetting.executeBatch(settings, user);
+  }
+
   async getAdmissionOperationSchedules(examName: string, admissionName: string, user: AuthenticatedUser) {
     examName = examName.trim();
     if (!examName) throw new BadRequestException("시험명을 확인해 주세요.");
@@ -303,6 +307,8 @@ export class PseudonymsService {
   }
 
   async deleteAdmission(input: DeleteAdmissionDto, user: AuthenticatedUser) {
+    if (user.classificationMethod && user.classificationMethod !== "ADMISSION")
+      throw new BadRequestException("전형 데이터 삭제는 전형별 분류에서 사용할 수 있습니다.");
     const admissionName = assertAdmissionAccess(user, input.admissionName, {
       forbiddenMessage: "배정되지 않은 전형은 삭제할 수 없습니다.",
     });

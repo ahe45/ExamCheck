@@ -1,6 +1,7 @@
 import { findActiveLabelTemplate } from "../label-templates/active-label-template.js";
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { isClassifiedScope } from "../authorization/classification.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 
 export type PrintJobStatus = "CREATED" | "READY" | "DISPATCHING" | "SENT" | "FAILED" | "CANCELLED" | "EXPIRED";
@@ -130,14 +131,16 @@ export class PrintJobsRepository {
   ): Promise<string | null> {
     const [rows] = await executor.execute<Array<RowDataPacket & { examName: string }>>(
       `SELECT COALESCE(pa.exam_name, ?) AS examName
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE'
+         AND cr.period_name = ? AND cr.operation_scope = ? AND cr.status = 'ACTIVE'
          AND (pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL)
-       LIMIT 1`,
+       LIMIT ${isClassifiedScope(schedule.admissionName) ? 2 : 1}`,
       [defaultExamName, ...scheduleParameters(schedule)],
     );
+    if (rows.length > 1)
+      throw new ConflictException("같은 운영 범위·교시에 동일한 수험번호의 출력 대상이 여러 건 있습니다.");
     return rows[0]?.examName ?? null;
   }
 
@@ -211,29 +214,32 @@ export class PrintJobsRepository {
               COALESCE((SELECT school_name FROM system_profile WHERE id = 1), '') AS schoolName, COALESCE((SELECT academic_year FROM system_profile WHERE id = 1), YEAR(cr.exam_date)) AS academicYear,
               COALESCE((SELECT system_name FROM system_profile WHERE id = 1), '') AS systemName,
               0 AS roomAssignedCount, 0 AS roomPresentCount, 0 AS roomAbsentCount
-       FROM candidate_record cr
+       FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        WHERE cr.examinee_no = ? AND cr.exam_date = ? AND cr.start_time = ?
-         AND cr.period_name = ? AND cr.admission = ? AND cr.status = 'ACTIVE'
-         AND (pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL) LIMIT 1${locking ? " FOR UPDATE" : ""}`,
+         AND cr.period_name = ? AND cr.operation_scope = ? AND cr.status = 'ACTIVE'
+         AND (pa.id IS NOT NULL OR NULLIF(cr.temporary_no, '') IS NOT NULL)
+       LIMIT ${isClassifiedScope(schedule.admissionName) ? 2 : 1}${locking ? " FOR UPDATE" : ""}`,
       scheduleParameters(schedule),
     );
+    if (rows.length > 1)
+      throw new ConflictException("같은 운영 범위·교시에 동일한 수험번호의 출력 대상이 여러 건 있습니다.");
     return rows[0] ?? null;
   }
 
-  async roomCounts(executor: SqlExecutor, candidate: PrintCandidateRecord) {
+  async roomCounts(executor: SqlExecutor, candidate: PrintCandidateRecord, scope = candidate.admissionName) {
     const [rows] = await executor.execute<RowDataPacket[]>(
       `SELECT COUNT(*) AS roomAssignedCount,
       COALESCE(SUM(pa.id IS NOT NULL AND pa.is_absentee = FALSE), 0) AS roomPresentCount,
       COALESCE(SUM(pa.id IS NOT NULL AND pa.is_absentee = TRUE), 0) AS roomAbsentCount
-      FROM candidate_record cr LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
-      WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.admission = ?
+      FROM operation_candidate_record cr LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
+      WHERE cr.exam_date = ? AND cr.start_time = ? AND cr.period_name = ? AND cr.operation_scope = ?
         AND cr.building_name = ? AND cr.room_name = ? AND cr.status = 'ACTIVE'`,
       [
         candidate.examDate,
         candidate.examStartTime,
         candidate.periodName,
-        candidate.admissionName,
+        scope,
         candidate.buildingName,
         candidate.roomName,
       ],

@@ -1,5 +1,6 @@
 import { ForbiddenException } from "@nestjs/common";
 import type { AuthenticatedUser, UserRole } from "../auth/auth.types.js";
+import { matchesClassificationMethod } from "./classification.js";
 
 const PRIVILEGED_ROLES = new Set<UserRole>(["ADMIN", "DEVELOPER"]);
 const ASSIGNABLE_ROLES = new Set<UserRole>(["OPERATOR", "VIEWER"]);
@@ -15,7 +16,7 @@ const ALLOWED_ADMISSION_SQL_COLUMNS = new Set<string>(Object.values(ADMISSION_SQ
 const DEFAULT_FORBIDDEN_MESSAGE = "배정되지 않은 전형의 데이터에는 접근할 수 없습니다.";
 
 export interface AdmissionAccessPredicate {
-  sql: "1 = 1" | "0 = 1" | `${AdmissionSqlColumn} IN (${string})`;
+  sql: "1 = 1" | "0 = 1" | `${AdmissionSqlColumn | "cr.operation_scope"} IN (${string})`;
   params: string[];
 }
 
@@ -31,14 +32,14 @@ export function normalizedAssignedAdmissions(user: Pick<AuthenticatedUser, "admi
   return [...new Set(user.admissionNames.map(normalizeAdmissionName).filter(Boolean))];
 }
 
-export function hasAdmissionAccess(
-  user: Pick<AuthenticatedUser, "role" | "admissionNames">,
-  admissionName: string,
-): boolean {
+type ScopedUser = Pick<AuthenticatedUser, "role" | "admissionNames" | "classificationMethod" | "scopeBlocked">;
+
+export function hasAdmissionAccess(user: ScopedUser, admissionName: string): boolean {
   const normalizedAdmissionName = normalizeAdmissionName(admissionName);
   if (!normalizedAdmissionName) return false;
+  if (!matchesClassificationMethod(normalizedAdmissionName, user.classificationMethod ?? "ADMISSION")) return false;
   if (PRIVILEGED_ROLES.has(user.role)) return true;
-  if (!ASSIGNABLE_ROLES.has(user.role)) return false;
+  if (!ASSIGNABLE_ROLES.has(user.role) || user.scopeBlocked) return false;
 
   const assignedAdmissions = normalizedAssignedAdmissions(user);
   if (assignedAdmissions.length === 0) return true;
@@ -46,7 +47,7 @@ export function hasAdmissionAccess(
 }
 
 export function assertAdmissionAccess(
-  user: Pick<AuthenticatedUser, "role" | "admissionNames">,
+  user: ScopedUser,
   admissionName: string,
   options: AdmissionAccessAssertionOptions = {},
 ): string {
@@ -56,20 +57,26 @@ export function assertAdmissionAccess(
   return normalizeAdmissionName(admissionName);
 }
 
-export function buildAdmissionAccessPredicate(
-  user: Pick<AuthenticatedUser, "role" | "admissionNames">,
-  column: AdmissionSqlColumn,
-): AdmissionAccessPredicate {
+export function buildAdmissionAccessPredicate(user: ScopedUser, column: AdmissionSqlColumn): AdmissionAccessPredicate {
   if (!ALLOWED_ADMISSION_SQL_COLUMNS.has(column)) {
     throw new TypeError("허용되지 않은 전형 컬럼입니다.");
   }
   if (PRIVILEGED_ROLES.has(user.role)) return { sql: "1 = 1", params: [] };
-  if (!ASSIGNABLE_ROLES.has(user.role)) return { sql: "0 = 1", params: [] };
+  if (!ASSIGNABLE_ROLES.has(user.role) || user.scopeBlocked) return { sql: "0 = 1", params: [] };
 
   const assignedAdmissions = normalizedAssignedAdmissions(user);
   if (assignedAdmissions.length === 0) return { sql: "1 = 1", params: [] };
+  if (
+    user.classificationMethod &&
+    user.classificationMethod !== "ADMISSION" &&
+    column !== ADMISSION_SQL_COLUMNS.candidateRecord
+  ) {
+    return { sql: "0 = 1", params: [] };
+  }
+  const scopeColumn =
+    user.classificationMethod && user.classificationMethod !== "ADMISSION" ? "cr.operation_scope" : column;
   return {
-    sql: `${column} IN (${assignedAdmissions.map(() => "?").join(", ")})`,
+    sql: `${scopeColumn} IN (${assignedAdmissions.map(() => "?").join(", ")})`,
     params: assignedAdmissions,
   };
 }

@@ -52,6 +52,7 @@ export interface ExamineePhotoRow extends RowDataPacket {
 }
 
 export interface OperationScheduleRow extends RowDataPacket {
+  scopeLabel?: string;
   date: string;
   time: string;
   periodName: string;
@@ -64,6 +65,7 @@ export interface OperationScheduleRow extends RowDataPacket {
 }
 
 export interface ExamineeScheduleRow extends RowDataPacket {
+  scopeLabel?: string;
   examineeNo: string;
   name: string;
   examDate: string;
