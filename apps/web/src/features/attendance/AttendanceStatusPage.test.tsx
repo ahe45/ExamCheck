@@ -27,6 +27,26 @@ function card(label: string) {
 }
 
 describe("AttendanceStatusPage", () => {
+  it("shows one row per date without time or period columns", async () => {
+    api.fetch.mockResolvedValue([
+      records[0],
+      { ...records[30], period: "2교시" },
+      { ...records[60], date: "2026-10-22" },
+    ]);
+    render(<AttendanceStatusPage token="token" view="date" />);
+    const table = within(await screen.findByRole("table"));
+    expect(table.getByRole("button", { name: "날짜 필터" })).toBeInTheDocument();
+    expect(table.queryByRole("button", { name: "시간 필터" })).not.toBeInTheDocument();
+    expect(table.queryByRole("button", { name: "교시 필터" })).not.toBeInTheDocument();
+    const rows = table.getAllByRole("row");
+    expect(rows).toHaveLength(3);
+    expect(
+      within(rows[1])
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["1", "2026-10-21", "2", "1", "1", "50.0%", "50.0%"]);
+  });
+
   it("recalculates weighted cards from column filters and resets filters without a search field", async () => {
     api.fetch.mockResolvedValue(records);
     render(<AttendanceStatusPage token="token" view="admission" />);

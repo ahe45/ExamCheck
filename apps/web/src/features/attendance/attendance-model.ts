@@ -39,7 +39,7 @@ export const attendanceDimensions: Record<AttendanceView, readonly AttendanceFie
   unit: ["admission", "unit", ...scheduleDimensions],
   major: ["admission", "unit", "major", ...scheduleDimensions],
   group: ["admission", "unit", "major", ...scheduleDimensions, "group"],
-  date: scheduleDimensions,
+  date: ["date"],
   period: scheduleDimensions,
   building: ["building", ...scheduleDimensions],
   room: ["building", "room", ...scheduleDimensions],
