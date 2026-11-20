@@ -17,6 +17,23 @@ test.describe("역할별 읽기 전용 smoke", () => {
     await expect(page.getByRole("navigation", { name: "관리자 메뉴" })).toBeVisible();
     await expect(page.getByText("admin", { exact: true })).toBeVisible();
 
+    const date = page.getByRole("combobox", { name: "날짜" });
+    const period = page.getByRole("combobox", { name: "교시" });
+    await expect(date).toHaveValue("");
+    await expect(period).toHaveValue("");
+    await date.selectOption("2026-11-01");
+    await period.selectOption("CI-E2E-WORKFLOW-2교시");
+    const admission = page.getByRole("button", { name: "CI-E2E-WORKFLOW-전형 수험생 목록" });
+    await expect(admission).toContainText("전체 대상자1명");
+    await admission.click();
+    const candidates = page.getByRole("dialog", { name: /CI-E2E-WORKFLOW-전형/ });
+    await expect(candidates.getByRole("cell", { name: "CI-E2E-WORKFLOW-003", exact: true })).toBeVisible();
+    await expect(candidates.getByRole("cell", { name: "CI-E2E-WORKFLOW-001", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await period.selectOption("");
+    await date.selectOption("");
+    await expect(admission).toContainText("전체 대상자3명");
+
     await verifyReadOnlyPage(page, testInfo, "admin-dashboard");
   });
 

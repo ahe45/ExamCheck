@@ -37,6 +37,21 @@ describe("attendance aggregation", () => {
     expect(total).toMatchObject({ total: 3, present: 1, absent: 1 });
     expect(attendanceValue(total, "presentRate")).toBe("33.3%");
   });
+  it.each(attendanceViews)("shows a separate schedule row when the time differs in $label", ({ key }) => {
+    const rows = buildAttendanceRows([records[0], attendanceRecord(4, { time: "13:00", attendance: "결시" })], key);
+    expect(
+      rows.map((row) => [
+        attendanceValue(row, "date"),
+        attendanceValue(row, "time"),
+        attendanceValue(row, "period"),
+        row.present,
+        row.absent,
+      ]),
+    ).toEqual([
+      ["2026-10-21", "09:00", "1교시", 1, 0],
+      ["2026-10-21", "13:00", "1교시", 0, 1],
+    ]);
+  });
   it("keeps same-name units and rooms in separate parent scopes", () => {
     expect(buildAttendanceRows([records[0], attendanceRecord(2, { admission: "특별" })], "unit")).toHaveLength(2);
     expect(buildAttendanceRows([records[0], attendanceRecord(2, { building: "별관" })], "room")).toHaveLength(2);

@@ -32,16 +32,18 @@ export const attendanceLabels: Record<AttendanceColumn, string> = {
   absentRate: "결시율",
 };
 
-export const attendanceDimensions: Record<AttendanceView, AttendanceField[]> = {
-  admission: ["admission"],
-  unit: ["admission", "unit"],
-  major: ["admission", "unit", "major"],
-  group: ["admission", "unit", "major", "date", "time", "period", "group"],
-  date: ["date"],
-  period: ["date", "time", "period"],
-  building: ["building"],
-  room: ["building", "room"],
-  waitingRoom: ["building", "waitingRoom"],
+const scheduleDimensions = ["date", "time", "period"] as const;
+
+export const attendanceDimensions: Record<AttendanceView, readonly AttendanceField[]> = {
+  admission: ["admission", ...scheduleDimensions],
+  unit: ["admission", "unit", ...scheduleDimensions],
+  major: ["admission", "unit", "major", ...scheduleDimensions],
+  group: ["admission", "unit", "major", ...scheduleDimensions, "group"],
+  date: scheduleDimensions,
+  period: scheduleDimensions,
+  building: ["building", ...scheduleDimensions],
+  room: ["building", "room", ...scheduleDimensions],
+  waitingRoom: ["building", "waitingRoom", ...scheduleDimensions],
   candidate: [
     "examineeNo",
     "name",
@@ -49,9 +51,7 @@ export const attendanceDimensions: Record<AttendanceView, AttendanceField[]> = {
     "unit",
     "major",
     "group",
-    "date",
-    "time",
-    "period",
+    ...scheduleDimensions,
     "building",
     "room",
     "waitingRoom",

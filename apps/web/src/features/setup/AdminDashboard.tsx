@@ -16,6 +16,14 @@ interface DashboardProps {
   loading: boolean;
   error: string | null;
   lastUpdated: Date | null;
+  scheduleFilter?: {
+    date: string;
+    period: string;
+    dates: readonly string[];
+    periods: readonly string[];
+    onDateChange(date: string): void;
+    onPeriodChange(period: string): void;
+  };
   onRefresh(): void;
   onOpenCandidates(): void;
 }
@@ -26,6 +34,7 @@ export function AdminDashboard({
   loading,
   error,
   lastUpdated,
+  scheduleFilter,
   onRefresh,
   onOpenCandidates,
 }: DashboardProps) {
@@ -37,6 +46,34 @@ export function AdminDashboard({
           <p>전형별 수험생 등록 현황과 응시율을 빠르게 확인합니다.</p>
         </div>
         <div className="admin-view-actions">
+          {scheduleFilter && (
+            <div className="dashboard-schedule-filters">
+              <label>
+                날짜
+                <select
+                  value={scheduleFilter.date}
+                  onChange={(event) => scheduleFilter.onDateChange(event.target.value)}
+                >
+                  <option value="">전체</option>
+                  {scheduleFilter.dates.map((date) => (
+                    <option key={date}>{date}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                교시
+                <select
+                  value={scheduleFilter.period}
+                  onChange={(event) => scheduleFilter.onPeriodChange(event.target.value)}
+                >
+                  <option value="">전체</option>
+                  {scheduleFilter.periods.map((period) => (
+                    <option key={period}>{period}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
           <span className="admin-dashboard-updated">
             {lastUpdated ? `마지막 갱신 ${formatDashboardTime(lastUpdated)}` : "데이터 확인 중"}
           </span>
@@ -57,6 +94,8 @@ export function AdminDashboard({
           token={token}
           breakdowns={statistics.breakdowns}
           loading={loading}
+          date={scheduleFilter?.date}
+          period={scheduleFilter?.period}
           onOpenCandidates={onOpenCandidates}
         />
       </div>
@@ -161,11 +200,15 @@ function AdmissionStatusSection({
   token,
   breakdowns,
   loading,
+  date,
+  period,
   onOpenCandidates,
 }: {
   token: string;
   breakdowns: DashboardStatistics["breakdowns"];
   loading: boolean;
+  date?: string;
+  period?: string;
   onOpenCandidates(): void;
 }) {
   const [selectedBreakdown, setSelectedBreakdown] = useState<DashboardBreakdown>("admission");
@@ -213,8 +256,10 @@ function AdmissionStatusSection({
         </div>
       ) : (
         <div className="admission-dashboard-empty">
-          <strong>등록된 수험생 데이터가 없습니다.</strong>
-          <span>수험생 데이터 메뉴에서 업로드 양식으로 수험생을 등록해 주세요.</span>
+          <strong>
+            {date || period ? "선택한 일정에 등록된 수험생이 없습니다." : "등록된 수험생 데이터가 없습니다."}
+          </strong>
+          {!date && !period && <span>수험생 데이터 메뉴에서 업로드 양식으로 수험생을 등록해 주세요.</span>}
           <button className="exam-primary-button" onClick={onOpenCandidates}>
             <ConfirmButtonIcon />
             <span>수험생 데이터로 이동</span>
@@ -222,7 +267,13 @@ function AdmissionStatusSection({
         </div>
       )}
       {selectedCard && (
-        <DashboardCandidatesModal token={token} {...selectedCard} onClose={() => setSelectedCard(null)} />
+        <DashboardCandidatesModal
+          token={token}
+          {...selectedCard}
+          date={date}
+          period={period}
+          onClose={() => setSelectedCard(null)}
+        />
       )}
     </section>
   );

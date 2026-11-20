@@ -1,19 +1,23 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { PropsWithChildren } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchCandidateDashboardSummary } from "../../shared/api/candidates";
+import { fetchCandidateDashboardSchedules, fetchCandidateDashboardSummary } from "../../shared/api/candidates";
 import { AdminDashboard } from "./AdminDashboard";
 import { buildDashboardStatistics } from "./dashboard-statistics";
 import { useAdminDashboard } from "./useAdminDashboard";
 
-vi.mock("../../shared/api/candidates", () => ({ fetchCandidateDashboardSummary: vi.fn() }));
+vi.mock("../../shared/api/candidates", () => ({
+  fetchCandidateDashboardSchedules: vi.fn(),
+  fetchCandidateDashboardSummary: vi.fn(),
+}));
 
 describe("AdminDashboard", () => {
   beforeEach(() => {
     vi.mocked(fetchCandidateDashboardSummary).mockReset();
+    vi.mocked(fetchCandidateDashboardSchedules).mockReset().mockResolvedValue([]);
   });
 
   it("renders the existing summary and admission statistic cards", () => {
@@ -118,7 +122,7 @@ describe("AdminDashboard", () => {
 
     const { result } = renderHook(() => useAdminDashboard("session-token"), { wrapper: queryWrapper() });
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(fetchCandidateDashboardSummary).toHaveBeenCalledWith("session-token");
+    expect(fetchCandidateDashboardSummary).toHaveBeenCalledWith("session-token", { date: "", period: "" });
     expect(result.current.statistics.assignedCandidates).toBe(0);
 
     await act(async () => {
@@ -126,6 +130,42 @@ describe("AdminDashboard", () => {
     });
     expect(fetchCandidateDashboardSummary).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(result.current.statistics.assignedCandidates).toBe(1));
+  });
+
+  it("filters the dashboard from its heading and resets a period unavailable on the selected date", async () => {
+    vi.mocked(fetchCandidateDashboardSchedules).mockResolvedValue([
+      { date: "2026-11-20", period: "1교시" },
+      { date: "2026-11-21", period: "2교시" },
+    ]);
+    vi.mocked(fetchCandidateDashboardSummary).mockResolvedValue(buildDashboardStatistics([]));
+    function Dashboard() {
+      const dashboard = useAdminDashboard("session-token");
+      return <AdminDashboard {...dashboard} onRefresh={vi.fn()} onOpenCandidates={vi.fn()} />;
+    }
+    render(<Dashboard />, { wrapper: queryWrapper() });
+    const header = within(screen.getByRole("heading", { name: "전형 운영 대시보드" }).closest("header")!);
+    const date = header.getByRole("combobox", { name: "날짜" });
+    const period = header.getByRole("combobox", { name: "교시" });
+    expect(date).toHaveDisplayValue("전체");
+    expect(period).toHaveDisplayValue("전체");
+    await header.findByRole("option", { name: "2교시" });
+    fireEvent.change(period, { target: { value: "2교시" } });
+    await waitFor(() =>
+      expect(fetchCandidateDashboardSummary).toHaveBeenLastCalledWith("session-token", {
+        date: "",
+        period: "2교시",
+      }),
+    );
+    fireEvent.change(date, { target: { value: "2026-11-20" } });
+    expect(period).toHaveDisplayValue("전체");
+    expect(within(period).queryByRole("option", { name: "2교시" })).not.toBeInTheDocument();
+    fireEvent.change(period, { target: { value: "1교시" } });
+    await waitFor(() =>
+      expect(fetchCandidateDashboardSummary).toHaveBeenLastCalledWith("session-token", {
+        date: "2026-11-20",
+        period: "1교시",
+      }),
+    );
   });
 
   it("does not request dashboard data while another administrator menu is active", async () => {

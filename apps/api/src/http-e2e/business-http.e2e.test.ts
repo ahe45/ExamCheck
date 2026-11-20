@@ -217,7 +217,7 @@ describe("business controller HTTP boundaries", () => {
 
     expect(dashboard.status).toBe(200);
     expect(overview.status).toBe(200);
-    expect(candidateDashboardSummary).toHaveBeenCalledWith(administrator, undefined);
+    expect(candidateDashboardSummary).toHaveBeenCalledWith(administrator, undefined, undefined, undefined);
     expect(pseudonymSettingsOverview).toHaveBeenCalledWith("2026년도 자격시험", administrator);
   });
 

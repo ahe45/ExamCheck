@@ -195,8 +195,25 @@ export function fetchCandidates(token: string) {
   return apiFetch<CandidateRecord[]>("/candidates", {}, token);
 }
 
-export function fetchCandidateDashboardSummary(token: string) {
-  return apiFetch("/candidates/dashboard-summary", {}, token, candidateDashboardSummarySchema);
+export function fetchCandidateDashboardSummary(token: string, filters?: { date: string; period: string }) {
+  const query = new URLSearchParams();
+  if (filters?.date) query.set("date", filters.date);
+  if (filters?.period) query.set("period", filters.period);
+  return apiFetch(
+    `/candidates/dashboard-summary${query.size ? `?${query}` : ""}`,
+    {},
+    token,
+    candidateDashboardSummarySchema,
+  );
+}
+
+export function fetchCandidateDashboardSchedules(token: string) {
+  return apiFetch(
+    "/candidates/dashboard-schedules",
+    {},
+    token,
+    z.array(z.object({ date: z.string(), period: z.string() })),
+  );
 }
 
 export function previewCandidateWorkbook(token: string, file: File) {

@@ -103,7 +103,12 @@ export class CandidatesService {
     return this.repository.filterValues(this.pool, field);
   }
 
-  async dashboardSummary(user: AuthenticatedUser, requestedAdmissionName?: string) {
+  dashboardSchedules(user: AuthenticatedUser) {
+    const access = buildAdmissionAccessPredicate(user, ADMISSION_SQL_COLUMNS.candidateRecord);
+    return this.repository.listDashboardSchedules(this.pool, access);
+  }
+
+  async dashboardSummary(user: AuthenticatedUser, requestedAdmissionName?: string, date?: string, period?: string) {
     const admissionName =
       requestedAdmissionName && user.classificationMethod
         ? requestedAdmissionName.trim()
@@ -113,7 +118,13 @@ export class CandidatesService {
             })
           : undefined;
     const access = buildAdmissionAccessPredicate(user, ADMISSION_SQL_COLUMNS.candidateRecord);
-    const rows = await this.repository.listDashboardBreakdownCounts(this.pool, access, admissionName);
+    const rows = await this.repository.listDashboardBreakdownCounts(
+      this.pool,
+      access,
+      admissionName,
+      date,
+      period?.trim(),
+    );
     const breakdowns = {
       admission: toDashboardStatistics(rows.filter((row) => row.groupType === "admission")),
       unit: toDashboardStatistics(rows.filter((row) => row.groupType === "unit")),

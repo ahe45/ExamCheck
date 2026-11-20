@@ -13,7 +13,7 @@ const records: CandidateAttendanceRecord[] = Array.from({ length: 65 }, (_, id) 
   major: "피아노",
   group: "1조",
   date: "2026-10-21",
-  time: "09:00",
+  time: id < 30 ? "09:00" : "13:00",
   period: "1교시",
   building: "본관",
   room: "101",
@@ -45,6 +45,12 @@ describe("AttendanceStatusPage", () => {
     expect(card("결시율")).toHaveTextContent("80.0%");
     fireEvent.click(screen.getByRole("button", { name: "필터 초기화" }));
     expect(card("전체인원")).toHaveTextContent("65명");
+    fireEvent.click(screen.getByRole("button", { name: "시간 필터" }));
+    const timeFilter = within(screen.getByRole("dialog", { name: "시간 필터" }));
+    fireEvent.click(timeFilter.getByLabelText("13:00"));
+    fireEvent.click(timeFilter.getByRole("button", { name: "적용" }));
+    expect(card("전체인원")).toHaveTextContent("30명");
+    expect(card("응시율")).toHaveTextContent("100.0%");
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
   });
   it("totals all filtered candidates across pages", async () => {

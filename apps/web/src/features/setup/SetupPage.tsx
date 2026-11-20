@@ -85,6 +85,7 @@ export function SetupPage({
               loading={dashboard.loading}
               error={dashboard.error}
               lastUpdated={dashboard.lastUpdated}
+              scheduleFilter={dashboard.scheduleFilter}
               onRefresh={() => void dashboard.refresh()}
               onOpenCandidates={() => navigation.openSection("candidates")}
             />

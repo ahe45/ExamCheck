@@ -12,18 +12,25 @@ export function DashboardCandidatesModal({
   token,
   breakdown,
   name,
+  date,
+  period,
   onClose,
 }: {
   token: string;
   breakdown: DashboardBreakdown;
   name: string;
+  date?: string;
+  period?: string;
   onClose(): void;
 }) {
   const dialogRef = useDialogFocus<HTMLDivElement>(true);
   useEscapeKey(true, onClose);
   const recordFilter = useCallback(
-    (record: CandidateAttendanceRecord) => dashboardGroupName(record, breakdown) === name,
-    [breakdown, name],
+    (record: CandidateAttendanceRecord) =>
+      (!date || record.date === date) &&
+      (!period || record.period.trim() === period) &&
+      dashboardGroupName(record, breakdown) === name,
+    [breakdown, date, name, period],
   );
   return createPortal(
     <div

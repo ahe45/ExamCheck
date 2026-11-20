@@ -57,7 +57,12 @@ export class CandidatesController {
 
   @Get("dashboard-summary")
   dashboardSummary(@Query() query: CandidateDashboardQueryDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.candidatesService.dashboardSummary(user, query.admissionName);
+    return this.candidatesService.dashboardSummary(user, query.admissionName, query.date, query.period);
+  }
+
+  @Get("dashboard-schedules")
+  dashboardSchedules(@CurrentUser() user: AuthenticatedUser) {
+    return this.candidatesService.dashboardSchedules(user);
   }
 
   @Get("attendance")

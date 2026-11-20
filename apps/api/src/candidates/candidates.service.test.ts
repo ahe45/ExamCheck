@@ -193,6 +193,8 @@ describe("CandidatesService compatibility facade", () => {
         params: ["일반전형", "특별전형"],
       },
       undefined,
+      undefined,
+      undefined,
     );
   });
 

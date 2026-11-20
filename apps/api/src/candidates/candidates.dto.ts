@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsObject, IsOptional, IsString, Length } from "class-validator";
+import { IsDateString, IsIn, IsObject, IsOptional, IsString, Length, Matches } from "class-validator";
 import type { CandidateUploadPolicy } from "./candidate-domain.js";
 
 export class CandidateDashboardQueryDto {
@@ -6,6 +6,17 @@ export class CandidateDashboardQueryDto {
   @IsString()
   @Length(1, 200)
   admissionName?: string;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDateString({ strict: true, strictSeparator: true })
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  @Matches(/\S/)
+  period?: string;
 }
 
 export class CandidateImportQueryDto {

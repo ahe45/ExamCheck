@@ -138,12 +138,27 @@ export class CandidatesRepository {
     return rows[0] ?? null;
   }
 
+  async listDashboardSchedules(executor: SqlExecutor, access: AdmissionAccessPredicate) {
+    const [rows] = await executor.execute<Array<RowDataPacket & { date: string; period: string }>>(
+      `SELECT DISTINCT DATE_FORMAT(cr.exam_date, '%Y-%m-%d') AS date, TRIM(cr.period_name) AS period
+       FROM operation_candidate_record cr
+       WHERE cr.status = 'ACTIVE' AND ${access.sql}
+       ORDER BY date, period`,
+      access.params,
+    );
+    return rows;
+  }
+
   async listDashboardBreakdownCounts(
     executor: SqlExecutor,
     access: AdmissionAccessPredicate,
     admissionName?: string,
+    date?: string,
+    period?: string,
   ): Promise<CandidateDashboardBreakdownRow[]> {
     const admissionFilter = admissionName ? " AND cr.admission = ?" : "";
+    const dateFilter = date ? " AND cr.exam_date = ?" : "";
+    const periodFilter = period ? " AND TRIM(cr.period_name) = ?" : "";
     const [rows] = await executor.execute<CandidateDashboardBreakdownRow[]>(
       `SELECT dashboard_group.group_type AS groupType,
               CASE dashboard_group.group_type
@@ -201,10 +216,10 @@ export class CandidatesRepository {
          UNION ALL SELECT 'period'
          UNION ALL SELECT 'waitingRoom'
        ) dashboard_group
-       WHERE cr.status = 'ACTIVE' AND ${access.sql}${admissionFilter}
+       WHERE cr.status = 'ACTIVE' AND ${access.sql}${admissionFilter}${dateFilter}${periodFilter}
        GROUP BY dashboard_group.group_type, 2
        ORDER BY dashboard_group.group_type, 2`,
-      [...access.params, ...(admissionName ? [admissionName] : [])],
+      [...access.params, ...[admissionName, date, period].filter((value): value is string => Boolean(value))],
     );
     return rows.map((row) => ({
       ...row,
