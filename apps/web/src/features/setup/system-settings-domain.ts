@@ -39,7 +39,10 @@ export interface SettingsSnapshotInput {
   useAnswerSheet?: boolean;
 }
 
-export function buildScheduleRanges(candidates: CandidateRecord[], setting: PseudonymSetting): RangeDraft[] {
+export function buildScheduleRanges(
+  candidates: CandidateRecord[],
+  setting: Pick<PseudonymSetting, "rangeStart" | "displayWidth" | "ranges">,
+): RangeDraft[] {
   const schedules = new Map<string, Omit<RangeDraft, "rangeStart" | "rangeEnd">>();
   for (const candidate of candidates) {
     const date = candidate.date.trim();

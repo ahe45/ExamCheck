@@ -1,6 +1,7 @@
 import AdmZip from "adm-zip";
 import ExcelJS from "exceljs";
 import { beforeAll, describe, expect, it } from "vitest";
+import { normalizeMultipartFileName } from "../common/http/multipart-file-name.js";
 import {
   PHOTO_ARCHIVE_MAX_ENTRIES,
   PHOTO_MAX_HEIGHT,
@@ -9,7 +10,6 @@ import {
   WORKBOOK_MAX_ENTRIES,
   assertWorkbookBuffer,
   hasZipMagic,
-  normalizeMultipartFileName,
   openValidatedPhotoArchive,
   readValidatedPhotoEntry,
   validatePhotoArchiveEntryMetadata,

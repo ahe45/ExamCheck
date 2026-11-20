@@ -356,9 +356,14 @@ describe("PseudonymsRepository SQL mapping", () => {
     const executor = new FixtureExecutor([
       [{ passwordHash: "hash" }],
       [{ id: 11 }, { id: 12 }],
+      { affectedRows: 1 } as ResultSetHeader,
+      [{ id: "print-job" }],
       { affectedRows: 2 } as ResultSetHeader,
       { affectedRows: 1 } as ResultSetHeader,
+      { affectedRows: 2 } as ResultSetHeader,
+      { affectedRows: 2 } as ResultSetHeader,
       { affectedRows: 3 } as ResultSetHeader,
+      { affectedRows: 1 } as ResultSetHeader,
       { affectedRows: 1 } as ResultSetHeader,
       { affectedRows: 1 } as ResultSetHeader,
       { affectedRows: 2 } as ResultSetHeader,
@@ -366,18 +371,27 @@ describe("PseudonymsRepository SQL mapping", () => {
 
     await expect(repository.findUserPasswordForUpdate(executor, 7)).resolves.toBe("hash");
     await expect(repository.lockAdmissionCandidateIds(executor, "일반전형")).resolves.toEqual([11, 12]);
-    await repository.deleteAdmissionAssignments(executor, "일반전형");
+    await repository.deleteAdmissionAuditHistory(executor, "일반전형", [11, 12]);
+    await expect(repository.deleteAdmissionCandidateData(executor, [11, 12])).resolves.toEqual({
+      deletedAssignmentCount: 2,
+      deletedCandidateCount: 2,
+    });
     await repository.deleteAdmissionOperations(executor, "일반전형");
     await repository.deleteAdmissionTimeRanges(executor, "일반전형");
     await repository.deleteAdmissionSettings(executor, "일반전형");
     await repository.deleteUserAdmissionAssignments(executor, "일반전형");
-    await repository.deleteAdmissionCandidates(executor, "일반전형");
 
-    expect(executor.calls).toHaveLength(8);
+    expect(executor.calls).toHaveLength(13);
     expect(executor.calls[0]?.sql).toContain("password_hash AS passwordHash");
     expect(executor.calls[0]?.sql).toContain("FOR UPDATE");
     expect(executor.calls[1]?.sql).toContain("candidate_record");
-    expect(executor.calls.slice(2).every((call) => call.parameters?.includes("일반전형"))).toBe(true);
+    expect(executor.calls[2]?.parameters).toEqual(["[11,12]", "일반전형", "일반전형"]);
+    expect(executor.calls[3]?.sql).toContain("FOR UPDATE");
+    expect(executor.calls[4]?.sql).toContain("DELETE a FROM audit_log");
+    expect(executor.calls[5]?.sql).toContain("DELETE FROM print_job");
+    expect(executor.calls.slice(3, 8).every((call) => call.parameters?.join(",") === "11,12")).toBe(true);
+    expect(executor.calls[11]?.sql).toContain("INSERT INTO user_classification_assignment");
+    expect(executor.calls.slice(8).every((call) => call.parameters?.includes("일반전형"))).toBe(true);
   });
 });
 

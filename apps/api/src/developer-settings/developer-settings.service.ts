@@ -13,6 +13,7 @@ import { hashPassword, verifyPassword } from "../auth/password.js";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
 import { isDuplicateEntryError as isDuplicateEntry } from "../common/database/mysql-errors.js";
 import { withTransaction } from "../common/database/transaction.js";
+import { normalizeMultipartFileName } from "../common/http/multipart-file-name.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import { IdentityBackfillProjectionRepository } from "../database/identity-backfill-projection.repository.js";
 import { IdentityReadRouter, type IdentityReadProjection } from "../identity-transition/identity-read-router.js";
@@ -163,13 +164,14 @@ export class DeveloperSettingsService {
     if (!hasImageSignature(file.buffer, mimeType)) {
       throw new BadRequestException("로고 파일의 실제 이미지 형식이 확장자와 일치하지 않습니다.");
     }
-    if (!hasMatchingImageExtension(file.originalname, mimeType)) {
+    const fileName = normalizeMultipartFileName(file.originalname);
+    if (!hasMatchingImageExtension(fileName, mimeType)) {
       throw new BadRequestException("로고 파일의 확장자와 이미지 형식이 일치하지 않습니다.");
     }
     await withTransaction(this.pool, async (connection) => {
       await this.lockProfile(connection);
       await this.repository.updateLogo(connection, {
-        fileName: file.originalname,
+        fileName,
         mimeType,
         data: file.buffer,
         updatedBy: user.id,
@@ -178,7 +180,7 @@ export class DeveloperSettingsService {
         eventType: "SYSTEM_LOGO_UPDATED",
         actorUserId: user.id,
         details: {
-          fileName: file.originalname,
+          fileName,
           mimeType,
         },
       });
@@ -348,7 +350,7 @@ function profileResponse(profile: ProfileRow) {
     examineeNoUniqueness: profile.examineeNoUniqueness,
     pseudonymNoUniqueness: profile.pseudonymNoUniqueness,
     ...(profile.classificationMethod ? { classificationMethod: profile.classificationMethod } : {}),
-    logoFileName: profile.logoFileName,
+    logoFileName: profile.logoFileName === null ? null : normalizeMultipartFileName(profile.logoFileName),
     logoDataUrl:
       profile.logoData && profile.logoMimeType
         ? `data:${profile.logoMimeType};base64,${profile.logoData.toString("base64")}`

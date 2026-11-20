@@ -1,5 +1,6 @@
 import type { Pool } from "mysql2/promise";
 import { describe, expect, it, vi } from "vitest";
+import { DELETED_SCOPE_GRANT } from "../authorization/classification.js";
 import { AuthRepository } from "./auth.repository.js";
 
 describe("AuthRepository", () => {
@@ -17,5 +18,21 @@ describe("AuthRepository", () => {
 
     await expect(repository.findUserByLoginId("missing")).resolves.toBeNull();
     expect(String(execute.mock.calls[0][0])).toContain("WHERE login_id = ?");
+  });
+
+  it("blocks access after deletion of the last grant even if a legacy unrestricted marker exists", async () => {
+    const execute = vi.fn().mockResolvedValue([
+      [
+        { method: "ADMISSION", scopeKey: DELETED_SCOPE_GRANT, legacy: 0 },
+        { method: "ADMISSION", scopeKey: "*", legacy: 0 },
+      ],
+      [],
+    ]);
+    const repository = new AuthRepository({ execute } as unknown as Pool);
+
+    await expect(repository.getClassifiedAccess(7, "ADMISSION")).resolves.toEqual({
+      admissionNames: [],
+      scopeBlocked: true,
+    });
   });
 });

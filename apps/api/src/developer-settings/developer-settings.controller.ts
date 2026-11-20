@@ -18,8 +18,10 @@ import { CurrentUser } from "../auth/current-user.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { RequirePermissions } from "../auth/permissions.js";
 import { RolesGuard } from "../auth/roles.js";
+import { PseudonymsService } from "../pseudonyms/pseudonyms.service.js";
 import {
   ChangeDeveloperPasswordDto,
+  MaintainExamDataDto,
   UpdateDeveloperSettingsDto,
   UpdateHistoryResetPasswordDto,
 } from "./developer-settings.dto.js";
@@ -40,6 +42,7 @@ export class DeveloperSettingsController {
   constructor(
     @Inject(DeveloperSettingsService) private readonly settingsService: DeveloperSettingsService,
     @Inject(DatabaseBackupService) private readonly backupService: DatabaseBackupService,
+    @Inject(PseudonymsService) private readonly pseudonymsService: PseudonymsService,
   ) {}
 
   @Get("backup")
@@ -59,6 +62,11 @@ export class DeveloperSettingsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.backupService.restore(file?.buffer, body.password, body.confirmation, user.id);
+  }
+
+  @Post("exam-data")
+  maintainExamData(@Body() input: MaintainExamDataDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.pseudonymsService.maintainExamData(input, user);
   }
 
   @Get()

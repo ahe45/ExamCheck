@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { UserRole } from "../auth/auth.types.js";
-import type { ClassificationMethod } from "../authorization/classification.js";
+import { resolveClassifiedAccess, type ClassificationMethod } from "../authorization/classification.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 import { toManagedAccountRole, type StoredManagedAccountRole } from "./accounts.domain.js";
 
@@ -89,19 +89,20 @@ export class AccountsRepository {
         classifiedByUser.set(assignment.userId, assigned);
       }
       return accounts.map((account) => {
-        const scopes = classifiedByUser.get(account.id) ?? [];
-        const active = scopes.filter((scope) => scope.method === method).map((scope) => scope.admissionName);
         const legacy = admissionsByUser.get(account.id) ?? [];
-        const assigned = method === "ADMISSION" ? legacy : active.filter((scope) => scope !== "*");
+        const classified = classifiedByUser.get(account.id) ?? [];
+        const access = resolveClassifiedAccess(
+          [
+            ...legacy.map((scopeKey) => ({ method: "ADMISSION", scopeKey, legacy: true })),
+            ...classified.map(({ method, admissionName }) => ({ method, scopeKey: admissionName })),
+          ],
+          method,
+        );
         return {
           ...account,
           role: toManagedAccountRole(account.role),
-          admissionNames: assigned,
-          scopeBlocked:
-            account.role !== "ADMIN" &&
-            !active.length &&
-            !assigned.length &&
-            (admissionsByUser.has(account.id) || scopes.some((scope) => scope.admissionName !== "*")),
+          admissionNames: access.admissionNames,
+          scopeBlocked: account.role !== "ADMIN" && access.scopeBlocked,
         };
       });
     }

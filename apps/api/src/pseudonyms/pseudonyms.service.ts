@@ -9,7 +9,7 @@ import {
 } from "../authorization/admission-policy.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
 import { MutationAuditRepository } from "../common/audit/mutation-audit.repository.js";
-import { withTransaction } from "../common/database/transaction.js";
+import { withScopedTransaction, withTransaction } from "../common/database/transaction.js";
 import { operationStatusResponse, settingResponse } from "./pseudonym-domain.js";
 import {
   AssignPseudonymUseCase,
@@ -307,19 +307,21 @@ export class PseudonymsService {
   }
 
   async deleteAdmission(input: DeleteAdmissionDto, user: AuthenticatedUser) {
-    if (user.classificationMethod && user.classificationMethod !== "ADMISSION")
-      throw new BadRequestException("전형 데이터 삭제는 전형별 분류에서 사용할 수 있습니다.");
     const admissionName = assertAdmissionAccess(user, input.admissionName, {
-      forbiddenMessage: "배정되지 않은 전형은 삭제할 수 없습니다.",
+      forbiddenMessage: "현재 분류에 속하지 않은 항목은 삭제할 수 없습니다.",
     });
 
-    return withTransaction(this.pool, async (connection) => {
+    return withScopedTransaction(this.pool, async (connection) => {
       await this.verifyHistoryResetPassword(connection, input.password);
 
       const candidateIds = await this.repository.lockAdmissionCandidateIds(connection, admissionName);
-      if (!candidateIds.length) throw new NotFoundException("삭제할 전형을 찾을 수 없습니다.");
+      if (!candidateIds.length) throw new NotFoundException("현재 분류에서 삭제할 항목을 찾을 수 없습니다.");
 
-      const deletedAssignmentCount = await this.repository.deleteAdmissionAssignments(connection, admissionName);
+      const { deletedAssignmentCount, deletedCandidateCount } = await this.repository.deleteAdmissionCandidateData(
+        connection,
+        candidateIds,
+      );
+      await this.repository.deleteAdmissionAuditHistory(connection, admissionName, candidateIds);
       const deletedOperationCount = await this.repository.deleteAdmissionOperations(connection, admissionName);
       const deletedRangeCount = await this.repository.deleteAdmissionTimeRanges(connection, admissionName);
       const deletedSettingCount = await this.repository.deleteAdmissionSettings(connection, admissionName);
@@ -327,7 +329,6 @@ export class PseudonymsService {
         connection,
         admissionName,
       );
-      const deletedCandidateCount = await this.repository.deleteAdmissionCandidates(connection, admissionName);
       const result = {
         deleted: true as const,
         admissionName,
@@ -342,7 +343,6 @@ export class PseudonymsService {
         eventType: "ADMISSION_DELETED",
         actorUserId: user.id,
         details: {
-          admissionName,
           deletedCandidateCount,
           deletedAssignmentCount,
           deletedOperationCount,
@@ -352,6 +352,29 @@ export class PseudonymsService {
         },
       });
       return result;
+    });
+  }
+
+  async maintainExamData(
+    input: { action: "reset" | "delete"; password: string; confirmation: string },
+    user: AuthenticatedUser,
+  ) {
+    const deleting = input.action === "delete";
+    const confirmation = deleting ? "전체 삭제" : "전체 초기화";
+    if (input.confirmation !== confirmation)
+      throw new BadRequestException(`확인 문구 ‘${confirmation}’를 입력해 주세요.`);
+
+    return withTransaction(this.pool, async (connection) => {
+      await this.verifyHistoryResetPassword(connection, input.password);
+      await this.repository.lockExamDataForMaintenance(connection);
+      if (deleting) await this.repository.deleteAllExamData(connection);
+      else await this.repository.resetAllExamOperations(connection, user.id);
+      await this.audit.record(connection, {
+        eventType: deleting ? "EXAM_DATA_DELETED" : "EXAM_DATA_RESET",
+        actorUserId: user.id,
+        details: {},
+      });
+      return { completed: true as const };
     });
   }
 

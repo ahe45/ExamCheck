@@ -19,6 +19,7 @@ import { CONTENT_SECURITY_POLICY_REPORT_ONLY, HTTP_SECURITY_HEADERS } from "../c
 import { DeveloperSettingsController } from "../developer-settings/developer-settings.controller.js";
 import { DeveloperSettingsService } from "../developer-settings/developer-settings.service.js";
 import { DatabaseBackupService } from "../developer-settings/database-backup.service.js";
+import { PseudonymsService } from "../pseudonyms/pseudonyms.service.js";
 
 /**
  * Minimal transport/guard harness, not a full AppModule bootstrap test.
@@ -42,6 +43,7 @@ const sessionVersions = new Map([...users.keys()].map((id) => [id, 1]));
 
 let accountListCalls = 0;
 let developerSettingsGetCalls = 0;
+let maintainExamDataCalls = 0;
 
 const authServiceStub = {
   async login(loginId: string, password: string) {
@@ -110,6 +112,15 @@ const developerSettingsServiceStub = {
     { provide: AccountsService, useValue: accountsServiceStub },
     { provide: DeveloperSettingsService, useValue: developerSettingsServiceStub },
     { provide: DatabaseBackupService, useValue: {} },
+    {
+      provide: PseudonymsService,
+      useValue: {
+        async maintainExamData() {
+          maintainExamDataCalls += 1;
+          return { completed: true };
+        },
+      },
+    },
   ],
 })
 class AuthAccountsHttpE2eModule {}
@@ -243,6 +254,26 @@ describe("AuthController and AccountsController HTTP boundaries", () => {
       pseudonymNoUniqueness: "ADMISSION",
     });
     expect(developerSettingsGetCalls).toBe(callsBeforeAdministrator + 1);
+  });
+
+  it("requires developer permission and valid input for global exam data maintenance", async () => {
+    const before = maintainExamDataCalls;
+    const input = { action: "delete", password: "1234", confirmation: "전체 삭제" };
+    const run = (token: string, body: typeof input) =>
+      fetch(`${baseUrl}/developer-settings/exam-data`, {
+        method: "POST",
+        headers: { ...bearer(token), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const admin = await loginAs("admin");
+    const developer = await loginAs("dev");
+    expect((await run(admin, input)).status).toBe(403);
+    expect((await run(developer, { ...input, confirmation: "잘못된 문구" })).status).toBe(400);
+    expect(maintainExamDataCalls).toBe(before);
+    const response = await run(developer, input);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ completed: true });
+    expect(maintainExamDataCalls).toBe(before + 1);
   });
 
   it("rejects a token when its role claim no longer matches the enabled user", async () => {

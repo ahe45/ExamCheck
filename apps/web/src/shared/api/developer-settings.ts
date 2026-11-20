@@ -49,6 +49,18 @@ export function updateHistoryResetPassword(token: string, newPassword: string) {
   );
 }
 
+export function maintainExamData(
+  token: string,
+  input: { action: "reset" | "delete"; password: string; confirmation: string },
+) {
+  return apiFetch(
+    "/developer-settings/exam-data",
+    { method: "POST", body: JSON.stringify(input), timeoutMs: 600_000 },
+    token,
+    z.object({ completed: z.literal(true) }),
+  );
+}
+
 export function fetchSystemProfile() {
   return apiFetch("/system-profile", {}, undefined, developerSettingsSchema);
 }

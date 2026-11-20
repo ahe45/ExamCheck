@@ -2,6 +2,8 @@ import { isValidRequestId } from "../http/request-context.js";
 import { CLASSIFICATION_METHODS, type ClassificationMethod } from "../../authorization/classification.js";
 
 export interface MutationAuditDetailsByEvent {
+  EXAM_DATA_DELETED: Record<never, never>;
+  EXAM_DATA_RESET: Record<never, never>;
   HISTORY_RESET_PASSWORD_CHANGED: Record<never, never>;
   CANDIDATE_HISTORY_DELETED: {
     candidateRecordId: number;
@@ -148,7 +150,6 @@ export interface MutationAuditDetailsByEvent {
     resetRangeCount: number;
   };
   ADMISSION_DELETED: {
-    admissionName: string;
     deletedCandidateCount: number;
     deletedAssignmentCount: number;
     deletedOperationCount: number;
@@ -260,6 +261,8 @@ const safeFileName: FieldRule = (value) =>
   });
 
 const EVENT_CONTRACTS = {
+  EXAM_DATA_DELETED: fields({}),
+  EXAM_DATA_RESET: fields({}),
   HISTORY_RESET_PASSWORD_CHANGED: fields({}),
   CANDIDATE_HISTORY_DELETED: fields({
     candidateRecordId: positiveInteger,
@@ -413,7 +416,6 @@ const EVENT_CONTRACTS = {
     resetRangeCount: nonNegativeInteger,
   }),
   ADMISSION_DELETED: fields({
-    admissionName: identifier,
     deletedCandidateCount: nonNegativeInteger,
     deletedAssignmentCount: nonNegativeInteger,
     deletedOperationCount: nonNegativeInteger,

@@ -44,6 +44,7 @@ const setting: PseudonymSetting = {
 
 beforeEach(() => {
   candidateApi.fetchCandidates.mockReset();
+  labelTemplateApi.fetchLabelTemplates.mockReset();
   pseudonymApi.fetchPseudonymSetting.mockReset();
   pseudonymApi.updatePseudonymSetting.mockReset();
   pseudonymApi.updatePseudonymSettingsBatch.mockReset();
@@ -53,6 +54,95 @@ beforeEach(() => {
 });
 
 describe("SystemSettingsPage optimistic save", () => {
+  it.each([false, true])("supports first-time saves and label selection when batch mode is %s", async (batch) => {
+    const scopes = [
+      { key: `~BUILDING:${"a".repeat(64)}`, label: "본관" },
+      { key: `~BUILDING:${"b".repeat(64)}`, label: "별관" },
+    ];
+    const [first] = scopes;
+    pseudonymApi.fetchPseudonymSetting.mockRejectedValue(
+      new ApiError("이 시험의 가번호 범위가 설정되지 않았습니다.", 404),
+    );
+    candidateApi.fetchCandidates.mockResolvedValue(
+      scopes.map(({ key, label }) => ({
+        operationScope: key,
+        date: "2026-11-20",
+        time: "09:00",
+        period: "1교시",
+        admission: "학생부교과 면접",
+        unit: "유아교육과",
+        major: "",
+        building: label,
+        room: "101호",
+      })),
+    );
+    labelTemplateApi.fetchLabelTemplates.mockResolvedValue({
+      templates: [
+        { id: 15, name: "활성 양식", active: true },
+        { id: 16, name: "비활성 양식", active: false },
+      ],
+    });
+    pseudonymApi.updatePseudonymSetting.mockImplementation(async (_token, input) => ({ ...setting, ...input }));
+    pseudonymApi.updatePseudonymSettingsBatch.mockImplementation(async (_token, inputs) =>
+      inputs.map((input: Partial<PseudonymSetting>) => ({ ...setting, ...input })),
+    );
+    const ref = createRef<SystemSettingsPageHandle>();
+    render(
+      <SystemSettingsPage
+        ref={ref}
+        token="admin-token"
+        admissionName={first.key}
+        batchScopes={batch ? scopes : undefined}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("radio", { name: /사전부여/ }));
+    const templates = screen.getByRole("combobox", { name: "전형별 라벨 양식" });
+    expect(templates).toBeEnabled();
+    expect(within(templates).getByRole("option", { name: "활성 양식" })).toBeInTheDocument();
+    expect(within(templates).queryByRole("option", { name: "비활성 양식" })).not.toBeInTheDocument();
+    fireEvent.change(templates, { target: { value: "15" } });
+
+    await act(async () => {
+      expect(await ref.current?.save()).toBe(true);
+    });
+
+    const expected = ({ key, label }: (typeof scopes)[number]) =>
+      expect.objectContaining({
+        admissionName: key,
+        expectedVersion: 0,
+        labelTemplateId: 15,
+        ranges: [expect.objectContaining({ building: label, rangeStart: 1001, rangeEnd: 1001 })],
+      });
+    if (batch)
+      expect(pseudonymApi.updatePseudonymSettingsBatch).toHaveBeenCalledWith("admin-token", scopes.map(expected));
+    else expect(pseudonymApi.updatePseudonymSetting).toHaveBeenCalledWith("admin-token", expected(first));
+  });
+
+  it("allows other settings to be saved when the label template list cannot load", async () => {
+    labelTemplateApi.fetchLabelTemplates.mockRejectedValue(new ApiError("양식 목록 오류", 500));
+    const configured = {
+      ...setting,
+      assignmentMethod: "PREASSIGNED",
+      printPreassignedLabel: true,
+      labelTemplateId: 15,
+    };
+    pseudonymApi.fetchPseudonymSetting.mockResolvedValue(configured);
+    pseudonymApi.updatePseudonymSetting.mockImplementation(async (_token, input) => ({ ...configured, ...input }));
+    const ref = createRef<SystemSettingsPageHandle>();
+    render(<SystemSettingsPage ref={ref} token="admin-token" admissionName={setting.admissionName} />);
+    const templates = await screen.findByRole("combobox", { name: "전형별 라벨 양식" });
+    expect(templates).toBeDisabled();
+    expect(templates).toHaveValue("15");
+    fireEvent.click(screen.getByRole("checkbox", { name: /수험생 사진 사용/ }));
+    await act(async () => {
+      expect(await ref.current?.save()).toBe(true);
+    });
+    expect(pseudonymApi.updatePseudonymSetting).toHaveBeenCalledWith(
+      "admin-token",
+      expect.objectContaining({ labelTemplateId: 15, useCandidatePhotos: false }),
+    );
+  });
+
   it("keeps separate ranges when classified scopes share the same physical schedule", async () => {
     const scopes = [
       { key: `~GROUP:${"a".repeat(64)}`, label: "1조" },

@@ -44,3 +44,15 @@ export class UpdateHistoryResetPasswordDto {
   @Length(4, 200)
   newPassword!: string;
 }
+
+export class MaintainExamDataDto {
+  @IsIn(["reset", "delete"])
+  action!: "reset" | "delete";
+
+  @IsString()
+  @Length(4, 200)
+  password!: string;
+
+  @IsIn(["전체 초기화", "전체 삭제"])
+  confirmation!: string;
+}

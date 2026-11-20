@@ -3,8 +3,10 @@ import type { FormEvent } from "react";
 import type { AuthUser } from "../../shared/api/auth";
 import type { DeveloperSettings } from "../../shared/api/developer-settings";
 import { classificationLabels, type ClassificationMethod } from "../../shared/classification";
+import { SettingsButtonIcon } from "../../shared/components/ActionIcons";
 import { ToastNotice } from "../../shared/components/ToastNotice";
 import { DeveloperPasswordModal } from "./DeveloperPasswordModal";
+import { ExamDataMaintenanceSection } from "./ExamDataMaintenanceSection";
 import { HistoryResetPasswordSection } from "./HistoryResetPasswordSection";
 import { DeveloperSettingsFormHeader, DeveloperSystemProfileSection } from "./DeveloperSystemProfileSection";
 import { DeveloperUniquenessPolicySection } from "./DeveloperUniquenessPolicySection";
@@ -70,9 +72,22 @@ function DeveloperSettingsContent({ token, user, onProfileChange }: Props) {
               disabled={controller.saving || controller.logoBusy}
               onFormChange={controller.updateForm}
             />
-            <label className="developer-classification-field">
-              <strong>분류 방법</strong>
+            <section className="developer-classification-section" aria-labelledby="developer-classification-title">
+              <header>
+                <span className="developer-section-icon">
+                  <SettingsButtonIcon />
+                </span>
+                <div>
+                  <h4 id="developer-classification-title">분류 방법</h4>
+                  <p id="developer-classification-help">
+                    시스템 설정과 사용자 접근 권한에 적용합니다. 기존에 접근 범위가 제한된 계정은 새 기준에서 권한을
+                    확인해 주세요.
+                  </p>
+                </div>
+              </header>
               <select
+                aria-labelledby="developer-classification-title"
+                aria-describedby="developer-classification-help"
                 value={controller.form.classificationMethod ?? "ADMISSION"}
                 onChange={(event) =>
                   controller.updateForm({ classificationMethod: event.target.value as ClassificationMethod })
@@ -85,11 +100,7 @@ function DeveloperSettingsContent({ token, user, onProfileChange }: Props) {
                   </option>
                 ))}
               </select>
-              <small>
-                시스템 설정과 사용자 접근 권한에 적용합니다. 기존에 접근 범위가 제한된 계정은 새 기준에서 권한을 확인해
-                주세요.
-              </small>
-            </label>
+            </section>
           </div>
           <footer>
             <span>
@@ -101,6 +112,7 @@ function DeveloperSettingsContent({ token, user, onProfileChange }: Props) {
         </form>
         <HistoryResetPasswordSection token={token} />
         <DatabaseBackupSection token={token} />
+        <ExamDataMaintenanceSection token={token} />
       </div>
 
       {controller.passwordModalOpen && (

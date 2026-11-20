@@ -61,7 +61,7 @@ export function AssignmentMethodSection({
   printPreassignedLabel: boolean;
   onPrintPreassignedLabelChange(value: boolean): void;
   labelTemplateId: number | null;
-  labelTemplates: LabelTemplateSummary[];
+  labelTemplates: LabelTemplateSummary[] | null;
   onLabelTemplateIdChange(value: number | null): void;
 }) {
   return (
@@ -157,13 +157,20 @@ export function AssignmentMethodSection({
                   <select
                     aria-label="전형별 라벨 양식"
                     value={labelTemplateId ?? ""}
-                    disabled={assignmentMethod !== "PREASSIGNED" || !printPreassignedLabel}
+                    disabled={assignmentMethod !== "PREASSIGNED" || !printPreassignedLabel || labelTemplates === null}
                     onChange={(event) =>
                       onLabelTemplateIdChange(event.target.value ? Number(event.target.value) : null)
                     }
                   >
-                    <option value="">기본 사용 양식</option>
-                    {labelTemplates.map((template) => (
+                    <option value="">
+                      {labelTemplates === null ? "라벨 양식 목록을 불러오지 못했습니다." : "기본 사용 양식"}
+                    </option>
+                    {labelTemplateId !== null && !labelTemplates?.some(({ id }) => id === labelTemplateId) && (
+                      <option value={labelTemplateId} disabled>
+                        {labelTemplates === null ? "저장된 라벨 양식" : "사용할 수 없는 저장된 라벨 양식"}
+                      </option>
+                    )}
+                    {labelTemplates?.map((template) => (
                       <option key={template.id} value={template.id}>
                         {template.name}
                       </option>

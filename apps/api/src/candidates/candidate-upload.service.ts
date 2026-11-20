@@ -227,7 +227,9 @@ export class CandidateUploadService implements OnModuleInit, OnModuleDestroy {
         checksum: createHash("sha256").update(JSON.stringify(query)).digest("hex"),
       });
       await this.repository.preview(this.pool, id, "", query, 0);
-      await this.repository.enqueue(this.pool, id, owner, "export");
+      if (!(await this.repository.enqueue(this.pool, id, owner, "export"))) {
+        throw new ConflictException("내보내기 작업이 만료되었습니다. 다시 시도해 주세요.");
+      }
     } catch (error) {
       await rm(directory, { recursive: true, force: true });
       throw error;

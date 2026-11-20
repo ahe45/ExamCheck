@@ -321,16 +321,26 @@ function AdmissionResetPasswordModal({
 interface DeleteModalProps {
   token: string;
   admissionName: string;
+  scopeLabel?: string;
+  candidateCount?: number;
   onClose(): void;
   onCompleted(deletedCandidateCount: number): void;
 }
 
-export function AdmissionDeleteModal({ token, admissionName, onClose, onCompleted }: DeleteModalProps) {
+export function AdmissionDeleteModal({
+  token,
+  admissionName,
+  scopeLabel,
+  candidateCount,
+  onClose,
+  onCompleted,
+}: DeleteModalProps) {
   const dialogRef = useDialogFocus<HTMLDivElement>();
   const [password, setPassword] = useState("");
   const pending = useRef(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const candidates = candidateCount === undefined ? "수험생" : `수험생 ${candidateCount.toLocaleString()}명`;
 
   useEscapeKey(!deleting, onClose);
 
@@ -344,7 +354,7 @@ export function AdmissionDeleteModal({ token, admissionName, onClose, onComplete
       setPassword("");
       onCompleted(result.deletedCandidateCount);
     } catch (reason) {
-      setError(messageOf(reason, "전형 데이터를 삭제하지 못했습니다."));
+      setError(messageOf(reason, "선택한 데이터를 삭제하지 못했습니다."));
       setPassword("");
     } finally {
       pending.current = false;
@@ -374,12 +384,20 @@ export function AdmissionDeleteModal({ token, admissionName, onClose, onComplete
           <span>!</span>
           <div>
             <p>ADMISSION DATA DELETE</p>
-            <h2 id="admission-delete-title">{admissionName} 전형을 삭제하시겠습니까?</h2>
+            <h2 id="admission-delete-title">
+              {scopeLabel
+                ? `${scopeLabel} 수험생 데이터를 삭제하시겠습니까?`
+                : `${admissionName} 전형을 삭제하시겠습니까?`}
+            </h2>
           </div>
         </header>
         <div className="admission-delete-warning">
           <strong>이 작업은 되돌릴 수 없습니다.</strong>
-          <span>수험생, 사진, 가번호 배정, 운영 상태와 전형 설정이 모두 삭제되며 별도 백업은 생성하지 않습니다.</span>
+          <span>
+            {scopeLabel
+              ? `선택한 항목의 ${candidates}과 관련 사진, 가번호 배정, 인쇄·운영·감사 이력, 설정이 모두 삭제됩니다. 별도 백업은 생성하지 않습니다.`
+              : "수험생, 사진, 가번호 배정, 인쇄·운영·감사 이력, 전형 설정이 모두 삭제됩니다. 별도 백업은 생성하지 않습니다."}
+          </span>
         </div>
         <label className="admission-delete-password">
           <span>초기화 비밀번호</span>
@@ -403,7 +421,7 @@ export function AdmissionDeleteModal({ token, admissionName, onClose, onComplete
           </button>
           <button type="submit" className="exam-danger-button" disabled={!password || deleting}>
             <DeleteButtonIcon />
-            <span>{deleting ? "삭제 중…" : "전형 전체 삭제"}</span>
+            <span>{deleting ? "삭제 중…" : scopeLabel ? "선택한 항목 삭제" : "전형 전체 삭제"}</span>
           </button>
         </footer>
       </form>

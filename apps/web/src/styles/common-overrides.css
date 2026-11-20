@@ -226,7 +226,8 @@
   font-size: 12px;
 }
 .exam-admin-app .developer-field-grid input,
-.exam-admin-app .developer-password-fields input {
+.exam-admin-app .developer-password-fields input,
+.exam-admin-app .developer-classification-section select {
   font-size: 14px;
 }
 .exam-admin-app .developer-year-input i,

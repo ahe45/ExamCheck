@@ -8,6 +8,7 @@ import { DeveloperSettingsPage } from "./DeveloperSettingsPage";
 
 const developerSettingsApi = vi.hoisted(() => ({
   fetchHistoryResetPassword: vi.fn(),
+  maintainExamData: vi.fn(),
   updateHistoryResetPassword: vi.fn(),
   changeDeveloperPassword: vi.fn(),
   fetchDeveloperSettings: vi.fn(),
@@ -39,6 +40,7 @@ const developerUser = {
 beforeEach(() => {
   Object.values(developerSettingsApi).forEach((mock) => mock.mockReset());
   developerSettingsApi.fetchHistoryResetPassword.mockResolvedValue({ configured: false });
+  developerSettingsApi.maintainExamData.mockResolvedValue({ completed: true });
   developerSettingsApi.updateHistoryResetPassword.mockResolvedValue({ configured: true });
   developerSettingsApi.fetchDeveloperSettings.mockResolvedValue({ ...initialProfile });
   developerSettingsApi.updateDeveloperSettings.mockResolvedValue({ ...initialProfile });
@@ -175,6 +177,31 @@ describe("DeveloperSettingsPage number uniqueness policy", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "개발자 비밀번호 변경" })).not.toBeInTheDocument());
   });
+});
+
+it.each([
+  ["reset", "전체 초기화"],
+  ["delete", "전체 삭제"],
+])("requires the matching confirmation phrase and password for %s below backup and restore", async (action, title) => {
+  render(<DeveloperSettingsPage token="developer-token" user={developerUser} />);
+  const section = await screen.findByRole("region", { name: "초기화 및 삭제" });
+  expect(section.previousElementSibling).toHaveTextContent("백업 및 복원");
+  fireEvent.click(within(section).getByRole("button", { name: title }));
+  const dialog = screen.getByRole("dialog", { name: `${title} 확인` });
+  const submit = within(dialog).getByRole("button", { name: title });
+  expect(submit).toBeDisabled();
+  fireEvent.change(within(dialog).getByLabelText("초기화 비밀번호"), { target: { value: "1234" } });
+  expect(submit).toBeDisabled();
+  fireEvent.change(within(dialog).getByLabelText(/확인 문구/), { target: { value: title } });
+  fireEvent.click(submit);
+  await waitFor(() =>
+    expect(developerSettingsApi.maintainExamData).toHaveBeenCalledWith("developer-token", {
+      action,
+      password: "1234",
+      confirmation: title,
+    }),
+  );
+  await waitFor(() => expect(dialog).not.toBeInTheDocument());
 });
 
 it("saves a separate history reset password after matching confirmation", async () => {

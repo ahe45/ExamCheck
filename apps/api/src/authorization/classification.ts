@@ -16,6 +16,23 @@ export const CLASSIFICATION_METHODS = [
 
 export type ClassificationMethod = (typeof CLASSIFICATION_METHODS)[number];
 
+export const DELETED_SCOPE_GRANT = "!";
+
+interface ScopeGrant {
+  method: string;
+  scopeKey: string;
+  legacy?: boolean;
+}
+
+export function resolveClassifiedAccess(grants: ScopeGrant[], method: ClassificationMethod) {
+  const current = grants.filter((grant) => grant.method === method);
+  const restricted = ({ legacy, scopeKey }: ScopeGrant) => legacy || scopeKey !== "*";
+  const deleted = ({ legacy, scopeKey }: ScopeGrant) => !legacy && scopeKey === DELETED_SCOPE_GRANT;
+  const admissionNames = current.filter((grant) => restricted(grant) && !deleted(grant)).map((grant) => grant.scopeKey);
+  const unrestricted = !current.some(deleted) && current.some((grant) => !restricted(grant));
+  return { admissionNames, scopeBlocked: admissionNames.length === 0 && !unrestricted && grants.some(restricted) };
+}
+
 // The identity projection handles physical admission scopes.
 export const CLASSIFICATION_SCOPE_SQL_PATTERN = `^~(${CLASSIFICATION_METHODS.filter((method) => method !== "ADMISSION").join("|")}):[0-9a-f]{64}$`;
 const scopeKeyPattern = new RegExp(CLASSIFICATION_SCOPE_SQL_PATTERN);

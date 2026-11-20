@@ -44,6 +44,7 @@ export { applyBulkRangeSettings, buildScheduleRanges } from "./system-settings-d
 export type { BulkRangeCriterion, BulkRangeMode, RangeDraft } from "./system-settings-domain";
 
 const DEFAULT_EXAM_NAME = import.meta.env.VITE_DEFAULT_EXAM_NAME || "2026년도 자격시험";
+type EditableSetting = Omit<PseudonymSetting, "id">;
 
 export interface SystemSettingsPageHandle {
   save(): Promise<boolean>;
@@ -73,12 +74,12 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
     const [assignmentMethod, setAssignmentMethod] = useState<PseudonymAssignmentMethod>("DRAW");
     const [ranges, setRanges] = useState<RangeDraft[]>([]);
-    const [savedSettings, setSavedSettings] = useState<PseudonymSetting[]>([]);
+    const [savedSettings, setSavedSettings] = useState<EditableSetting[]>([]);
     const [autoDrawEnabled, setAutoDrawEnabled] = useState(false);
     const [autoDrawDelaySeconds, setAutoDrawDelaySeconds] = useState(3);
     const [printPreassignedLabel, setPrintPreassignedLabel] = useState(true);
     const [labelTemplateId, setLabelTemplateId] = useState<number | null>(null);
-    const [labelTemplates, setLabelTemplates] = useState<LabelTemplateSummary[]>([]);
+    const [labelTemplates, setLabelTemplates] = useState<LabelTemplateSummary[] | null>([]);
     const [autoAssignAbsenteesOnClose, setAutoAssignAbsenteesOnClose] = useState(false);
     const [deleteAbsenteeInfoOnReopen, setDeleteAbsenteeInfoOnReopen] = useState(false);
     const [useCandidatePhotos, setUseCandidatePhotos] = useState(true);
@@ -112,7 +113,7 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
     }, [embedded, loading, assignmentMethod]);
 
     const applySettings = useCallback(
-      (settings: PseudonymSetting[], rows: CandidateRecord[]) => {
+      (settings: EditableSetting[], rows: CandidateRecord[]) => {
         const [setting] = settings;
         const rowsByScope = new Map<string, CandidateRecord[]>();
         for (const row of rows) {
@@ -158,11 +159,11 @@ export const SystemSettingsPage = forwardRef<SystemSettingsPageHandle, SystemSet
       try {
         const keys = batchScopes?.map(({ key }) => key) ?? [admissionName];
         const [settings, rows, labelTemplateResult] = await Promise.all([
-          Promise.all(keys.map((key) => fetchPseudonymSetting(token, DEFAULT_EXAM_NAME, key))),
+          Promise.all(keys.map((key) => loadEditableSetting(token, key))),
           fetchCandidates(token),
-          fetchLabelTemplates(token),
+          fetchLabelTemplates(token).catch(() => null),
         ]);
-        setLabelTemplates(labelTemplateResult.templates.filter((template) => template.active));
+        setLabelTemplates(labelTemplateResult?.templates.filter((template) => template.active) ?? null);
         applySettings(settings, rows);
       } catch (reason) {
         setSavedSnapshot(null);
@@ -419,11 +420,41 @@ function messageOf(reason: unknown, fallback: string) {
   return reason instanceof Error ? reason.message : fallback;
 }
 
-function settingSnapshot(setting: PseudonymSetting, ranges: RangeDraft[]) {
+async function loadEditableSetting(token: string, admissionName: string): Promise<EditableSetting> {
+  try {
+    return await fetchPseudonymSetting(token, DEFAULT_EXAM_NAME, admissionName);
+  } catch (reason) {
+    // The operation screen still treats missing persisted settings as unconfigured.
+    if (!(reason instanceof ApiError && reason.status === 404)) throw reason;
+    return {
+      version: 0,
+      examName: DEFAULT_EXAM_NAME,
+      admissionName,
+      rangeStart: 1001,
+      rangeEnd: 1999,
+      displayWidth: 4,
+      nextSequence: 1001,
+      assignmentMethod: "DRAW",
+      autoDrawEnabled: false,
+      autoDrawDelaySeconds: 3,
+      printPreassignedLabel: true,
+      labelTemplateId: null,
+      autoAssignAbsenteesOnClose: false,
+      deleteAbsenteeInfoOnReopen: false,
+      useCandidatePhotos: true,
+      enableBulkDraw: false,
+      showAttendanceSelection: true,
+      useAnswerSheet: false,
+      ranges: [],
+    };
+  }
+}
+
+function settingSnapshot(setting: EditableSetting, ranges: RangeDraft[]) {
   return createSettingsSnapshot({ ...setting, labelTemplateId: setting.labelTemplateId ?? null, ranges });
 }
 
-function needsRangeSave(setting: PseudonymSetting, ranges: RangeDraft[]) {
+function needsRangeSave(setting: EditableSetting, ranges: RangeDraft[]) {
   if (setting.version === 0 || setting.ranges.length !== ranges.length) return true;
   const savedBySchedule = new Map(setting.ranges.map((range) => [scheduleIdentity(range), range]));
   return ranges.some((range) => {

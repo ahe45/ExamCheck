@@ -51,7 +51,7 @@ export function HistoryResetPasswordSection({ token }: { token: string }) {
   return (
     <form className="developer-settings-card history-reset-password-card" onSubmit={(event) => void save(event)}>
       <h3>초기화 비밀번호 설정</h3>
-      <p>사용자 화면의 이력 초기화와 시스템 설정의 전형별 초기화·삭제에 사용하는 비밀번호입니다.</p>
+      <p>사용자 화면의 이력 초기화와 시스템 설정 및 개발자 메뉴의 초기화·삭제에 사용하는 비밀번호입니다.</p>
       <span className="history-reset-password-status">
         {configured === null ? "설정 상태 확인 중" : configured ? "비밀번호 설정됨" : "비밀번호 미설정"}
       </span>

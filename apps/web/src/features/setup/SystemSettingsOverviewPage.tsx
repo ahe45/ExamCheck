@@ -30,7 +30,7 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
       batchScopes?: SettingsScope[];
     } | null>(null);
     const [resetAdmissionName, setResetAdmissionName] = useState<string | null>(null);
-    const [deleteAdmissionName, setDeleteAdmissionName] = useState<string | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<{ card: AdmissionCardData; scopeLabel?: string } | null>(null);
     const [dirty, setDirty] = useState(false);
     const [savingBeforeClose, setSavingBeforeClose] = useState(false);
     const [editorSaveState, setEditorSaveState] = useState({ canSave: false, saving: false });
@@ -124,14 +124,14 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
       void refetch();
     }
 
-    function completeAdmissionDelete(admissionName: string, candidateCount: number) {
-      setDeleteAdmissionName(null);
+    function completeAdmissionDelete(admissionName: string, label: string, candidateCount: number) {
+      setDeleteTarget(null);
       queryClient.setQueryData<AdmissionCardData[]>(overviewQueryKey, (current = []) =>
         current.filter((card) => card.name !== admissionName),
       );
       setNotice({
         kind: "success",
-        text: `${admissionName} 전형과 연관된 수험생 ${candidateCount.toLocaleString()}명의 데이터를 삭제했습니다.`,
+        text: `${label}의 수험생 ${candidateCount.toLocaleString()}명의 데이터를 삭제했습니다.`,
       });
       void refetch();
     }
@@ -175,7 +175,9 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
                 key={card.name}
                 onOpen={(name) => openEditor({ name, label: classified ? card.label : undefined })}
                 onReset={setResetAdmissionName}
-                onDelete={classified ? undefined : setDeleteAdmissionName}
+                onDelete={() =>
+                  setDeleteTarget({ card, scopeLabel: classified ? (card.label ?? card.name) : undefined })
+                }
               />
             ))}
           </div>
@@ -217,12 +219,20 @@ export const SystemSettingsOverviewPage = forwardRef<SystemSettingsPageHandle, P
             onCompleted={completeOperationReset}
           />
         )}
-        {deleteAdmissionName && (
+        {deleteTarget && (
           <AdmissionDeleteModal
             token={token}
-            admissionName={deleteAdmissionName}
-            onClose={() => setDeleteAdmissionName(null)}
-            onCompleted={(candidateCount) => completeAdmissionDelete(deleteAdmissionName, candidateCount)}
+            admissionName={deleteTarget.card.name}
+            scopeLabel={deleteTarget.scopeLabel}
+            candidateCount={deleteTarget.card.candidates}
+            onClose={() => setDeleteTarget(null)}
+            onCompleted={(candidateCount) =>
+              completeAdmissionDelete(
+                deleteTarget.card.name,
+                deleteTarget.scopeLabel ?? `${deleteTarget.card.name} 전형`,
+                candidateCount,
+              )
+            }
           />
         )}
       </section>

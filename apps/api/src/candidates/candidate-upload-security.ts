@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import AdmZip from "adm-zip";
+import { normalizeMultipartFileName } from "../common/http/multipart-file-name.js";
 
 export interface CandidateUploadFile {
   buffer: Buffer;
@@ -52,17 +53,6 @@ export function validatePhotoArchiveUploadFile(file: CandidateUploadFile | undef
   validateUploadMetadata(normalizedFile, ".zip", archiveMimeTypes, PHOTO_ARCHIVE_UPLOAD_MAX_BYTES, "ZIP");
   assertZipMagic(normalizedFile.buffer, "ZIP 파일 형식이 올바르지 않습니다. 올바른 사진 압축 파일을 선택해 주세요.");
   return normalizedFile;
-}
-
-export function normalizeMultipartFileName(fileName: string) {
-  if ([...fileName].some((character) => character.codePointAt(0)! > 0xff)) return fileName;
-
-  const multipartBytes = Buffer.from(fileName, "latin1");
-  const utf8FileName = multipartBytes.toString("utf8");
-  if (utf8FileName.includes("\uFFFD") || !Buffer.from(utf8FileName, "utf8").equals(multipartBytes)) {
-    return fileName;
-  }
-  return utf8FileName.normalize("NFC");
 }
 
 function normalizeUploadFileName(file: CandidateUploadFile): CandidateUploadFile {

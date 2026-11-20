@@ -27,12 +27,12 @@ import { CurrentUser } from "../auth/current-user.js";
 import type { AuthenticatedUser } from "../auth/auth.types.js";
 import { RequirePermissions } from "../auth/permissions.js";
 import { RolesGuard } from "../auth/roles.js";
+import { normalizeMultipartFileName } from "../common/http/multipart-file-name.js";
 import {
   PHOTO_ARCHIVE_UPLOAD_MAX_BYTES,
   WORKBOOK_UPLOAD_MAX_BYTES,
   PHOTO_ARCHIVE_MAX_ENTRY_BYTES,
   validateCandidatePhotoBuffer,
-  normalizeMultipartFileName,
 } from "./candidate-upload-security.js";
 import { extname } from "node:path";
 import {

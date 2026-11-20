@@ -276,12 +276,12 @@ describe("PseudonymsService admission data actions", () => {
     const repository = {
       findHistoryResetPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("1234")),
       lockAdmissionCandidateIds: vi.fn().mockResolvedValue([11, 12]),
-      deleteAdmissionAssignments: vi.fn().mockResolvedValue(2),
+      deleteAdmissionCandidateData: vi.fn().mockResolvedValue({ deletedCandidateCount: 2, deletedAssignmentCount: 2 }),
+      deleteAdmissionAuditHistory: vi.fn(),
       deleteAdmissionOperations: vi.fn().mockResolvedValue(1),
       deleteAdmissionTimeRanges: vi.fn().mockResolvedValue(2),
       deleteAdmissionSettings: vi.fn().mockResolvedValue(1),
       deleteUserAdmissionAssignments: vi.fn().mockResolvedValue(1),
-      deleteAdmissionCandidates: vi.fn().mockResolvedValue(2),
     };
     const audit = { record: vi.fn().mockResolvedValue(undefined) };
     const service = admissionActionService(connection, repository, audit);
@@ -295,7 +295,9 @@ describe("PseudonymsService admission data actions", () => {
       deletedAssignmentCount: 2,
     });
 
-    expect(repository.deleteAdmissionAssignments).toHaveBeenCalledBefore(repository.deleteAdmissionCandidates);
+    expect(repository.deleteAdmissionCandidateData).toHaveBeenCalledWith(connection, [11, 12]);
+    expect(repository.deleteAdmissionAuditHistory).toHaveBeenCalledWith(connection, "학생부교과", [11, 12]);
+    expect(repository.deleteAdmissionAuditHistory).toHaveBeenCalledBefore(repository.deleteAdmissionSettings);
     expect(audit.record).toHaveBeenCalledWith(
       connection,
       expect.objectContaining({ eventType: "ADMISSION_DELETED", actorUserId: 1 }),
@@ -319,6 +321,39 @@ describe("PseudonymsService admission data actions", () => {
     expect(repository.lockAdmissionCandidateIds).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
     expect(connection.rollback).toHaveBeenCalledOnce();
+  });
+
+  it("deletes classified candidates by their locked IDs even when multiple cards share an admission", async () => {
+    const connection = transactionConnection();
+    const scope = `~BUILDING:${"a".repeat(64)}`;
+    const repository = {
+      findHistoryResetPasswordForUpdate: vi.fn().mockResolvedValue(await hashPassword("1234")),
+      lockAdmissionCandidateIds: vi.fn().mockResolvedValue([11, 12]),
+      deleteAdmissionCandidateData: vi.fn().mockResolvedValue({ deletedCandidateCount: 2, deletedAssignmentCount: 1 }),
+      deleteAdmissionAuditHistory: vi.fn(),
+      deleteAdmissionOperations: vi.fn().mockResolvedValue(1),
+      deleteAdmissionTimeRanges: vi.fn().mockResolvedValue(1),
+      deleteAdmissionSettings: vi.fn().mockResolvedValue(1),
+      deleteUserAdmissionAssignments: vi.fn().mockResolvedValue(1),
+    };
+    const audit = { record: vi.fn().mockResolvedValue(undefined) };
+    const service = admissionActionService(connection, repository, audit);
+
+    await expect(
+      service.deleteAdmission(
+        { admissionName: scope, password: "1234" },
+        {
+          ...admin,
+          classificationMethod: "BUILDING",
+        },
+      ),
+    ).resolves.toMatchObject({ deletedCandidateCount: 2, deletedAssignmentCount: 1 });
+
+    expect(repository.lockAdmissionCandidateIds).toHaveBeenCalledWith(connection, scope);
+    expect(repository.deleteAdmissionCandidateData).toHaveBeenCalledWith(connection, [11, 12]);
+    expect(repository.deleteAdmissionAuditHistory).toHaveBeenCalledWith(connection, scope, [11, 12]);
+    expect(repository.deleteAdmissionSettings).toHaveBeenCalledWith(connection, scope);
+    expect(connection.commit).toHaveBeenCalledOnce();
   });
 });
 
@@ -843,6 +878,7 @@ function overviewRange(settingId: number, admission: string, rangeStart: number)
 
 function transactionConnection() {
   return {
+    query: vi.fn().mockResolvedValue(undefined),
     beginTransaction: vi.fn().mockResolvedValue(undefined),
     commit: vi.fn().mockResolvedValue(undefined),
     rollback: vi.fn().mockResolvedValue(undefined),

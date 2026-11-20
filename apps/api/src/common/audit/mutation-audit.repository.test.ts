@@ -136,7 +136,6 @@ const validRecords: MutationAuditRecord[] = [
     eventType: "ADMISSION_DELETED",
     actorUserId: 1,
     details: {
-      admissionName: "학생부교과",
       deletedCandidateCount: 30,
       deletedAssignmentCount: 20,
       deletedOperationCount: 2,

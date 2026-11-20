@@ -12,6 +12,7 @@ import { PseudonymsService } from "./pseudonyms.service.js";
 
 @Module({
   controllers: [PseudonymsController],
+  exports: [PseudonymsService],
   providers: [
     MutationAuditRepository,
     PseudonymRosterExporter,

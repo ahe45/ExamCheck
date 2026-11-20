@@ -213,28 +213,47 @@ describe("DeveloperSettingsService mutation transactions", () => {
     expect(fixture.connectionRelease).toHaveBeenCalledOnce();
   });
 
-  it("commits a logo upload and its audit before returning the refreshed profile", async () => {
+  it.each(["logo.png", "대학 시스템 로고.png"])(
+    "stores %s with its audit before returning the profile",
+    async (fileName) => {
+      const fixture = createFixture();
+      const file = {
+        buffer: pngBuffer(),
+        originalname: Buffer.from(fileName, "utf8").toString("latin1"),
+        mimetype: "image/png",
+        size: pngBuffer().length,
+      };
+
+      await expect(fixture.service.uploadLogo(file, developer)).resolves.toMatchObject({
+        systemName: "가번호 관리 시스템",
+      });
+
+      expect(fixture.connectionExecute.mock.calls[0]?.[0]).toContain("FOR UPDATE");
+      expect(fixture.connectionExecute).toHaveBeenCalledWith(expect.stringContaining("logo_file_name = ?"), [
+        fileName,
+        "image/png",
+        file.buffer,
+        developer.id,
+      ]);
+      expect(fixture.audit.record).toHaveBeenCalledWith(fixture.connection, {
+        eventType: "SYSTEM_LOGO_UPDATED",
+        actorUserId: 9,
+        details: { fileName, mimeType: "image/png" },
+      });
+      expect(fixture.connectionCommit.mock.invocationCallOrder[0]).toBeLessThan(
+        fixture.poolQuery.mock.invocationCallOrder[0],
+      );
+    },
+  );
+
+  it("restores an existing logo filename in the profile response", async () => {
     const fixture = createFixture();
-    const file = {
-      buffer: pngBuffer(),
-      originalname: "logo.png",
-      mimetype: "image/png",
-      size: pngBuffer().length,
-    };
+    const fileName = "기존 로고.png";
+    const stored = Buffer.from(fileName, "utf8").toString("latin1");
+    fixture.poolQuery.mockResolvedValueOnce([[{ ...fixture.profileRows[0], logoFileName: stored }], []]);
 
-    await expect(fixture.service.uploadLogo(file, developer)).resolves.toMatchObject({
-      systemName: "가번호 관리 시스템",
-    });
-
-    expect(fixture.connectionExecute.mock.calls[0]?.[0]).toContain("FOR UPDATE");
-    expect(fixture.audit.record).toHaveBeenCalledWith(fixture.connection, {
-      eventType: "SYSTEM_LOGO_UPDATED",
-      actorUserId: 9,
-      details: { fileName: "logo.png", mimeType: "image/png" },
-    });
-    expect(fixture.connectionCommit.mock.invocationCallOrder[0]).toBeLessThan(
-      fixture.poolQuery.mock.invocationCallOrder[0],
-    );
+    await expect(fixture.service.get()).resolves.toMatchObject({ logoFileName: fileName });
+    expect(fixture.connectionExecute).not.toHaveBeenCalled();
   });
 
   it("rolls back a logo update when its audit record cannot be stored", async () => {

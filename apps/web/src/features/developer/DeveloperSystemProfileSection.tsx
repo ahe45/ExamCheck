@@ -186,7 +186,7 @@ export function DeveloperSystemProfileSection({
           </div>
         </header>
         <div className="developer-brand-preview">
-          <span className="developer-brand-preview-logo">
+          <span className={`developer-brand-preview-logo ${profile?.logoDataUrl ? "has-image" : ""}`}>
             {profile?.logoDataUrl ? <img src={profile.logoDataUrl} alt="" /> : "가"}
           </span>
           <span>

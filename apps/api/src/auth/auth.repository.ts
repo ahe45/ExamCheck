@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import type { UserRole } from "./auth.types.js";
 import { DATABASE_POOL } from "../database/database.constants.js";
-import type { ClassificationMethod } from "../authorization/classification.js";
+import { resolveClassifiedAccess, type ClassificationMethod } from "../authorization/classification.js";
 
 export interface AuthUserRow extends RowDataPacket {
   classificationMethod?: ClassificationMethod;
@@ -47,12 +47,10 @@ export class AuthRepository {
        SELECT 'ADMISSION', admission_name, TRUE FROM user_admission_assignment WHERE user_id = ?`,
       [userId, userId],
     );
-    const current = rows.filter((row) => row.method === method);
-    const restricted = (row: (typeof rows)[number]) => Boolean(row.legacy) || row.scopeKey !== "*";
-    return {
-      admissionNames: current.filter(restricted).map((row) => row.scopeKey),
-      scopeBlocked: !current.length && rows.some(restricted),
-    };
+    return resolveClassifiedAccess(
+      rows.map((row) => ({ ...row, legacy: Boolean(row.legacy) })),
+      method,
+    );
   }
 
   async recordAccess(userId: number): Promise<void> {

@@ -2,7 +2,12 @@ import { findActiveLabelTemplate } from "../label-templates/active-label-templat
 import { ConflictException, Injectable } from "@nestjs/common";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { AdmissionAccessPredicate } from "../authorization/admission-policy.js";
-import { isClassifiedScope, type ClassificationMethod } from "../authorization/classification.js";
+import {
+  classificationOfScope,
+  DELETED_SCOPE_GRANT,
+  isClassifiedScope,
+  type ClassificationMethod,
+} from "../authorization/classification.js";
 import type { SqlExecutor } from "../common/database/sql-executor.js";
 import {
   pseudonymUniquenessScopeKey,
@@ -25,6 +30,12 @@ import type {
   PseudonymTimeRangeInput,
   UpdatePseudonymSettingInput,
 } from "./pseudonyms.types.js";
+
+const candidateAuditEvents =
+  "'CANDIDATE_UPDATED', 'CANDIDATE_PHOTO_UPDATED', 'CANDIDATE_HISTORY_DELETED', 'PSEUDONYM_ASSIGNED'";
+const scopeAuditEvents =
+  "'PSEUDONYM_OPERATION_CLOSED', 'PSEUDONYM_OPERATION_REOPENED', 'OPERATION_HISTORY_RESET', 'PSEUDONYM_OPERATIONS_RESET', 'ADMISSION_DELETED'";
+const examPrintJob = "(candidate_record_id IS NOT NULL OR label_type = 'PSEUDONYM_LABEL')";
 
 export interface CandidateRow extends RowDataPacket, CandidateScopeSnapshot {
   name: string;
@@ -454,27 +465,55 @@ export class PseudonymsRepository {
 
   async lockAdmissionCandidateIds(executor: SqlExecutor, admissionName: string): Promise<number[]> {
     const [rows] = await executor.execute<IdRow[]>(
-      "SELECT id FROM candidate_record WHERE admission = ? ORDER BY id FOR UPDATE",
-      [admissionName],
+      `SELECT id FROM operation_candidate_record
+       WHERE operation_scope = ? AND classification_method = ? ORDER BY id FOR UPDATE`,
+      [admissionName, classificationOfScope(admissionName)],
     );
     return rows.map((row) => Number(row.id));
   }
 
-  async deleteAdmissionAssignments(executor: SqlExecutor, admissionName: string): Promise<number> {
-    const [result] = await executor.execute<ResultSetHeader>(
-      `DELETE pa FROM pseudonym_assignment pa
-       LEFT JOIN candidate_record cr ON cr.id = pa.candidate_record_id
-       WHERE pa.admission_name = ? OR cr.admission = ?`,
-      [admissionName, admissionName],
+  async deleteAdmissionAuditHistory(executor: SqlExecutor, admissionName: string, candidateIds: readonly number[]) {
+    await executor.execute(
+      `DELETE FROM audit_log
+       WHERE (event_type IN (${candidateAuditEvents})
+         AND CAST(JSON_VALUE(details, '$.candidateRecordId') AS UNSIGNED) IN (
+           SELECT candidate_id FROM JSON_TABLE(?, '$[*]' COLUMNS (candidate_id BIGINT UNSIGNED PATH '$')) AS targets
+         ))
+         OR (event_type IN (${scopeAuditEvents})
+           AND JSON_VALUE(details, '$.admissionName') = ?)
+         OR (event_type = 'PSEUDONYM_SETTING_UPDATED' AND CAST(JSON_VALUE(details, '$.settingId') AS UNSIGNED) IN (
+           SELECT id FROM pseudonym_setting WHERE admission_name = ?
+         ))`,
+      [JSON.stringify(candidateIds), admissionName, admissionName],
     );
-    return Number(result.affectedRows);
   }
 
-  async deleteAdmissionCandidates(executor: SqlExecutor, admissionName: string): Promise<number> {
-    const [result] = await executor.execute<ResultSetHeader>("DELETE FROM candidate_record WHERE admission = ?", [
-      admissionName,
-    ]);
-    return Number(result.affectedRows);
+  async deleteAdmissionCandidateData(executor: SqlExecutor, candidateIds: readonly number[]) {
+    let deletedAssignmentCount = 0;
+    let deletedCandidateCount = 0;
+    for (let offset = 0; offset < candidateIds.length; offset += 500) {
+      const ids = candidateIds.slice(offset, offset + 500);
+      const placeholders = ids.map(() => "?").join(", ");
+      // Wait for in-flight print completion before deleting its audit records and payload.
+      await executor.execute(`SELECT id FROM print_job WHERE candidate_record_id IN (${placeholders}) FOR UPDATE`, ids);
+      await executor.execute(
+        `DELETE a FROM audit_log a JOIN print_job pj ON pj.id = a.print_job_id
+         WHERE pj.candidate_record_id IN (${placeholders})`,
+        ids,
+      );
+      await executor.execute(`DELETE FROM print_job WHERE candidate_record_id IN (${placeholders})`, ids);
+      const [assignments] = await executor.execute<ResultSetHeader>(
+        `DELETE FROM pseudonym_assignment WHERE candidate_record_id IN (${placeholders})`,
+        ids,
+      );
+      const [candidates] = await executor.execute<ResultSetHeader>(
+        `DELETE FROM candidate_record WHERE id IN (${placeholders})`,
+        ids,
+      );
+      deletedAssignmentCount += assignments.affectedRows;
+      deletedCandidateCount += candidates.affectedRows;
+    }
+    return { deletedAssignmentCount, deletedCandidateCount };
   }
 
   async deleteAdmissionOperations(executor: SqlExecutor, admissionName: string): Promise<number> {
@@ -486,9 +525,12 @@ export class PseudonymsRepository {
   }
 
   async deleteAdmissionTimeRanges(executor: SqlExecutor, admissionName: string): Promise<number> {
-    const [result] = await executor.execute<ResultSetHeader>("DELETE FROM pseudonym_time_range WHERE admission = ?", [
-      admissionName,
-    ]);
+    const [result] = await executor.execute<ResultSetHeader>(
+      `DELETE ptr FROM pseudonym_time_range ptr
+       JOIN pseudonym_setting ps ON ps.id = ptr.setting_id
+       WHERE ps.admission_name = ? OR (ps.admission_name = '' AND ptr.admission = ?)`,
+      [admissionName, admissionName],
+    );
     return Number(result.affectedRows);
   }
 
@@ -500,11 +542,88 @@ export class PseudonymsRepository {
   }
 
   async deleteUserAdmissionAssignments(executor: SqlExecutor, admissionName: string): Promise<number> {
-    const [result] = await executor.execute<ResultSetHeader>(
-      "DELETE FROM user_admission_assignment WHERE admission_name = ?",
-      [admissionName],
+    const method = classificationOfScope(admissionName);
+    const grantTable = method === "ADMISSION" ? "user_admission_assignment" : "user_classification_assignment";
+    const predicate = method === "ADMISSION" ? "admission_name = ?" : "scope_key = ? AND classification_method = ?";
+    const params = method === "ADMISSION" ? [admissionName] : [admissionName, method];
+    // An account whose last explicit grant is removed must not fall back to unrestricted access.
+    await executor.execute(
+      `INSERT INTO user_classification_assignment (user_id, classification_method, scope_key)
+       SELECT user_id, ?, ? FROM ${grantTable} WHERE ${predicate}
+       ON DUPLICATE KEY UPDATE scope_key = VALUES(scope_key)`,
+      [method, DELETED_SCOPE_GRANT, ...params],
     );
+    const [result] = await executor.execute<ResultSetHeader>(`DELETE FROM ${grantTable} WHERE ${predicate}`, params);
     return Number(result.affectedRows);
+  }
+
+  async lockExamDataForMaintenance(executor: SqlExecutor) {
+    await executor.execute("SELECT id FROM candidate_record ORDER BY id FOR UPDATE");
+    const [jobs] = await executor.execute<IdRow[]>(
+      `SELECT id FROM candidate_upload_session
+       WHERE status IN ('QUEUED', 'RUNNING') OR (status = 'PARSING' AND expires_at > NOW(3))
+       LIMIT 1 FOR UPDATE`,
+    );
+    if (jobs.length)
+      throw new ConflictException("수험생 등록 또는 내보내기가 진행 중입니다. 작업이 끝난 뒤 다시 시도해 주세요.");
+  }
+
+  async resetAllExamOperations(executor: SqlExecutor, userId: number) {
+    const [pendingPrints] = await executor.execute<IdRow[]>(
+      `SELECT id FROM print_job WHERE ${examPrintJob}
+       AND status IN ('CREATED', 'READY', 'DISPATCHING') AND expires_at > NOW(3) LIMIT 1 FOR UPDATE`,
+    );
+    if (pendingPrints.length)
+      throw new ConflictException("진행 중인 라벨 출력 작업이 있습니다. 출력 완료 후 다시 시도해 주세요.");
+    await executor.execute(
+      `UPDATE print_job SET status = 'CANCELLED', sent_at = NULL, dispatched_at = NULL
+       WHERE ${examPrintJob} AND status <> 'CANCELLED'`,
+    );
+    await executor.execute("DELETE FROM pseudonym_assignment");
+    await executor.execute("DELETE FROM pseudonym_operation");
+    await executor.execute(
+      "UPDATE pseudonym_setting SET next_sequence = range_start, updated_by = ? WHERE next_sequence <> range_start",
+      [userId],
+    );
+    await executor.execute(
+      "UPDATE pseudonym_time_range SET next_sequence = range_start, updated_by = ? WHERE next_sequence <> range_start",
+      [userId],
+    );
+  }
+
+  async deleteAllExamData(executor: SqlExecutor) {
+    await executor.execute(`SELECT id FROM print_job WHERE ${examPrintJob} FOR UPDATE`);
+    await executor.execute(
+      `DELETE a FROM audit_log a JOIN print_job pj ON pj.id = a.print_job_id WHERE ${examPrintJob}`,
+    );
+    await executor.execute(`DELETE FROM print_job WHERE ${examPrintJob}`);
+    await executor.execute(
+      `DELETE FROM audit_log WHERE event_type IN (${candidateAuditEvents}, ${scopeAuditEvents},
+        'PSEUDONYM_SETTING_UPDATED', 'CANDIDATE_WORKBOOK_IMPORTED', 'CANDIDATE_PHOTO_ARCHIVE_IMPORTED', 'EXAM_DATA_RESET', 'EXAM_DATA_DELETED')`,
+    );
+    await executor.execute("DELETE FROM pseudonym_assignment");
+    await executor.execute("DELETE FROM candidate_record");
+    await executor.execute("DELETE FROM pseudonym_operation");
+    await executor.execute("DELETE FROM pseudonym_setting");
+    // Preserve explicit access restrictions when their assigned scopes disappear.
+    await executor.execute(
+      `INSERT IGNORE INTO user_classification_assignment (user_id, classification_method, scope_key)
+       SELECT user_id, 'ADMISSION', ? FROM user_admission_assignment
+       UNION SELECT user_id, classification_method, ? FROM user_classification_assignment WHERE scope_key NOT IN ('*', ?)`,
+      [DELETED_SCOPE_GRANT, DELETED_SCOPE_GRANT, DELETED_SCOPE_GRANT],
+    );
+    await executor.execute("DELETE FROM user_admission_assignment");
+    await executor.execute("DELETE FROM user_classification_assignment WHERE scope_key NOT IN ('*', ?)", [
+      DELETED_SCOPE_GRANT,
+    ]);
+    await executor.execute("DELETE FROM candidate_import_lock");
+    await executor.execute("DELETE FROM pseudonym_admission_lock");
+    await executor.execute("DELETE FROM pseudonym_operation_mutex");
+    // Invalidate downloads immediately and let upload cleanup remove their files and expired rows.
+    await executor.execute(
+      `UPDATE candidate_upload_session SET expires_at = NOW(3), file_name = '', checksum = '', state_checksum = NULL,
+       preview_json = NULL, result_json = NULL, error_message = NULL, status = 'FAILED'`,
+    );
   }
 
   async findExactSettingForUpdate(

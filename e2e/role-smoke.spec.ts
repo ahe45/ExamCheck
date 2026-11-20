@@ -34,6 +34,19 @@ test.describe("역할별 읽기 전용 smoke", () => {
     await expect(pseudonymPolicy.getByRole("radio", { name: /전형 전체/ })).toBeChecked();
     await expect(page.getByRole("button", { name: "설정 저장" })).toBeDisabled();
 
+    const dataMaintenance = page.getByRole("region", { name: "초기화 및 삭제" });
+    const resetButton = dataMaintenance.getByRole("button", { name: "전체 초기화", exact: true });
+    const deleteButton = dataMaintenance.getByRole("button", { name: "전체 삭제", exact: true });
+    await expect(resetButton).toBeVisible();
+    const resetRight = await resetButton.evaluate((button) => button.getBoundingClientRect().right);
+    const deleteRight = await deleteButton.evaluate((button) => button.getBoundingClientRect().right);
+    expect(deleteRight).toBeCloseTo(resetRight);
+    await deleteButton.click();
+    const deleteDialog = page.getByRole("dialog", { name: "전체 삭제 확인" });
+    await expect(deleteDialog.getByRole("button", { name: "전체 삭제", exact: true })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expect(deleteDialog).toHaveCount(0);
+
     await verifyReadOnlyPage(page, testInfo, "developer-uniqueness");
   });
 
