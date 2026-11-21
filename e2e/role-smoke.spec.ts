@@ -9,6 +9,16 @@ const accounts = {
 } as const;
 
 test.describe("역할별 읽기 전용 smoke", () => {
+  test("관리자 계정으로 응시현황 엑셀을 다운로드한다", async ({ page }) => {
+    await login(page, accounts.admin);
+    await page.goto("/admin/attendance/date");
+    const button = page.getByRole("button", { name: "엑셀 다운로드" });
+    await expect(button).toBeEnabled();
+    const [download] = await Promise.all([page.waitForEvent("download"), button.click()]);
+    expect(download.suggestedFilename()).toBe("날짜별 응시 현황.xlsx");
+    expect(await download.failure()).toBeNull();
+  });
+
   test("관리자 계정으로 대시보드를 표시한다", async ({ page }, testInfo) => {
     await login(page, accounts.admin);
 

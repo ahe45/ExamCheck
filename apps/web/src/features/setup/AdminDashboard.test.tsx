@@ -67,6 +67,7 @@ describe("AdminDashboard", () => {
     expect(heading.closest("header")).toHaveClass("admin-view-heading");
     expect(screen.getByRole("heading", { name: "학생부교과" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "실기전형" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "실기전형 수험생 목록" })).toHaveTextContent("진행 중");
     expect(document.querySelectorAll(".admission-status-card")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "운영 현황" })).toBeInTheDocument();
     expect(screen.queryByText(/등록 전형 총/)).not.toBeInTheDocument();

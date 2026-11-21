@@ -1359,8 +1359,15 @@
 .summary-dot.progress {
   background: #17b889;
 }
-.summary-dot.complete {
+.summary-dot.complete,
+.summary-dot.closed {
   background: #3b82f6;
+}
+.summary-dot.partialProgress {
+  background: linear-gradient(90deg, #17b889 50%, #f5a914 50%);
+}
+.summary-dot.partialClosed {
+  background: linear-gradient(90deg, #3b82f6 50%, #94a3b8 50%);
 }
 .summary-dot.all {
   background: #94a3b8;

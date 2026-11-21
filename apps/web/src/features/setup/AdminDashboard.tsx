@@ -115,18 +115,13 @@ function AdmissionSummaryPanel({ statistics }: { statistics: DashboardStatistics
           <span className="summary-dot all" />
           전체 전형<strong>{statistics.admissions.length.toLocaleString()}건</strong>
         </p>
-        <p>
-          <span className="summary-dot waiting" />
-          전형 대기<strong>{statistics.admissionCounts.waiting.toLocaleString()}건</strong>
-        </p>
-        <p>
-          <span className="summary-dot progress" />
-          전형 진행<strong>{statistics.admissionCounts.progress.toLocaleString()}건</strong>
-        </p>
-        <p>
-          <span className="summary-dot complete" />
-          전형 완료<strong>{statistics.admissionCounts.complete.toLocaleString()}건</strong>
-        </p>
+        {Object.entries(admissionStatusLabels).map(([key, label]) => (
+          <p key={key}>
+            <span className={`summary-dot ${key}`} />
+            {label}
+            <strong>{statistics.admissionCounts[key as AdmissionStatus].toLocaleString()}건</strong>
+          </p>
+        ))}
       </div>
     </article>
   );
@@ -304,7 +299,7 @@ function AdmissionStatusCard({
     >
       <div className="admission-card-state">
         <span className={`summary-dot ${statistic.status}`} />
-        {admissionStatusLabel(statistic.status)}
+        {admissionStatusLabels[statistic.status]}
       </div>
       <h4 title={statistic.name}>{statistic.name}</h4>
       <p>{breakdownLabel} 수험생 데이터 기준</p>
@@ -368,11 +363,13 @@ function DashboardCardProgress({ label, rate, tone }: { label: string; rate: num
   );
 }
 
-function admissionStatusLabel(status: AdmissionStatus) {
-  if (status === "complete") return "응시";
-  if (status === "progress") return "응시 진행";
-  return "미응시";
-}
+const admissionStatusLabels = {
+  waiting: "진행 대기",
+  partialProgress: "일부 진행 중",
+  progress: "진행 중",
+  partialClosed: "일부 운영 마감",
+  closed: "운영 마감",
+} satisfies Record<AdmissionStatus, string>;
 
 const DASHBOARD_BREAKDOWN_OPTIONS: ReadonlyArray<{ value: DashboardBreakdown; label: string }> = attendanceViews
   .filter((view) => view.key !== "candidate")

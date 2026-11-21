@@ -9,13 +9,57 @@ import { CandidatesService } from "./candidates.service.js";
 import { parseCandidateWorkbook } from "./candidate-workbook-parser.js";
 
 describe("CandidatesService compatibility facade", () => {
+  it.each([
+    [1, 0, 0, "waiting"],
+    [1, 0, 1, "progress"],
+    [1, 1, 0, "closed"],
+    [2, 0, 1, "partialProgress"],
+    [2, 1, 0, "partialClosed"],
+    [2, 1, 1, "partialClosed"],
+    [3, 1, 1, "partialClosed"],
+    [2, 2, 0, "closed"],
+  ])(
+    "classifies %i operations with %i closed and %i progressing as %s",
+    async (operationCount, closedCount, progressingCount, status) => {
+      const fixture = createFixture();
+      fixture.repository.listDashboardBreakdownCounts.mockResolvedValue([
+        {
+          groupType: "building",
+          name: "본관",
+          total: operationCount,
+          assigned: progressingCount,
+          operationCount,
+          closedCount,
+          progressingCount,
+        },
+      ]);
+      const summary = await fixture.service.dashboardSummary({
+        id: 1,
+        loginId: "admin",
+        role: "ADMIN",
+        admissionNames: [],
+      });
+      expect(summary.breakdowns.building[0].status).toBe(status);
+    },
+  );
+
   it("sorts dashboard period cards by date and time before period name", async () => {
     const fixture = createFixture();
-    fixture.repository.listDashboardBreakdownCounts.mockResolvedValue([
-      { groupType: "period", name: "1교시 · 2026.10.31 09:00", schedule: "2026-10-31 09:00", total: 1, assigned: 0 },
-      { groupType: "period", name: "2교시 · 2026.10.30 11:00", schedule: "2026-10-30 11:00", total: 1, assigned: 0 },
-      { groupType: "period", name: "3교시 · 2026.10.30 09:00", schedule: "2026-10-30 09:00", total: 1, assigned: 0 },
-    ]);
+    fixture.repository.listDashboardBreakdownCounts.mockResolvedValue(
+      [
+        { name: "1교시 · 2026.10.31 09:00", schedule: "2026-10-31 09:00" },
+        { name: "2교시 · 2026.10.30 11:00", schedule: "2026-10-30 11:00" },
+        { name: "3교시 · 2026.10.30 09:00", schedule: "2026-10-30 09:00" },
+      ].map((row) => ({
+        ...row,
+        groupType: "period",
+        total: 1,
+        assigned: 0,
+        operationCount: 1,
+        closedCount: 0,
+        progressingCount: 0,
+      })),
+    );
     const result = await fixture.service.dashboardSummary({
       id: 7,
       loginId: "operator",
@@ -101,11 +145,29 @@ describe("CandidatesService compatibility facade", () => {
   it("builds dashboard statistics from scoped repository aggregates", async () => {
     const fixture = createFixture();
     fixture.repository.listDashboardBreakdownCounts.mockResolvedValue([
-      { groupType: "admission", name: "일반전형", total: 3, assigned: 1 },
-      { groupType: "admission", name: "특별전형", total: 2, assigned: 2 },
-      { groupType: "building", name: "본관", total: 5, assigned: 3 },
-      { groupType: "period", name: "1교시 · 2026.09.01 09:00", total: 5, assigned: 3 },
-      { groupType: "waitingRoom", name: "본관 · 101호 대기실", total: 5, assigned: 3 },
+      {
+        groupType: "admission",
+        name: "일반전형",
+        total: 3,
+        assigned: 1,
+        operationCount: 1,
+        closedCount: 0,
+        progressingCount: 1,
+      },
+      {
+        groupType: "admission",
+        name: "특별전형",
+        total: 2,
+        assigned: 2,
+        operationCount: 1,
+        closedCount: 1,
+        progressingCount: 0,
+      },
+      ...[
+        { groupType: "building", name: "본관" },
+        { groupType: "period", name: "1교시 · 2026.09.01 09:00" },
+        { groupType: "waitingRoom", name: "본관 · 101호 대기실" },
+      ].map((row) => ({ ...row, total: 5, assigned: 3, operationCount: 2, closedCount: 1, progressingCount: 1 })),
     ]);
 
     await expect(
@@ -135,10 +197,10 @@ describe("CandidatesService compatibility facade", () => {
           assigned: 2,
           unassigned: 0,
           assignmentRate: 100,
-          status: "complete",
+          status: "closed",
         },
       ],
-      admissionCounts: { waiting: 0, progress: 1, complete: 1 },
+      admissionCounts: { waiting: 0, progress: 1, partialProgress: 0, partialClosed: 0, closed: 1 },
       breakdowns: {
         unit: [],
         major: [],
@@ -160,10 +222,10 @@ describe("CandidatesService compatibility facade", () => {
             assigned: 2,
             unassigned: 0,
             assignmentRate: 100,
-            status: "complete",
+            status: "closed",
           },
         ],
-        building: [{ name: "본관", total: 5, assigned: 3, unassigned: 2, assignmentRate: 60, status: "progress" }],
+        building: [{ name: "본관", total: 5, assigned: 3, unassigned: 2, assignmentRate: 60, status: "partialClosed" }],
         period: [
           {
             name: "1교시 · 2026.09.01 09:00",
@@ -171,7 +233,7 @@ describe("CandidatesService compatibility facade", () => {
             assigned: 3,
             unassigned: 2,
             assignmentRate: 60,
-            status: "progress",
+            status: "partialClosed",
           },
         ],
         waitingRoom: [
@@ -181,7 +243,7 @@ describe("CandidatesService compatibility facade", () => {
             assigned: 3,
             unassigned: 2,
             assignmentRate: 60,
-            status: "progress",
+            status: "partialClosed",
           },
         ],
       },

@@ -45,7 +45,7 @@ export function DashboardCandidatesModal({
           <h2 id="dashboard-candidates-title">{name} · 수험생 목록</h2>
           <ModalCloseButton onClick={onClose} />
         </header>
-        <AttendanceStatusPage token={token} view="candidate" recordFilter={recordFilter} />
+        <AttendanceStatusPage token={token} view="candidate" recordFilter={recordFilter} embedded />
       </section>
     </div>,
     document.body,

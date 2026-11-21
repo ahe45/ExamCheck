@@ -1,7 +1,7 @@
-import type { CandidateRecord } from "../../shared/api/candidates";
+import type { CandidateRecord, CandidateDashboardSummary } from "../../shared/api/candidates";
 import type { AttendanceView } from "../../shared/navigation/admin-navigation";
 
-export type AdmissionStatus = "waiting" | "progress" | "complete";
+export type AdmissionStatus = CandidateDashboardSummary["admissions"][number]["status"];
 export type DashboardBreakdown = Exclude<AttendanceView, "candidate">;
 
 export interface AdmissionStatistic {
@@ -23,8 +23,10 @@ export interface DashboardStatistics {
   breakdowns: Record<DashboardBreakdown, AdmissionStatistic[]>;
 }
 
-type DashboardCandidate = Pick<CandidateRecord, "admission" | "assignedNumber"> &
-  Partial<
+type DashboardCandidate = Pick<CandidateRecord, "admission" | "assignedNumber"> & {
+  operationClosed?: boolean;
+  operationScope?: string;
+} & Partial<
     Pick<CandidateRecord, "building" | "waitingRoom" | "date" | "time" | "period" | "unit" | "major" | "group" | "room">
   >;
 
@@ -47,7 +49,7 @@ export function buildDashboardStatistics(candidates: readonly DashboardCandidate
       counts[admission.status] += 1;
       return counts;
     },
-    { waiting: 0, progress: 0, complete: 0 },
+    { waiting: 0, progress: 0, partialProgress: 0, partialClosed: 0, closed: 0 },
   );
 
   return {
@@ -65,16 +67,34 @@ function groupDashboardCandidates(
   candidates: readonly DashboardCandidate[],
   getName: (candidate: DashboardCandidate) => string,
 ): AdmissionStatistic[] {
-  const groups = new Map<string, { total: number; assigned: number; schedule: string }>();
+  const groups = new Map<
+    string,
+    {
+      total: number;
+      assigned: number;
+      schedule: string;
+      operations: Map<string, { closed: boolean; hasAttendance: boolean }>;
+    }
+  >();
   for (const candidate of candidates) {
     const name = getName(candidate);
     const date = candidate.date?.trim().replaceAll(".", "-") || "9999-12-31";
     const time = candidate.time?.trim() || "99:99";
     const schedule = `${date} ${time}`;
-    const current = groups.get(name) ?? { total: 0, assigned: 0, schedule };
+    const current = groups.get(name) ?? { total: 0, assigned: 0, schedule, operations: new Map() };
     if (schedule.localeCompare(current.schedule, "ko", { numeric: true }) < 0) current.schedule = schedule;
     current.total += 1;
     if (candidate.assignedNumber) current.assigned += 1;
+    const operationKey = JSON.stringify([
+      date,
+      time,
+      candidate.period,
+      candidate.operationScope ?? candidate.admission,
+    ]);
+    const operation = current.operations.get(operationKey) ?? { closed: false, hasAttendance: false };
+    operation.closed ||= Boolean(candidate.operationClosed);
+    operation.hasAttendance ||= Boolean(candidate.assignedNumber);
+    current.operations.set(operationKey, operation);
     groups.set(name, current);
   }
 
@@ -85,8 +105,19 @@ function groupDashboardCandidates(
     )
     .map(([name, value]): AdmissionStatistic => {
       const assignmentRate = percentage(value.assigned, value.total);
+      const operations = [...value.operations.values()];
+      const closedCount = operations.filter(({ closed }) => closed).length;
+      const progressingCount = operations.filter(({ closed, hasAttendance }) => !closed && hasAttendance).length;
       const status: AdmissionStatus =
-        value.assigned === 0 ? "waiting" : value.assigned === value.total ? "complete" : "progress";
+        closedCount === operations.length
+          ? "closed"
+          : closedCount > 0
+            ? "partialClosed"
+            : progressingCount === operations.length
+              ? "progress"
+              : progressingCount > 0
+                ? "partialProgress"
+                : "waiting";
       return {
         name,
         total: value.total,

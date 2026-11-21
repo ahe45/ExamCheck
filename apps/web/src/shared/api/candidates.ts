@@ -93,7 +93,13 @@ export function fetchCandidateAttendance(token: string, signal?: AbortSignal) {
 
 const nonnegativeIntegerSchema = z.number().int().nonnegative();
 const percentageSchema = z.number().min(0).max(100);
-const candidateDashboardAdmissionStatusSchema = z.enum(["waiting", "progress", "complete"]);
+const candidateDashboardAdmissionStatusSchema = z.enum([
+  "waiting",
+  "progress",
+  "partialProgress",
+  "partialClosed",
+  "closed",
+]);
 const candidateDashboardAdmissionSchema = z.object({
   name: z.string().min(1),
   total: nonnegativeIntegerSchema,
@@ -122,7 +128,9 @@ export const candidateDashboardSummarySchema = z.object({
   admissionCounts: z.object({
     waiting: nonnegativeIntegerSchema,
     progress: nonnegativeIntegerSchema,
-    complete: nonnegativeIntegerSchema,
+    partialProgress: nonnegativeIntegerSchema,
+    partialClosed: nonnegativeIntegerSchema,
+    closed: nonnegativeIntegerSchema,
   }),
   breakdowns: candidateDashboardBreakdownsSchema,
 });

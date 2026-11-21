@@ -36,7 +36,7 @@ import {
 } from "./candidate-preview-ticket.js";
 import { openValidatedPhotoArchive, readValidatedPhotoEntry } from "./candidate-upload-security.js";
 import { CandidatesApplicationService } from "./candidates.application.js";
-import { CandidatesRepository } from "./candidates.repository.js";
+import { CandidatesRepository, type CandidateDashboardBreakdownRow } from "./candidates.repository.js";
 import { parseCandidateListQuery } from "./candidate-list-query.js";
 import { candidateAttendance } from "./candidate-attendance.js";
 
@@ -144,7 +144,7 @@ export class CandidatesService {
         counts[admission.status] += 1;
         return counts;
       },
-      { waiting: 0, progress: 0, complete: 0 },
+      { waiting: 0, progress: 0, partialProgress: 0, partialClosed: 0, closed: 0 },
     );
     return {
       totalCandidates,
@@ -425,9 +425,7 @@ function percentage(value: number, total: number) {
   return total ? Math.round((value / total) * 1000) / 10 : 0;
 }
 
-function toDashboardStatistics(
-  rows: readonly { name: string; total: number; assigned: number; schedule?: string | null }[],
-) {
+function toDashboardStatistics(rows: readonly CandidateDashboardBreakdownRow[]) {
   return [...rows]
     .sort(
       (left, right) =>
@@ -438,7 +436,17 @@ function toDashboardStatistics(
     .map((row) => {
       const total = Number(row.total);
       const assigned = Number(row.assigned);
-      const status = assigned === 0 ? "waiting" : assigned === total ? "complete" : "progress";
+      const { operationCount, closedCount, progressingCount } = row;
+      const status =
+        closedCount === operationCount
+          ? "closed"
+          : closedCount > 0
+            ? "partialClosed"
+            : progressingCount === operationCount
+              ? "progress"
+              : progressingCount > 0
+                ? "partialProgress"
+                : "waiting";
       return {
         name: row.name,
         total,

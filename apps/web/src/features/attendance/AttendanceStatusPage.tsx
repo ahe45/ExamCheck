@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchCandidateAttendance, type CandidateAttendanceRecord } from "../../shared/api/candidates";
+import { saveBlob } from "../../shared/api/client";
 import { attendanceViews, type AttendanceView } from "../../shared/navigation/admin-navigation";
 import { useClientDataGrid } from "../../shared/hooks/useClientDataGrid";
 import { useEscapeKey } from "../../shared/hooks/useEscapeKey";
 import { ClientGridHeaderCell } from "../../shared/components/ClientGridHeaderCell";
 import { ClientGridFilterLayer, ClientGridPagination } from "../../shared/components/ClientDataGridControls";
-import { RefreshButtonIcon, ResetButtonIcon } from "../../shared/components/ActionIcons";
+import { DownloadButtonIcon, RefreshButtonIcon, ResetButtonIcon } from "../../shared/components/ActionIcons";
+import { buildAttendanceWorkbook } from "./attendance-excel";
 import {
   attendanceDimensions,
   attendanceLabels,
@@ -21,16 +23,20 @@ export default function AttendanceStatusPage({
   token,
   view,
   recordFilter,
+  embedded = false,
 }: {
   token: string;
   view: AttendanceView;
   recordFilter?: (record: CandidateAttendanceRecord) => boolean;
+  embedded?: boolean;
 }) {
   const [records, setRecords] = useState<CandidateAttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [filterReset, setFilterReset] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
@@ -72,6 +78,22 @@ export default function AttendanceStatusPage({
   useEscapeKey(Boolean(grid.filterMenu), grid.closeFilter);
   const label = attendanceViews.find((item) => item.key === view)!.label;
 
+  async function downloadExcel() {
+    setExporting(true);
+    setExportError("");
+    try {
+      const workbook = await buildAttendanceWorkbook(
+        columns.map(({ key }) => key),
+        grid.filteredRows,
+      );
+      saveBlob(workbook, `${label} 응시 현황.xlsx`);
+    } catch {
+      setExportError("응시 현황 엑셀 파일을 만들지 못했습니다.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <section className="candidate-data-view attendance-status-view" aria-label={`${label} 응시 현황`}>
       <article className="candidate-data-card attendance-grid-card">
@@ -81,6 +103,17 @@ export default function AttendanceStatusPage({
             <p>열별로 정렬하거나 필요한 값만 필터링하여 응시·결시 현황을 확인합니다.</p>
           </div>
           <div className="candidate-data-actions">
+            {!embedded && (
+              <button
+                className="exam-outline-button"
+                type="button"
+                onClick={() => void downloadExcel()}
+                disabled={loading || exporting || !grid.filteredRows.length}
+              >
+                <DownloadButtonIcon />
+                <span>{exporting ? "생성 중…" : "엑셀 다운로드"}</span>
+              </button>
+            )}
             <button
               className="exam-outline-button"
               type="button"
@@ -90,13 +123,24 @@ export default function AttendanceStatusPage({
               <RefreshButtonIcon />
               <span>{loading ? "불러오는 중…" : "새로고침"}</span>
             </button>
-            <button className="exam-outline-button" type="button" onClick={() => setFilterReset((value) => value + 1)}>
-              <ResetButtonIcon />
-              <span>필터 초기화</span>
-            </button>
+            {embedded && (
+              <button
+                className="exam-outline-button"
+                type="button"
+                onClick={() => setFilterReset((value) => value + 1)}
+              >
+                <ResetButtonIcon />
+                <span>필터 초기화</span>
+              </button>
+            )}
           </div>
         </header>
         <div className="attendance-summary">
+          {exportError && (
+            <p className="attendance-error" role="alert">
+              {exportError}
+            </p>
+          )}
           {error && (
             <p className="attendance-error" role="alert">
               {error}

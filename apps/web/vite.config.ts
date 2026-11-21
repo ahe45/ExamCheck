@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       noDiscovery: true,
-      include: ["react", "react-dom/client", "@tanstack/react-query", "zod"],
+      include: ["react", "react-dom/client", "@tanstack/react-query", "zod", "exceljs"],
       exclude: ["examlist-template-editor"],
     },
     server: {

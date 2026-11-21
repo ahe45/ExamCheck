@@ -42,6 +42,9 @@ export interface CandidateDashboardBreakdownRow extends RowDataPacket {
   name: string;
   total: number;
   assigned: number;
+  operationCount: number;
+  closedCount: number;
+  progressingCount: number;
   schedule?: string | null;
 }
 
@@ -160,7 +163,8 @@ export class CandidatesRepository {
     const dateFilter = date ? " AND cr.exam_date = ?" : "";
     const periodFilter = period ? " AND TRIM(cr.period_name) = ?" : "";
     const [rows] = await executor.execute<CandidateDashboardBreakdownRow[]>(
-      `SELECT dashboard_group.group_type AS groupType,
+      `WITH dashboard_operations AS (
+       SELECT dashboard_group.group_type AS groupType,
               CASE dashboard_group.group_type
                 WHEN 'admission' THEN COALESCE(NULLIF(TRIM(cr.admission), ''), '미지정 전형')
                 WHEN 'unit' THEN CONCAT(
@@ -201,7 +205,8 @@ export class CandidatesRepository {
               )) AS schedule,
               COUNT(DISTINCT cr.id) AS total,
               COUNT(DISTINCT CASE WHEN NOT COALESCE(pa.is_absentee, FALSE)
-                AND (${attendanceProcessedSql}) THEN cr.id END) AS assigned
+                AND (${attendanceProcessedSql}) THEN cr.id END) AS assigned,
+              MAX(COALESCE(po.closed, FALSE)) AS closed
        FROM operation_candidate_record cr
        LEFT JOIN pseudonym_assignment pa ON pa.candidate_record_id = cr.id
        ${attendanceJoinsSql}
@@ -217,14 +222,23 @@ export class CandidatesRepository {
          UNION ALL SELECT 'waitingRoom'
        ) dashboard_group
        WHERE cr.status = 'ACTIVE' AND ${access.sql}${admissionFilter}${dateFilter}${periodFilter}
-       GROUP BY dashboard_group.group_type, 2
-       ORDER BY dashboard_group.group_type, 2`,
+       GROUP BY dashboard_group.group_type, 2, cr.exam_name, cr.exam_date, cr.start_time, cr.period_name, cr.operation_scope
+       )
+       SELECT groupType, name, MIN(schedule) AS schedule, SUM(total) AS total, SUM(assigned) AS assigned,
+              COUNT(*) AS operationCount, SUM(closed) AS closedCount,
+              SUM(closed = FALSE AND assigned > 0) AS progressingCount
+       FROM dashboard_operations
+       GROUP BY groupType, name
+       ORDER BY groupType, name`,
       [...access.params, ...[admissionName, date, period].filter((value): value is string => Boolean(value))],
     );
     return rows.map((row) => ({
       ...row,
       total: Number(row.total),
       assigned: Number(row.assigned),
+      operationCount: Number(row.operationCount),
+      closedCount: Number(row.closedCount),
+      progressingCount: Number(row.progressingCount),
     }));
   }
 

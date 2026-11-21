@@ -74,15 +74,21 @@ describe("dashboard statistics", () => {
     const statistics = buildDashboardStatistics([
       { admission: "학생부교과", assignedNumber: null },
       { admission: "학생부교과", assignedNumber: "1001" },
-      { admission: "실기전형", assignedNumber: "2001" },
-      { admission: "실기전형", assignedNumber: "2002" },
+      { admission: "실기전형", assignedNumber: "2001", operationClosed: true },
+      { admission: "실기전형", assignedNumber: "2002", operationClosed: true },
       { admission: "면접전형", assignedNumber: null },
     ]);
 
     expect(statistics.totalCandidates).toBe(5);
     expect(statistics.assignedCandidates).toBe(3);
     expect(statistics.assignmentRate).toBe(60);
-    expect(statistics.admissionCounts).toEqual({ waiting: 1, progress: 1, complete: 1 });
+    expect(statistics.admissionCounts).toEqual({
+      waiting: 1,
+      progress: 1,
+      partialProgress: 0,
+      partialClosed: 0,
+      closed: 1,
+    });
     expect(statistics.admissions.find((item) => item.name === "학생부교과")).toMatchObject({
       total: 2,
       assigned: 1,
@@ -120,7 +126,7 @@ describe("dashboard statistics", () => {
     ]);
 
     expect(statistics.breakdowns.building).toEqual([
-      { name: "본관", total: 2, assigned: 1, unassigned: 1, assignmentRate: 50, status: "progress" },
+      { name: "본관", total: 2, assigned: 1, unassigned: 1, assignmentRate: 50, status: "partialProgress" },
     ]);
     expect(statistics.breakdowns.period[0]).toMatchObject({ name: "1교시 · 2026.09.01 09:00", total: 2 });
     expect(statistics.breakdowns.waitingRoom[0]).toMatchObject({ name: "본관 · 101호 대기실", total: 2 });

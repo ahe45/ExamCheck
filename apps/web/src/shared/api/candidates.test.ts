@@ -22,7 +22,7 @@ describe("candidate response contracts", () => {
       unassignedCandidates: 1,
       assignmentRate: 0,
       admissions: [],
-      admissionCounts: { waiting: "1", progress: 0, complete: 0 },
+      admissionCounts: { waiting: "1", progress: 0, partialProgress: 0, partialClosed: 0, closed: 0 },
       breakdowns: {
         admission: [],
         unit: [],

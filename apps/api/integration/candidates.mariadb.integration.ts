@@ -483,6 +483,63 @@ describe("candidate row editing MariaDB integration", () => {
   });
 });
 
+it("derives the dashboard status from individual building operations in the filtered period", async () => {
+  const date = "2040-11-21";
+  const period = "대시보드 마감 검증";
+  const admission = "대시보드 마감 검증 전형";
+  const buildings = ["마감관", "진행관", "대기관"];
+  const repository = new CandidatesRepository();
+  const application = createApplication(new AuditRepository(), repository);
+  const service = new CandidatesService(harness.pool, repository, application, resolveAppConfig({}));
+  await application.importCandidates(
+    buildings.map((building, index) => candidate(`IT-DASHBOARD-${index}`, { date, period, admission, building })),
+    "insert-update",
+    sha256Fixture("e"),
+    actorUserId,
+  );
+  await harness.pool.execute("UPDATE system_profile SET classification_method = 'BUILDING' WHERE id = 1");
+  try {
+    await harness.pool.execute(
+      `INSERT INTO pseudonym_operation (exam_name, exam_date, exam_time, period_name, admission_name, closed)
+       SELECT exam_name, exam_date, start_time, period_name, operation_scope, TRUE
+       FROM operation_candidate_record WHERE examinee_no = 'IT-DASHBOARD-0'`,
+    );
+    await harness.pool.execute(
+      `INSERT INTO pseudonym_assignment (candidate_record_id, exam_name, admission_name, pseudonym_no, assignment_mode, assigned_by)
+       SELECT id, exam_name, admission, '6101', 'SEQUENTIAL', ?
+       FROM candidate_record WHERE examinee_no = 'IT-DASHBOARD-1'`,
+      [actorUserId],
+    );
+    const user = {
+      id: actorUserId,
+      loginId: "system",
+      role: "ADMIN" as const,
+      admissionNames: [],
+      classificationMethod: "BUILDING" as const,
+    };
+    const summary = await service.dashboardSummary(user, undefined, date, period);
+    expect(summary.breakdowns.building).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "마감관", assigned: 0, status: "closed" }),
+        expect.objectContaining({ name: "진행관", assigned: 1, status: "progress" }),
+        expect.objectContaining({ name: "대기관", assigned: 0, status: "waiting" }),
+      ]),
+    );
+    expect(summary.breakdowns.period).toEqual([
+      expect.objectContaining({ total: 3, assigned: 1, status: "partialClosed" }),
+    ]);
+    await harness.pool.execute(
+      "UPDATE pseudonym_operation SET closed = FALSE WHERE exam_date = ? AND period_name = ?",
+      [date, period],
+    );
+    expect((await service.dashboardSummary(user, undefined, date, period)).breakdowns.period[0].status).toBe(
+      "partialProgress",
+    );
+  } finally {
+    await harness.pool.execute("UPDATE system_profile SET classification_method = 'ADMISSION' WHERE id = 1");
+  }
+});
+
 function createApplication(audit: MutationAuditRepository, repository = new CandidatesRepository()) {
   return new CandidatesApplicationService(
     harness.pool,
